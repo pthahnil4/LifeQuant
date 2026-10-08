@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>监控台币种 1分钟K线实时拉取</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script defer src="{{ url_for('static', filename='js/kline_live.js') }}"></script>
+    <style>
+        .kl-page { max-width: 1360px; margin: 0 auto; padding: 18px 16px 60px; }
+        .kl-head { display: flex; align-items: flex-end; justify-content: space-between;
+            flex-wrap: wrap; gap: 10px; margin-bottom: 12px; }
+        .kl-head h1 { font-size: 1.32rem; margin: 0; }
+        .kl-head .kl-sub { color: #888; font-size: .79rem; margin-top: 4px; line-height: 1.5; }
+        .kl-head-right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .kl-badge { font-size: .75rem; padding: 4px 11px; border-radius: 999px; border: 1px solid #d7dbe0;
+            background: #f4f6f8; color: #5c6672; white-space: nowrap; }
+        .kl-badge.ok { background: #e6f6e9; color: #256d31; border-color: #b9e2c0; }
+        .kl-badge.run { background: #e8f2fd; color: #1565c0; border-color: #bcdcf5; }
+        .kl-badge.warn { background: #fff6e0; color: #8a6212; border-color: #f0dca6; }
+        .kl-badge.err { background: #fdecea; color: #c62828; border-color: #f5c6c0; }
+
+        /* 控制条 */
+        .kl-bar { background: #fff; border: 1px solid #e3e6ea; border-radius: 12px; padding: 10px 13px;
+            display: flex; flex-wrap: wrap; gap: 9px 14px; align-items: center; box-shadow: 0 1px 3px rgba(0,0,0,.05); }
+        .kl-tabs { display: inline-flex; border: 1px solid #dfe3e8; border-radius: 9px; overflow: hidden; }
+        .kl-tab { padding: 6px 14px; font-size: .84rem; background: #fff; border: none; cursor: pointer; color: #556; }
+        .kl-tab + .kl-tab { border-left: 1px solid #dfe3e8; }
+        .kl-tab.on { background: #4356c0; color: #fff; font-weight: 700; }
+        .kl-field { display: flex; align-items: center; gap: 6px; font-size: .8rem; color: #667; }
+        .kl-field input[type=number] { width: 78px; padding: 5px 7px; border: 1px solid #ccc; border-radius: 7px; font-size: .82rem; }
+        .kl-btn { border: none; border-radius: 8px; padding: 7px 16px; font-size: .84rem; font-weight: 700;
+            cursor: pointer; background: #4356c0; color: #fff; }
+        .kl-btn:disabled { opacity: .5; cursor: wait; }
+        .kl-btn.ghost { background: #eef1ff; color: #4356c0; }
+        .kl-btn.danger { background: #fdecea; color: #c62828; }
+        .kl-switch { display: inline-flex; align-items: center; gap: 6px; font-size: .8rem; color: #667; cursor: pointer; }
+        .kl-msg { margin-top: 9px; font-size: .81rem; border-radius: 8px; padding: 8px 12px; display: none; }
+        .kl-msg.err { display: block; background: #fdecea; color: #c62828; border: 1px solid #f5c6c0; }
+        .kl-msg.note { display: block; background: #fff8e6; color: #8a6d1a; border: 1px solid #f0dfae; }
+
+        /* 进度看板 */
+        .kl-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 13px; margin-top: 14px; }
+        .kl-card { background: #fff; border: 1px solid #e3e6ea; border-radius: 12px; padding: 13px 15px;
+            box-shadow: 0 1px 3px rgba(0,0,0,.05); }
+        .kl-card.off { opacity: .55; }
+        .kl-card-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+        .kl-card-top h2 { font-size: .98rem; margin: 0; }
+        .kl-card-top .kl-symbol { font-size: .74rem; color: #98a1ab; font-family: Consolas, monospace; }
+        .kl-card .kl-desc { font-size: .74rem; color: #98a1ab; margin: 3px 0 10px; }
+        .kl-price-row { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
+        .kl-price { font-size: 1.72rem; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1.1; }
+        .kl-price.up { color: #d32f2f; } .kl-price.down { color: #2e7d32; }
+        .kl-price-tag { font-size: .73rem; color: #98a1ab; padding-bottom: 3px; }
+        .kl-live { font-size: .78rem; color: #667; padding-bottom: 3px; }
+        .kl-live b { font-variant-numeric: tabular-nums; color: #34495e; }
+        .kl-prog { margin: 12px 0 4px; }
+        .kl-prog-txt { display: flex; justify-content: space-between; font-size: .74rem; color: #7a828b; margin-bottom: 4px; }
+        .kl-prog-track { height: 8px; background: #eef1f4; border-radius: 999px; overflow: hidden; }
+        .kl-prog-fill { height: 100%; width: 0; background: linear-gradient(90deg, #7b8ce0, #4356c0); transition: width .4s; }
+        .kl-prog-fill.full { background: linear-gradient(90deg, #66bb6a, #2e7d32); }
+        .kl-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(112px, 1fr)); gap: 8px 10px; margin-top: 11px; }
+        .kl-m .k { font-size: .71rem; color: #98a1ab; }
+        .kl-m .v { font-size: .96rem; font-weight: 700; font-variant-numeric: tabular-nums; color: #34495e; }
+        .kl-m .v.sm { font-size: .82rem; font-weight: 600; }
+        .kl-m .v.bad { color: #c62828; }
+        .kl-m .v.good { color: #2e7d32; }
+        .kl-file { margin-top: 10px; padding-top: 9px; border-top: 1px dashed #eaedf0; font-size: .72rem;
+            color: #98a1ab; word-break: break-all; line-height: 1.6; }
+
+        /* 最新数据表格 */
+        .kl-table-card { background: #fff; border: 1px solid #e3e6ea; border-radius: 12px; padding: 12px 14px; margin-top: 14px; }
+        .kl-table-card h2 { font-size: .95rem; margin: 0 0 3px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+        .kl-table-card .kl-sub { font-size: .75rem; color: #999; margin-bottom: 8px; }
+        .kl-scroll { max-height: 460px; overflow: auto; }
+        .kl-table { width: 100%; border-collapse: collapse; font-size: .8rem; }
+        .kl-table th, .kl-table td { padding: 6px 9px; border-bottom: 1px solid #f0f2f4;
+            text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+        .kl-table th { background: #f7f8fa; color: #666; font-weight: 600; position: sticky; top: 0; z-index: 1; }
+        .kl-table td:first-child, .kl-table th:first-child { text-align: left; }
+        .kl-table tbody tr:hover { background: #f4f6ff; }
+        .kl-table tr.fresh td { background: #f0f7f1; }
+        .kl-chg.up { color: #d32f2f; font-weight: 700; } .kl-chg.down { color: #2e7d32; font-weight: 700; }
+        .kl-new { font-size: .68rem; padding: 1px 6px; border-radius: 999px; background: #e8f2fd; color: #1565c0; margin-left: 5px; }
+        .kl-empty { color: #999; font-size: .82rem; padding: 16px 4px; text-align: center; }
+
+        /* 运行流水 */
+        .kl-feed { background: #fff; border: 1px solid #e3e6ea; border-radius: 12px; padding: 12px 14px; margin-top: 14px; }
+        .kl-feed h2 { font-size: .95rem; margin: 0 0 8px; }
+        .kl-feed-list { max-height: 260px; overflow: auto; font-size: .78rem; }
+        .kl-feed-item { display: flex; gap: 10px; padding: 4px 0; border-bottom: 1px dashed #f2f4f6; }
+        .kl-feed-item .t { color: #98a1ab; font-variant-numeric: tabular-nums; flex: 0 0 auto; }
+        .kl-feed-item.error .m { color: #c62828; }
+        .kl-feed-item.warn .m { color: #8a6212; }
+        .kl-feed-item.ok .m { color: #37474f; }
+        .kl-tail-note { font-size: .73rem; color: #98a1ab; margin-top: 8px; line-height: 1.6; }
+
+        /* 币种维度：无数据源的币标灰而不是默默消失 */
+        .kl-badge.nosrc { background: #f1f2f4; color: #8d949c; border-color: #dfe2e6; }
+        .kl-card.nosrc { opacity: .68; background: #fafbfc; }
+        .kl-card.nosrc .kl-price { color: #b0b6bd; }
+        .kl-nosrc-note { font-size: .78rem; color: #8a6212; background: #fff8e6;
+            border: 1px solid #f0dfae; border-radius: 8px; padding: 7px 11px; margin-bottom: 8px; }
+        .kl-coin-row.nosrc td { color: #98a1ab; }
+        .kl-pct { display: inline-flex; align-items: center; gap: 7px; min-width: 130px; }
+        .kl-pct .kl-prog-track { flex: 1 1 auto; height: 6px; display: block; }
+        .kl-pct span { font-variant-numeric: tabular-nums; color: #667; font-size: .75rem; }
+        .kl-chip { font-size: .68rem; padding: 1px 7px; border-radius: 999px; border: 1px solid #dfe3e8;
+            background: #f6f8fa; color: #66707a; white-space: nowrap; }
+        .kl-chip.on { background: #e6f6e9; color: #256d31; border-color: #b9e2c0; }
+        .kl-chip.off { background: #f1f2f4; color: #98a1ab; }
+        .kl-chip.na { background: #fdecea; color: #c62828; border-color: #f5c6c0; }
+        /* 币种勾选面板 */
+        .kl-coin-pick { display: none; gap: 5px 6px; flex-wrap: wrap; background: #fff;
+            border: 1px solid #e3e6ea; border-radius: 12px; padding: 10px 13px; margin-top: 10px; }
+        .kl-coin-pick.open { display: flex; }
+        .kl-coin-pick .kl-ck { display: inline-flex; align-items: center; gap: 4px; font-size: .76rem;
+            color: #556; border: 1px solid #e3e6ea; border-radius: 7px; padding: 3px 7px; cursor: pointer; }
+        .kl-coin-pick .kl-ck.na { opacity: .55; }
+        .kl-coin-pick .kl-ck input { margin: 0; }
+        .kl-coin-pick-head { flex: 0 0 100%; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+            font-size: .77rem; color: #667; }
+    </style>
+</head>
+<body>
+    {% include 'nav.html' %}
+    <div class="kl-page" id="kline-live-page">
+        <div class="kl-head">
+            <div>
+                <h1>⛓️ 监控台币种 1 分钟 K 线实时拉取</h1>
+                <div class="kl-sub">
+                    数据源：ccxt → OKX 公共行情（无需密钥，只读）· 落盘 CSV 后由定时任务按断点持续增量追加；
+                    历史口径为「该币种在 OKX 上的数据地板 → 现在」，有多少取多少（地板由二分探测得到，一次探测长期复用）<br>
+                    默认监控监控台固定币种里<b>市值最大的前 12 个</b>（按市值降序，可在「币种范围」改），每个币种两条独立流：<b>永续合约</b>（与实盘 XXX-USDT-SWAP 同口径）
+                    与 <b>现货</b>（对照基差）；开拉前先查 ccxt 的 okx 市场表，<b>没有该市场的币种标灰跳过</b>，不报错
+                </div>
+            </div>
+            <div class="kl-head-right">
+                <span class="kl-badge" id="kl-state-badge">状态加载中…</span>
+                <span class="kl-badge" id="kl-server-time">--</span>
+            </div>
+        </div>
+
+        <div class="kl-bar">
+            <span class="kl-field">币种
+                <select id="kl-coin" title="按币种查看回填进度（总览表始终显示全部币种）"></select>
+            </span>
+            <div class="kl-tabs" id="kl-tabs"></div>
+            <button type="button" class="kl-btn ghost" id="kl-coin-edit" title="勾选哪些币种参与拉取（不勾=跟随监控台全部币种）">币种范围</button>
+            <span class="kl-field">启用币种 <b id="kl-coin-count">--</b></span>
+            <span class="kl-field">调度周期 <b id="kl-interval-txt">--</b></span>
+            <span class="kl-field">下次触发 <b id="kl-next-run">--</b></span>
+            <label class="kl-switch"><input type="checkbox" id="kl-auto" checked> 自动刷新</label>
+            <div class="kl-field">
+                每轮上限
+                <input type="number" id="kl-max" min="0" step="500" title="单条流单轮最多新增根数，0=不限（调度轮限速用）">
+            </div>
+            <div class="kl-field">
+                回看天数
+                <input type="number" id="kl-since" min="1" max="36500" step="1" title="仅「仅最近 N 天」口径生效">
+            </div>
+            <button type="button" class="kl-btn" id="kl-pull">立即拉取一轮</button>
+            <button type="button" class="kl-btn ghost" id="kl-save">保存配置</button>
+            <button type="button" class="kl-btn danger" id="kl-toggle">停用任务</button>
+            <span class="kl-field">表格行数
+                <select id="kl-limit">
+                    <option value="30">30</option>
+                    <option value="60" selected>60</option>
+                    <option value="120">120</option>
+                    <option value="240">240</option>
+                </select>
+            </span>
+        </div>
+
+        <!-- 币种范围勾选：空清单=跟随监控台；勾了就把范围收窄到这几个币 -->
+        <div class="kl-coin-pick" id="kl-coin-pick"></div>
+
+        <!-- 全量回填控制条：调度轮每 60s 只有一个短预算，百万根靠它要跑好几天，真回填靠这里的连续跑批 -->
+        <div class="kl-bar">
+            <div class="kl-field">
+                回填口径
+                <select id="kl-mode" title="全量=从交易所数据地板起有多少取多少；仅最近 N 天=只看上方回看天数">
+                    <option value="earliest">全量（数据地板 → 现在）</option>
+                    <option value="days">仅最近 N 天</option>
+                </select>
+            </div>
+            <div class="kl-field">
+                批间隔(ms)
+                <input type="number" id="kl-interval-ms" min="0" max="5000" step="10" title="相邻两个 300 根请求的间隔，实测 150ms 稳定无 429">
+            </div>
+            <div class="kl-field">
+                单轮预算(s)
+                <input type="number" id="kl-budget" min="5" max="3000" step="5" title="调度轮里留给历史回填的时间，两流共享，避免一轮超过调度周期">
+            </div>
+            <button type="button" class="kl-btn" id="kl-bf-start" title="只回填上方下拉框选中的币种；需要全部币种就在那儿选「全部」">▶ 全量回填（后台连续跑批）</button>
+            <button type="button" class="kl-btn ghost" id="kl-bf-stop">■ 停止回填</button>
+            <button type="button" class="kl-btn ghost" id="kl-audit" title="整扫一遍当前币种这条流的 CSV 台账，给出精确行数/缺口/重复（百万行约十几秒）">台账体检</button>
+            <span class="kl-field" id="kl-audit-out" style="color:#98a1ab"></span>
+        </div>
+        <div class="kl-msg" id="kl-msg"></div>
+
+        <!-- 币种总览：每个币两条流的到位情况一屏看完，无数据源的写在备注里 -->
+        <div class="kl-table-card">
+            <h2>🪙 币种回填总览
+                <span class="kl-badge" id="kl-coin-meta">--</span>
+                <span class="kl-badge nosrc" id="kl-nosrc-meta">--</span>
+            </h2>
+            <div class="kl-sub">
+                点任意一行切到该币种看明细；「无数据源」= ccxt 的 okx 市场表里没有这个现货/永续市场，已自动跳过（不是故障）
+            </div>
+            <div class="kl-scroll" style="max-height:340px">
+                <table class="kl-table" id="kl-coin-table">
+                    <thead><tr>
+                        <th>币种</th><th>永续</th><th>现货</th><th>台账根数</th>
+                        <th style="min-width:170px">全量进度</th><th>尚差根数</th>
+                        <th>末根时间</th><th>最近运行</th><th style="text-align:left">备注</th>
+                    </tr></thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- 拉取进度看板 -->
+        <div class="kl-cards" id="kl-cards"></div>
+
+        <!-- 最新 K 线数据 -->
+        <div class="kl-table-card">
+            <h2>📜 最新 K 线明细 <span class="kl-badge" id="kl-bars-meta">--</span></h2>
+            <div class="kl-sub">
+                时间列同时给出本地（UTC+8）与 UTC；每根都是<b>已收盘</b>整根，正在走的那一分钟不出现在表里
+                （避免把未完成 K 线当成数据误导）；当前那一分钟的实时价见上方卡片的「当前分钟实时价」。
+            </div>
+            <div class="kl-scroll">
+                <table class="kl-table" id="kl-table">
+                    <thead><tr>
+                        <th>本地时间</th><th>UTC</th><th>开盘</th><th>最高</th><th>最低</th>
+                        <th>收盘</th><th>涨跌</th><th>成交量</th>
+                    </tr></thead>
+                    <tbody></tbody>
+                </table>
+                <div class="kl-empty" id="kl-table-empty" style="display:none">暂无数据，等待首轮拉取</div>
+            </div>
+        </div>
+
+        <!-- 运行流水 -->
+        <div class="kl-feed">
+            <h2>🧾 拉取运行流水</h2>
+            <div class="kl-feed-list" id="kl-feed-list"></div>
+            <div class="kl-tail-note">
+                说明：任务体每轮把启用的币种挨个跑一遍（串行），上一轮未结束时本轮直接跳过（不排队补跑），跳过的根会在下一轮按断点自动补齐；
+                定时轮默认只推实时增量，百万根级历史交给上方的「▶ 全量回填」连续跑批（同一份 CSV 只允许一个写入者）；
+                进度分母是「数据地板 → 现在」的应有根数，交易所本身没有的那几分钟计入「交易所侧缺」，不会让进度条永远差一截；
+                单次请求 300 根，早于台账首根的那一段先写分段文件、追平后流式归并回主文件（百万行级不用 seen 集合与全文件排序）；
+                新入列的币种首次会先请最近一整窗（约 300 根）做起头，之后按末根走正常增量。
+            </div>
+        </div>
+    </div>
+</body>
+</html>

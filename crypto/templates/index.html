@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LifeQuant · 策略监控台</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    {% include 'nav.html' %}
+    <!-- 每日评级总控台状态条：只读 GET /checkin/api/today（不触达 OKX），由 checkin.js 填充 -->
+    <div class="ck-bar" id="checkin-bar" style="display:none;">
+        <span class="ck-bar-title">📋 今日评级</span>
+        <span class="ck-bar-item" style="color:#aaa;">加载中…</span>
+    </div>
+    <div class="dashboard">
+        <header>
+            <h1>LifeQuant · 策略监控台</h1>
+            <p class="subtitle">前后端分离架构 | 实时数据刷新</p>
+            <!-- 手册与币种导览入口：只挂在监控台页面，不占全局导航栏 -->
+            <div style="margin-top:10px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
+                <a href="/checkin" class="m-btn m-btn-primary m-btn-sm" title="每日评级总控台：热量缺口 / 交易收益 / 学习时长三项自动采集，加自我评级与评价，一天一条记录">📋 每日评级总控台</a>
+                <a href="/diary" class="m-btn m-btn-secondary m-btn-sm" title="日记本：按天记录心得，与每日评级互相关联">📔 日记本</a>
+                <a href="/monitor-guide" class="m-btn m-btn-secondary m-btn-sm" title="监控台全部按钮与功能模块的分页操作手册">📚 操作手册</a>
+                <a href="/top-coins" class="m-btn m-btn-info m-btn-sm" title="市值前50固定币种实时行情与简介">🪙 Top50币种导览</a>
+            </div>
+        </header>
+
+        <main>
+            <!-- 币种选择面板 -->
+            <div class="coin-selector-panel">
+                <div class="coin-selector-header">
+                    <span class="coin-selector-title">监控币种选择</span>
+                    <div class="coin-selector-actions">
+                        <button id="toggle-filter-btn" class="m-btn m-btn-info m-btn-xs m-btn-outline m-btn-pill" title="显示/隐藏高级筛选">🔽 筛选</button>
+                        <button id="sync-csv-btn" class="m-btn m-btn-info m-btn-xs m-btn-outline m-btn-pill" title="从CSV文件同步最新币种列表">🔄 同步</button>
+                        <button id="select-all-btn" class="m-btn m-btn-success m-btn-xs m-btn-outline m-btn-pill" title="全选所有币种">☑ 全选所有</button>
+                        <button id="reset-selection-btn" class="m-btn m-btn-danger m-btn-xs m-btn-outline m-btn-pill" title="取消所有选中">✖ 重置选择</button>
+                        <button id="select-all-starred-btn" class="m-btn m-btn-warning m-btn-xs m-btn-outline m-btn-pill" title="选中所有已星标币种">★ 全选星标</button>
+                        <button id="reset-starred-btn" class="m-btn m-btn-warning m-btn-xs m-btn-outline m-btn-pill" title="清除所有星标">☆ 重置星标</button>
+                        <button id="clear-floating-btn" class="m-btn m-btn-danger m-btn-xs m-btn-outline m-btn-pill" title="一键移除所有浮动币种">🗑️ 清空浮动币种</button>
+                        <button id="remove-fixed-btn" class="m-btn m-btn-danger m-btn-xs m-btn-outline m-btn-pill" title="将选中的固定币种移出监控，并从币种库(CSV)彻底删除（清理已下架币种，不会被同步带回）" disabled>➖ 移除选中</button>
+                        <button id="promote-fixed-btn" class="m-btn m-btn-success m-btn-xs m-btn-outline m-btn-pill" title="将选中的浮动币种提升为固定币种（同时写入币种库，CSV同步不会丢弃）" disabled>⬆ 提升为固定</button>
+                        <button id="sync-csv-fixed-btn" class="m-btn m-btn-info m-btn-xs m-btn-outline m-btn-pill" title="以币种库(CSV)为准对齐固定列表（已移除的下架币不会复活，浮动币种保留不变）">📥 CSV同步固定</button>
+                        <button id="save-coins-btn" class="m-btn m-btn-primary m-btn-sm">保存选择</button>
+                    </div>
+                </div>
+
+                <!-- 高级筛选面板（可折叠） -->
+                <div class="coin-filter-panel" id="coin-filter-panel" style="display:none;">
+                    <div class="filter-section">
+                        <span class="filter-section-label">趋势:</span>
+                        <div class="filter-toggles" id="filter-trends">
+                            <button class="filter-toggle" data-cat="trend" data-val="1H_上涨">1H↑</button>
+                            <button class="filter-toggle" data-cat="trend" data-val="1H_下跌">1H↓</button>
+                            <button class="filter-toggle" data-cat="trend" data-val="4H_上涨">4H↑</button>
+                            <button class="filter-toggle" data-cat="trend" data-val="4H_下跌">4H↓</button>
+                            <button class="filter-toggle" data-cat="trend" data-val="1D_上涨">1D↑</button>
+                            <button class="filter-toggle" data-cat="trend" data-val="1D_下跌">1D↓</button>
+                        </div>
+                    </div>
+                    <div class="filter-section">
+                        <span class="filter-section-label">组合:</span>
+                        <div class="filter-toggles" id="filter-combined">
+                            <button class="filter-toggle ft-combined" data-cat="combined" data-val="4H_1D_双涨">4H↑+1D↑</button>
+                            <button class="filter-toggle ft-combined" data-cat="combined" data-val="4H_1D_双跌">4H↓+1D↓</button>
+                        </div>
+                    </div>
+                    <div class="filter-section">
+                        <span class="filter-section-label">盈亏:</span>
+                        <div class="filter-toggles" id="filter-pnl">
+                            <button class="filter-toggle ft-profit" data-cat="pnl" data-val="profit" data-period="1H">1H盈利</button>
+                            <button class="filter-toggle ft-profit" data-cat="pnl" data-val="profit" data-period="4H">4H盈利</button>
+                            <button class="filter-toggle ft-profit" data-cat="pnl" data-val="profit" data-period="1D">1D盈利</button>
+                            <button class="filter-toggle ft-loss" data-cat="pnl" data-val="loss" data-period="1H">1H亏损</button>
+                            <button class="filter-toggle ft-loss" data-cat="pnl" data-val="loss" data-period="4H">4H亏损</button>
+                            <button class="filter-toggle ft-loss" data-cat="pnl" data-val="loss" data-period="1D">1D亏损</button>
+                        </div>
+                    </div>
+                    <div class="filter-section">
+                        <span class="filter-section-label">指标:</span>
+                        <div class="filter-indicators">
+                            <label class="f-ind-label">ADX_1H &gt; <input type="number" id="f-adx-1h" value="25" step="0.1" class="filter-num"></label>
+                            <label class="f-ind-label">ATR_1H% &gt; <input type="number" id="f-atr-1h" value="10" step="0.1" class="filter-num"></label>
+                            <label class="f-ind-label">ADX_4H &gt; <input type="number" id="f-adx-4h" value="25" step="0.1" class="filter-num"></label>
+                            <label class="f-ind-label">ATR_4H% &gt; <input type="number" id="f-atr-4h" value="20" step="0.1" class="filter-num"></label>
+                            <label class="f-ind-label">ADX_1D &gt; <input type="number" id="f-adx-1d" value="25" step="0.1" class="filter-num"></label>
+                            <label class="f-ind-label">ATR_1D% &gt; <input type="number" id="f-atr-1d" value="30" step="0.1" class="filter-num"></label>
+                        </div>
+                    </div>
+                    <div class="filter-section filter-section-actions">
+                        <span class="filter-section-label">排序:</span>
+                        <select id="f-sort" class="filter-select">
+                            <option value="">默认(市值)</option>
+                            <option value="ADX_4H_desc">ADX_4H↓</option>
+                            <option value="ATR_4H_desc">ATR_4H↓</option>
+                            <option value="ADX_1D_desc">ADX_1D↓</option>
+                            <option value="ATR_1D_desc">ATR_1D↓</option>
+                            <option value="pnl_1H_desc">1H盈亏↓</option>
+                            <option value="pnl_4H_desc">4H盈亏↓</option>
+                            <option value="pnl_1D_desc">1D盈亏↓</option>
+                        </select>
+                        <button id="apply-coin-filter-btn" class="btn-tiny btn-tiny-select">🔍 应用筛选</button>
+                        <button id="clear-coin-filter-btn" class="btn-tiny btn-tiny-reset">✖ 清除</button>
+                        <button id="batch-star-filtered-btn" class="btn-tiny btn-tiny-star">⭐ 批量星标</button>
+                    </div>
+                    <div id="coin-filter-stats" class="coin-filter-stats" style="display:none;"></div>
+                </div>
+
+                <div id="coin-selector" class="coin-selector">
+                    <!-- JS 动态生成多选按钮 -->
+                </div>
+            </div>
+
+            <!-- 周期选择器 -->
+            <div id="bar-selector" class="bar-selector">
+            </div>
+
+            <!-- 综合行情面板 -->
+            <div class="overall-panel">
+                <h3>综合行情判断</h3>
+                <div id="overall-market">-</div>
+            </div>
+
+            <!-- 数据展示面板 (JS 会动态清空并填入卡片) -->
+            <div id="data-panel" class="data-panel" style="display: none;">
+            </div>
+
+            <!-- 加载中 -->
+            <div id="loading" class="loading" style="display:none;">正在加载策略数据...</div>
+            
+            <div class="actions">
+                <button id="refresh-btn" class="m-btn m-btn-primary m-btn-lg m-btn-pill">🔄 手动刷新数据</button>
+            </div>
+
+            <!-- 自动刷新配置 -->
+            <div class="auto-refresh-config">
+                <div class="refresh-config-row">
+                    <span class="refresh-config-label">🔄 自动刷新间隔</span>
+                    <input type="number" id="refresh-interval-input" class="refresh-config-input" value="1" min="0" max="60" step="1">
+                    <span class="refresh-config-unit">分钟</span>
+                    <button id="apply-refresh-interval-btn" class="m-btn m-btn-primary m-btn-xs m-btn-pill">应用</button>
+                    <span class="refresh-config-hint">(0=关闭)</span>
+                </div>
+                <div id="refresh-status-msg" class="refresh-status-msg"></div>
+            </div>
+
+            <!-- ================================================================
+                 固定币种详情（市值监控池）—— 自交易配置页(task.html)迁入，聚焦市场概览
+                 数据源: GET /api/strategy/fixed-coins/market-detail（120s 缓存, ?force=1 强制重拉）
+                 ================================================================ -->
+            <div class="section-divider"></div>
+
+            <section class="batch-panel" id="fixed-coin-detail-section">
+                <div class="batch-header">
+                    <div>
+                        <span class="batch-title">💰 固定币种详情</span>
+                        <p style="margin:6px 0 0;font-size:.8rem;color:var(--text-muted)">市值 Top50 监控池（CoinGecko 实时市值榜 × OKX USDT 线性永续校验），按市值降序排列；流动性列为 24H成交额/流通市值 比率（越高越活跃）</p>
+                    </div>
+                    <div class="batch-header-btns" style="align-items:center">
+                        <span id="fcd-meta" style="font-size:.78rem;color:var(--text-muted)"></span>
+                        <button class="m-btn m-btn-primary m-btn-sm" id="fcd-refresh-btn">🔄 刷新数据</button>
+                    </div>
+                </div>
+                <style>
+                    #fixed-coin-detail-section .fcd-wrap { overflow-x: auto; margin-top: 12px; }
+                    #fixed-coin-detail-section table.fcd-table { width: 100%; border-collapse: collapse; font-size: .85rem; min-width: 860px; }
+                    #fixed-coin-detail-section .fcd-table th, #fixed-coin-detail-section .fcd-table td {
+                        padding: 7px 10px; border-bottom: 1px solid var(--border-color); text-align: right; white-space: nowrap;
+                    }
+                    #fixed-coin-detail-section .fcd-table th { background: #f8f9fa; color: #666; font-weight: 600; }
+                    #fixed-coin-detail-section .fcd-table th:first-child, #fixed-coin-detail-section .fcd-table td:first-child,
+                    #fixed-coin-detail-section .fcd-table th:nth-child(2), #fixed-coin-detail-section .fcd-table td:nth-child(2) { text-align: left; }
+                    #fixed-coin-detail-section .fcd-up { color: #16a085; } #fixed-coin-detail-section .fcd-down { color: #e74c3c; }
+                    #fixed-coin-detail-section .fcd-muted { color: #bbb; }
+                </style>
+                <div class="fcd-wrap">
+                    <div id="fcd-placeholder" style="padding:18px;text-align:center;color:var(--text-muted);font-size:.85rem">正在加载固定币种实时行情…</div>
+                    <table class="fcd-table" id="fcd-table" style="display:none">
+                        <thead>
+                            <tr>
+                                <th>#</th><th>币种</th><th>合约</th><th>市值排名</th>
+                                <th>当前价格(USD)</th><th>24H涨跌</th><th>24H成交额</th><th>流通市值</th><th>流动性%</th><th>来源</th>
+                            </tr>
+                        </thead>
+                        <tbody id="fcd-tbody"></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- ================================================================
+                 批量多周期趋势分析面板
+                 ================================================================ -->
+            <div class="section-divider"></div>
+
+            <section class="batch-panel" id="batch-panel">
+                <div class="batch-header">
+                    <span class="batch-title">📊 批量多周期趋势分析</span>
+                    <div class="batch-header-btns">
+                        <button id="batch-star-checked-btn" class="m-btn m-btn-warning m-btn-sm" title="将勾选的币种设为星标">⭐ 勾选星标</button>
+                        <button id="toggle-indicators-btn" class="m-btn m-btn-info m-btn-sm" title="显示/隐藏 ADX、ATR、SAR、ER 等指标列">🙈 隐藏指标</button>
+                        <button id="collapse-indicators-btn" class="m-btn m-btn-secondary m-btn-sm" title="收缩/展开指标列">📋 简洁视图</button>
+                        <button id="fullscreen-btn" class="m-btn m-btn-info m-btn-sm" title="全屏展开">⛶ 全屏</button>
+                        <button id="batch-start-btn" class="m-btn m-btn-primary m-btn-sm">🚀 批量更新趋势数据</button>
+                    </div>
+                </div>
+
+                <!-- 进度条区域 -->
+                <div id="batch-progress" class="progress-area">
+                    <div class="progress-bar-outer">
+                        <div id="progress-bar" class="progress-bar-inner" role="progressbar" aria-label="批量分析进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" style="width:0%">0%</div>
+                    </div>
+                    <div id="progress-msg" class="progress-text">等待开始...</div>
+                </div>
+
+                <div id="batch-connection-msg" role="status" style="font-size:0.82rem;color:#777;margin-top:6px;"></div>
+
+                <!-- 实时日志面板 -->
+                <div id="batch-log-panel" style="display:none;margin:8px 0;border:1px solid #e0e0e0;border-radius:6px;overflow:hidden;">
+                    <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 12px;background:#f5f7fa;font-size:0.82rem;color:#555;">
+                        <span>📟 实时日志 <span id="batch-log-count"></span></span>
+                        <div style="display:flex;gap:6px;flex-shrink:0;">
+                            <button id="batch-log-follow" type="button" class="m-btn m-btn-sm m-btn-secondary" aria-pressed="true" style="font-size:0.72rem;padding:2px 8px;">跟随最新</button>
+                            <button id="batch-log-toggle" type="button" class="m-btn m-btn-sm m-btn-secondary" aria-controls="batch-log-body" aria-expanded="true" style="font-size:0.72rem;padding:2px 8px;">收起</button>
+                        </div>
+                    </div>
+                    <div id="batch-log-body" tabindex="0" role="region" aria-label="实时日志，可滚动查看历史，拖动底部可调整高度" style="height:240px;min-height:120px;max-height:70vh;resize:vertical;overflow:auto;overscroll-behavior:contain;overflow-anchor:none;padding:8px 12px;background:#1e1e1e;color:#d4d4d4;font-family:Consolas,'Courier New',monospace;font-size:0.78rem;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere;"></div>
+                </div>
+
+                <!-- 统计条 -->
+                <div id="batch-stats" class="stats-bar" style="display:none;">
+                    <span class="stat-item"><span class="stat-dot dot-up"></span> 15m上涨: <strong id="stat-up15m">0</strong></span>
+                    <span class="stat-item"><span class="stat-dot dot-down"></span> 15m下跌: <strong id="stat-down15m">0</strong></span>
+                    <span class="stat-item"><span class="stat-dot dot-up"></span> 1H上涨: <strong id="stat-up1h">0</strong></span>
+                    <span class="stat-item"><span class="stat-dot dot-down"></span> 1H下跌: <strong id="stat-down1h">0</strong></span>
+                    <span class="stat-item"><span class="stat-dot dot-up"></span> 4H上涨: <strong id="stat-up4h">0</strong></span>
+                    <span class="stat-item"><span class="stat-dot dot-down"></span> 4H下跌: <strong id="stat-down4h">0</strong></span>
+                    <span class="stat-item"><span class="stat-dot dot-up"></span> 1D上涨: <strong id="stat-up1d">0</strong></span>
+                    <span class="stat-item"><span class="stat-dot dot-down"></span> 1D下跌: <strong id="stat-down1d">0</strong></span>
+                    <span class="stat-item"><span class="stat-dot dot-wait"></span> 观望: <strong id="stat-wait">0</strong></span>
+                    <span class="stat-item"><span class="stat-dot dot-consistent"></span> 双周期一致: <strong id="stat-consistent">0</strong></span>
+                    <span class="stat-item" style="margin-left:auto;font-size:0.78rem;color:#aaa;" id="stat-update-time"></span>
+                </div>
+
+                <!-- 视图切换标签 -->
+                <div class="tab-switch">
+                    <button id="tab-full" class="tab-btn active" data-view="full">
+                        完整CSV数据表格 <span class="tab-badge" id="badge-full">0</span>
+                    </button>
+                    <button id="tab-filtered" class="tab-btn" data-view="filtered">
+                        自定义筛选 <span class="tab-badge" id="badge-filtered">0</span>
+                    </button>
+                </div>
+
+                <!-- 周期显示选择（默认 15分钟 + 4小时；全选展示 15m/1H/4H/1D） -->
+                <div class="period-selector" id="period-selector">
+                    <span class="period-selector-label">📅 周期显示:</span>
+                    <div class="period-toggles" id="period-toggles">
+                        <button class="period-toggle" data-period="15m">15分钟</button>
+                        <button class="period-toggle" data-period="1H">1小时</button>
+                        <button class="period-toggle" data-period="4H">4小时</button>
+                        <button class="period-toggle" data-period="1D">1天</button>
+                    </div>
+                    <button class="period-toggle period-toggle-all" id="period-select-all">全选</button>
+                    <span class="period-selector-hint" id="period-selector-hint"></span>
+                </div>
+
+                <!-- 自定义筛选面板（动态条件构建器，前端基于已加载数据实时过滤） -->
+                <div id="filter-panel" class="filter-panel" style="display:none;">
+                    <div class="filter-builder-head">
+                        <span class="filter-label">自定义筛选条件（多个条件为「且」关系）:</span>
+                        <div class="filter-builder-actions">
+                            <button id="filter-preset-consistent" class="btn-filter btn-filter-ghost" title="4H 与 1D 趋势同向且明确（原一致性规则）">预设·双周期一致</button>
+                            <button id="filter-preset-strong" class="btn-filter btn-filter-ghost" title="ADX_4H≥25（趋势强度阈值，可再自行叠加趋势方向条件）">预设·强势(ADX≥25)</button>
+                            <button id="filter-add-btn" class="btn-filter btn-filter-apply">＋ 添加条件</button>
+                            <button id="filter-clear-btn" class="btn-filter btn-filter-clear">一键清除</button>
+                        </div>
+                    </div>
+                    <div id="filter-conditions" class="filter-conditions"></div>
+                    <div id="filter-empty-hint" class="filter-empty-hint">暂无筛选条件，点击“＋ 添加条件”或选择预设。</div>
+                    <div id="filter-stats" class="filter-stats" style="display:none;">
+                        命中 <strong id="filter-count">0</strong> / <span id="filter-total">0</span> 条
+                    </div>
+                </div>
+
+                <!-- 表格容器 -->
+                <div id="table-loading" style="display:none;text-align:center;padding:20px;color:#999;">正在加载表格数据...</div>
+                <div id="table-container" class="table-container" style="display:none;">
+                    <table id="data-table">
+                        <thead>
+                            <tr>
+                                <th class="cb-col" data-col="_cb"><input type="checkbox" id="table-check-all" title="全选/取消全选"></th>
+                                <th data-col="rank" data-type="number">排名</th>
+                                <th data-col="symbol" data-type="text">币种</th>
+                                <th data-col="inst_id" data-type="text">交易对</th>
+                                <th data-col="name_cn" data-type="text">名称</th>
+                                <!-- 15m 周期 -->
+                                <th class="core-col" data-period="15m" data-col="15m_趋势" data-type="text">15m趋势</th>
+                                <th class="core-col" data-period="15m" data-col="15m_交易价格" data-type="number">15m交易价</th>
+                                <th class="core-col" data-period="15m" data-col="15m_盈亏%" data-type="number">15m盈亏%</th>
+                                <th class="core-col macd-col" data-period="15m" data-col="MACD_15m" data-type="number">MACD_15m</th>
+                                <th class="indicator-col" data-period="15m" data-col="DIF_15m" data-type="number">DIF_15m</th>
+                                <th class="indicator-col" data-period="15m" data-col="ADX_15m" data-type="number">ADX_15m</th>
+                                <th class="indicator-col" data-period="15m" data-col="ATR_15m" data-type="number">ATR%_15m</th>
+                                <th class="indicator-col" data-period="15m" data-col="SAR_15m" data-type="number">SAR_15m</th>
+                                <th class="indicator-col" data-period="15m" data-col="ER_15m" data-type="number">ER_15m</th>
+                                <!-- 1H 周期 -->
+                                <th class="core-col" data-period="1H" data-col="1H_趋势" data-type="text">1H趋势</th>
+                                <th class="core-col" data-period="1H" data-col="1H_交易价格" data-type="number">1H交易价</th>
+                                <th class="core-col" data-period="1H" data-col="1H_盈亏%" data-type="number">1H盈亏%</th>
+                                <th class="core-col macd-col" data-period="1H" data-col="MACD_1H" data-type="number">MACD_1H</th>
+                                <th class="indicator-col" data-period="1H" data-col="DIF_1H" data-type="number">DIF_1H</th>
+                                <th class="indicator-col" data-period="1H" data-col="ADX_1H" data-type="number">ADX_1H</th>
+                                <th class="indicator-col" data-period="1H" data-col="ATR_1H" data-type="number">ATR%_1H</th>
+                                <th class="indicator-col" data-period="1H" data-col="SAR_1H" data-type="number">SAR_1H</th>
+                                <th class="indicator-col" data-period="1H" data-col="ER_1H" data-type="number">ER_1H</th>
+                                <!-- 4H 周期 -->
+                                <th class="core-col" data-period="4H" data-col="4H_趋势" data-type="text">4H趋势</th>
+                                <th class="core-col" data-period="4H" data-col="4H_交易价格" data-type="number">4H交易价</th>
+                                <th class="core-col" data-period="4H" data-col="4H_盈亏%" data-type="number">4H盈亏%</th>
+                                <th class="core-col macd-col" data-period="4H" data-col="MACD_4H" data-type="number">MACD_4H</th>
+                                <th class="indicator-col" data-period="4H" data-col="DIF_4H" data-type="number">DIF_4H</th>
+                                <th class="indicator-col" data-period="4H" data-col="ADX_4H" data-type="number">ADX_4H</th>
+                                <th class="indicator-col" data-period="4H" data-col="ATR_4H" data-type="number">ATR%_4H</th>
+                                <th class="indicator-col" data-period="4H" data-col="SAR_4H" data-type="number">SAR_4H</th>
+                                <th class="indicator-col" data-period="4H" data-col="ER_4H" data-type="number">ER_4H</th>
+                                <!-- 1D 周期 -->
+                                <th class="core-col" data-period="1D" data-col="1D_趋势" data-type="text">1D趋势</th>
+                                <th class="core-col" data-period="1D" data-col="1D_交易价格" data-type="number">1D交易价</th>
+                                <th class="core-col" data-period="1D" data-col="1D_盈亏%" data-type="number">1D盈亏%</th>
+                                <th class="core-col macd-col" data-period="1D" data-col="MACD_1D" data-type="number">MACD_1D</th>
+                                <th class="indicator-col" data-period="1D" data-col="DIF_1D" data-type="number">DIF_1D</th>
+                                <th class="indicator-col" data-period="1D" data-col="ADX_1D" data-type="number">ADX_1D</th>
+                                <th class="indicator-col" data-period="1D" data-col="ATR_1D" data-type="number">ATR%_1D</th>
+                                <th class="indicator-col" data-period="1D" data-col="SAR_1D" data-type="number">SAR_1D</th>
+                                <th class="indicator-col" data-period="1D" data-col="ER_1D" data-type="number">ER_1D</th>
+                                <!-- 时间列（次要，简洁视图隐藏） -->
+                                <th class="indicator-col" data-period="15m" data-col="15m_交易时间" data-type="text">15m时间</th>
+                                <th class="indicator-col" data-period="1H" data-col="1H_交易时间" data-type="text">1H时间</th>
+                                <th class="indicator-col" data-period="4H" data-col="4H_交易时间" data-type="text">4H时间</th>
+                                <th class="indicator-col" data-period="1D" data-col="1D_交易时间" data-type="text">1D时间</th>
+                            </tr>
+                        </thead>
+                        <tbody id="table-body">
+                        </tbody>
+                    </table>
+                </div>
+                <div id="table-empty" style="display:none;text-align:center;padding:30px;color:#aaa;">暂无数据，请先点击"批量更新趋势数据"按钮或等待更新完成</div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Toast 轻提示（复用共享 .task-toast 样式，供币种管理等操作反馈） -->
+    <div id="toast" class="task-toast"></div>
+
+    <!-- 引入外部 JS 文件 -->
+    <script src="{{ url_for('static', filename='js/mdialog.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    <!-- 打卡状态条（#checkin-bar）由 checkin.js 只读填充，不触达 OKX -->
+    <script defer src="{{ url_for('static', filename='js/checkin.js') }}"></script>
+</body>
+</html>

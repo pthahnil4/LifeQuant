@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>K线训练 — {{ display_name }}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+<script src="https://unpkg.com/lightweight-charts@4.2.2/dist/lightweight-charts.standalone.production.js"></script>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html, body { width:100%; height:100%; overflow:hidden;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background:#0a0e17; color:#d1d4dc; font-size:12px; }
+  .main-nav { background:#131722 !important; border-bottom:1px solid #1e222d; }
+  .main-nav .nav-brand, .main-nav .nav-link { color:#787b86 !important; }
+  .main-nav .nav-link.active, .main-nav .nav-link:hover { color:#d1d4dc !important; }
+
+  /* ── 布局 ── */
+  .page-wrap { display:flex; flex-direction:column; height:calc(100vh - 44px); }
+  .main-area { flex:1; display:flex; min-height:0; overflow:hidden; }
+  .left-panel { flex:1; display:flex; flex-direction:column; min-width:0; }
+  .right-panel {
+    width:320px; flex-shrink:0; background:#0f1320; border-left:1px solid #1e222d;
+    display:flex; flex-direction:column; overflow:hidden;
+  }
+
+  /* ── 工具栏 ── */
+  #toolbar {
+    display:flex; align-items:center; gap:8px; padding:6px 12px;
+    background:#131722; border-bottom:1px solid #1e222d; font-size:12px; flex-shrink:0;
+  }
+  .tb-brand { font-weight:700; font-size:13px; color:#2962ff; }
+  .tb-sym { font-weight:600; color:#d1d4dc; }
+  .tb-price { font-size:16px; font-weight:700; margin-left:2px; }
+  .tb-price.up { color:#26a69a; } .tb-price.down { color:#ef5350; }
+  .tb-tag { font-size:10px; padding:2px 6px; border-radius:3px; background:#1e222d; color:#787b86; }
+  .tb-sep { width:1px; height:18px; background:#2a2e39; flex-shrink:0; }
+  .period-btns, .ind-btns { display:flex; gap:3px; }
+  .period-btn, .ind-btn {
+    padding:3px 8px; border-radius:3px; border:1px solid #2a2e39;
+    background:transparent; color:#787b86; font-size:11px; cursor:pointer;
+  }
+  .period-btn:hover, .ind-btn:hover { border-color:#505460; color:#d1d4dc; }
+  .period-btn.active { background:#2962ff; color:#fff; border-color:#2962ff; }
+  .ind-btn.active { background:#1e3a5f; color:#4fc3f7; border-color:#4fc3f7; }
+  .tb-btn {
+    padding:3px 10px; border-radius:3px; border:1px solid #2a2e39;
+    background:transparent; color:#787b86; font-size:11px; cursor:pointer;
+    display:flex; align-items:center; gap:3px;
+  }
+  .tb-btn:hover { border-color:#505460; color:#d1d4dc; }
+  .tb-btn.primary { background:#1e3a5f; color:#4fc3f7; border-color:#2962ff; }
+
+  /* ── 图表 ── */
+  .charts-area { flex:1; display:flex; flex-direction:column; min-height:0; overflow:hidden; }
+  .chart-wrap { position:relative; flex:1; min-height:0; }
+  .legend-panel {
+    position:absolute; top:6px; left:8px; z-index:10;
+    font-size:10px; line-height:1.5; pointer-events:none;
+    background:rgba(19,23,34,0.88); border-radius:4px; padding:4px 8px;
+    border:1px solid #1e222d; min-width:160px;
+  }
+  .legend-panel .ohlc-label { color:#787b86; margin-right:2px; }
+  .legend-panel .ohlc-val { margin-right:6px; font-weight:500; }
+  .sub-chart { height:100px; border-top:1px solid #1e222d; position:relative; flex-shrink:0; }
+  .sub-chart .sub-label { position:absolute; top:3px; left:6px; z-index:10; font-size:9px; color:#555; pointer-events:none; }
+
+  /* ── 右侧面板 ── */
+  .rp-section { border-bottom:1px solid #1e222d; }
+  .rp-header {
+    padding:6px 10px; background:#131722; font-size:11px; font-weight:600;
+    color:#787b86; cursor:pointer; display:flex; justify-content:space-between; align-items:center;
+  }
+  .rp-body { padding:8px 10px; }
+
+  /* 账户信息 */
+  .acct-grid { display:grid; grid-template-columns:1fr 1fr; gap:4px 8px; font-size:11px; }
+  .acct-label { color:#555; }
+  .acct-val { text-align:right; font-weight:500; font-family:monospace; }
+  .acct-val.up { color:#26a69a; } .acct-val.down { color:#ef5350; }
+
+  /* 交易按钮 */
+  .trade-btns { display:grid; grid-template-columns:1fr 1fr 1fr; gap:4px; margin-top:8px; }
+  .trade-btn {
+    padding:8px 0; border-radius:4px; border:none; font-size:12px; font-weight:600;
+    cursor:pointer; transition:all 0.15s;
+  }
+  .trade-btn:disabled { opacity:0.3; cursor:not-allowed; }
+  .btn-long { background:#26a69a; color:#fff; }
+  .btn-long:hover:not(:disabled) { background:#2bbd8e; }
+  .btn-short { background:#ef5350; color:#fff; }
+  .btn-short:hover:not(:disabled) { background:#f44336; }
+  .btn-close { background:#ff9800; color:#fff; }
+  .btn-close:hover:not(:disabled) { background:#ffa726; }
+  .layer-row { display:flex; align-items:center; gap:4px; margin-top:6px; font-size:11px; }
+  .layer-btn {
+    width:24px; height:24px; border-radius:3px; border:1px solid #2a2e39;
+    background:transparent; color:#787b86; cursor:pointer; font-size:11px;
+  }
+  .layer-btn.active { background:#2962ff; color:#fff; border-color:#2962ff; }
+
+  /* 回放控制 */
+  .replay-ctrls { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+  .replay-btn {
+    padding:4px 10px; border-radius:3px; border:1px solid #2a2e39;
+    background:transparent; color:#787b86; cursor:pointer; font-size:11px;
+  }
+  .replay-btn:hover { border-color:#505460; color:#d1d4dc; }
+  .replay-btn.running { background:#26a69a; color:#fff; border-color:#26a69a; }
+  .speed-btns { display:flex; gap:2px; }
+  .speed-btn {
+    padding:2px 6px; border-radius:2px; border:1px solid #2a2e39;
+    background:transparent; color:#555; cursor:pointer; font-size:10px;
+  }
+  .speed-btn.active { background:#1e3a5f; color:#4fc3f7; border-color:#4fc3f7; }
+  .progress-bar { flex:1; height:4px; background:#1e222d; border-radius:2px; min-width:60px; }
+  .progress-fill { height:100%; background:#2962ff; border-radius:2px; transition:width 0.1s; }
+
+  /* 持仓信息 */
+  .pos-info { font-size:11px; }
+  .pos-row { display:flex; justify-content:space-between; padding:2px 0; }
+  .pos-label { color:#555; } .pos-val { font-weight:500; font-family:monospace; }
+
+  /* 交易记录 */
+  .trade-tabs { display:flex; border-bottom:1px solid #1e222d; }
+  .trade-tab {
+    flex:1; padding:6px 0; text-align:center; font-size:11px; color:#555;
+    cursor:pointer; border-bottom:2px solid transparent;
+  }
+  .trade-tab.active { color:#4fc3f7; border-bottom-color:#2962ff; }
+  .trade-tab-content { display:none; flex:1; overflow:auto; }
+  .trade-tab-content.active { display:block; }
+  .trade-list { width:100%; font-size:10px; border-collapse:collapse; }
+  .trade-list th { background:#131722; color:#555; padding:4px 6px; text-align:left; position:sticky; top:0; }
+  .trade-list td { padding:3px 6px; border-bottom:1px solid #1a1e2e; font-family:monospace; }
+  .trade-list .up { color:#26a69a; } .trade-list .down { color:#ef5350; }
+
+  /* 统计 */
+  .stats-grid { display:grid; grid-template-columns:1fr 1fr; gap:3px 8px; font-size:11px; }
+  .stat-label { color:#555; } .stat-val { text-align:right; font-weight:500; font-family:monospace; }
+
+  /* 权益曲线mini图 */
+  .equity-mini { width:100%; height:60px; margin-top:6px; }
+
+  /* ── 设置弹窗 ── */
+  .modal-overlay {
+    position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:100;
+    display:none; align-items:center; justify-content:center;
+  }
+  .modal-overlay.show { display:flex; }
+  .modal-box {
+    background:#1a1e2e; border:1px solid #2a2e39; border-radius:8px;
+    width:420px; max-height:80vh; overflow:auto; padding:20px;
+  }
+  .modal-title { font-size:16px; font-weight:700; color:#d1d4dc; margin-bottom:16px; }
+  .form-group { margin-bottom:12px; }
+  .form-label { display:block; font-size:11px; color:#787b86; margin-bottom:4px; }
+  .form-row { display:flex; align-items:center; gap:8px; }
+  .form-input {
+    width:100%; padding:6px 10px; border-radius:4px; border:1px solid #2a2e39;
+    background:#0f1320; color:#d1d4dc; font-size:12px; font-family:monospace;
+  }
+  .form-input:focus { border-color:#2962ff; outline:none; }
+  .form-range { flex:1; accent-color:#2962ff; }
+  .form-select {
+    padding:6px 10px; border-radius:4px; border:1px solid #2a2e39;
+    background:#0f1320; color:#d1d4dc; font-size:12px; width:100%;
+  }
+  .switch-wrap { display:flex; align-items:center; gap:8px; }
+  .switch {
+    width:36px; height:20px; border-radius:10px; background:#2a2e39;
+    position:relative; cursor:pointer; transition:background 0.2s;
+  }
+  .switch.on { background:#2962ff; }
+  .switch::after {
+    content:''; position:absolute; top:2px; left:2px;
+    width:16px; height:16px; border-radius:50%; background:#fff;
+    transition:transform 0.2s;
+  }
+  .switch.on::after { transform:translateX(16px); }
+  .modal-btns { display:flex; gap:8px; margin-top:16px; }
+  .modal-btn {
+    flex:1; padding:8px; border-radius:4px; border:none;
+    font-size:12px; font-weight:600; cursor:pointer;
+  }
+  .modal-btn.save { background:#2962ff; color:#fff; }
+  .modal-btn.cancel { background:#2a2e39; color:#787b86; }
+
+  /* ── 底部 ── */
+  #status-bar {
+    display:flex; align-items:center; gap:10px;
+    padding:3px 12px; background:#131722; border-top:1px solid #1e222d;
+    font-size:10px; color:#555; flex-shrink:0;
+  }
+  .loading-overlay {
+    position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    background:rgba(10,14,23,0.85); z-index:20; font-size:13px; color:#787b86;
+  }
+  .loading-overlay.hidden { display:none; }
+
+  /* 盲选水印 + 揭晓面板 */
+  .blind-watermark {
+    position:absolute; top:50%; left:50%; transform:translate(-50%,-50%) rotate(-18deg);
+    font-size:38px; font-weight:800; color:rgba(120,123,134,0.10);
+    pointer-events:none; z-index:15; white-space:nowrap; letter-spacing:6px;
+  }
+  .reveal-row { display:flex; justify-content:space-between; padding:9px 0; border-bottom:1px solid #2a2e39; font-size:13px; }
+  .reveal-row:last-child { border-bottom:none; }
+  .reveal-k { color:#787b86; }
+  .reveal-v { color:#d1d4dc; font-weight:600; }
+
+  /* 成绩汇总网格 */
+  .sum-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:6px; }
+  .sum-cell { background:#131722; border:1px solid #2a2e39; border-radius:6px; padding:10px 12px; }
+  .sum-label { font-size:11px; color:#787b86; margin-bottom:4px; }
+  .sum-val { font-size:18px; font-weight:700; color:#d1d4dc; }
+  .sum-val.up { color:#26a69a; }
+  .sum-val.down { color:#ef5350; }
+
+  /* 消息提示 */
+  .toast {
+    position:fixed; top:60px; right:20px; z-index:200;
+    padding:8px 16px; border-radius:4px; font-size:12px;
+    animation: fadeInOut 2.5s forwards; pointer-events:none;
+  }
+  .toast.success { background:#26a69a; color:#fff; }
+  .toast.error { background:#ef5350; color:#fff; }
+  .toast.info { background:#2962ff; color:#fff; }
+  @keyframes fadeInOut { 0%{opacity:0;transform:translateY(-10px)} 10%{opacity:1;transform:translateY(0)} 80%{opacity:1} 100%{opacity:0} }
+
+  /* 主图指标控制面板 */
+  .main-ind-panel {
+    position:absolute; top:6px; right:8px; z-index:10;
+    display:flex; gap:3px; align-items:center;
+    background:rgba(19,23,34,0.88); border-radius:4px; padding:3px 6px;
+    border:1px solid #1e222d;
+  }
+  .main-ind-btn {
+    padding:2px 6px; border-radius:2px; border:1px solid #2a2e39;
+    background:transparent; color:#555; font-size:10px; cursor:pointer;
+  }
+  .main-ind-btn:hover { border-color:#505460; color:#d1d4dc; }
+  .main-ind-btn.active { background:#1e3a5f; color:#4fc3f7; border-color:#4fc3f7; }
+  .main-ind-label { font-size:9px; color:#555; margin-right:2px; }
+
+  /* 速度滑块 */
+  .speed-slider-wrap {
+    display:flex; align-items:center; gap:4px; margin-top:4px;
+  }
+  .speed-slider {
+    flex:1; height:3px; accent-color:#2962ff; cursor:pointer;
+  }
+  .speed-label { font-size:10px; color:#787b86; min-width:44px; text-align:right; font-family:monospace; }
+
+  /* ── 止盈止损实时配置面板 ── */
+  .tpsl-badge { font-size:10px; padding:1px 7px; border-radius:8px; background:#1e222d; color:#787b86; font-weight:600; }
+  .tpsl-badge.on { background:#1e3a5f; color:#4fc3f7; }
+  .tpsl-hint { font-size:10px; color:#555; margin-top:8px; line-height:1.5; }
+  .form-hint { font-size:10px; color:#555; line-height:1.5; margin:4px 0; }
+
+  /* ── 分批平仓 / 子仓位明细 ── */
+  .partial-close-row { display:flex; gap:4px; margin:8px 0 2px; }
+  .pc-btn {
+    flex:1; padding:4px 0; border-radius:3px; border:1px solid #2a2e39;
+    background:transparent; color:#787b86; font-size:10px; cursor:pointer;
+  }
+  .pc-btn:hover { border-color:#ff9800; color:#ff9800; }
+  .pc-btn.all { background:#ff9800; color:#fff; border-color:#ff9800; }
+  .pc-btn.all:hover { background:#ffa726; color:#fff; }
+  .lots-title { font-size:10px; color:#555; margin:8px 0 4px; border-top:1px dashed #2a2e39; padding-top:6px; }
+  .lot-item { border:1px solid #1e222d; border-radius:4px; padding:4px 6px; margin-bottom:4px; background:#0d111c; }
+  .lot-row1 { display:flex; justify-content:space-between; align-items:center; gap:6px; }
+  .lot-tag { font-size:10px; color:#a8abbd; font-family:monospace; }
+  .lot-pnl { font-size:10px; font-family:monospace; font-weight:600; white-space:nowrap; }
+  .lot-pnl.up { color:#26a69a; } .lot-pnl.down { color:#ef5350; }
+  .lot-close {
+    padding:1px 8px; border-radius:3px; border:1px solid #2a2e39; background:transparent;
+    color:#ff9800; font-size:10px; cursor:pointer; flex-shrink:0;
+  }
+  .lot-close:hover { background:#ff9800; color:#fff; border-color:#ff9800; }
+  .lot-tpsl { font-size:9px; color:#555; font-family:monospace; margin-top:3px; }
+
+  /* ── 自由组队房间覆盖层 ── */
+  .pk-team { position:fixed; inset:0; z-index:120; }
+  .pk-team.hidden { display:none; }
+  .pk-team.modal { display:flex; align-items:center; justify-content:center; background:rgba(6,9,16,0.72); }
+  .pk-team.hud { top:50px; left:50%; right:auto; bottom:auto; transform:translateX(-50%); background:transparent; pointer-events:none; display:block; }
+  .pk-card { background:#1a1e2e; border:1px solid #2a2e39; border-radius:12px; padding:22px 26px; width:min(560px,92vw); max-height:82vh; overflow:auto; box-shadow:0 12px 40px rgba(0,0,0,.5); }
+  .pk-title { font-size:18px; font-weight:800; color:#e1bee7; margin-bottom:6px; }
+  .pk-sub { font-size:12px; color:#9aa0b5; margin-bottom:12px; }
+  .pk-members { display:flex; flex-wrap:wrap; gap:8px; margin:6px 0 14px; }
+  .pk-mem { display:inline-flex; align-items:center; gap:5px; font-size:12px; padding:5px 10px; border-radius:20px; background:#0f1320; border:1px solid #2a2e39; color:#c3c7d6; }
+  .pk-mem.host { border-color:#8e6b00; background:#241d05; }
+  .pk-mem em { font-style:normal; color:#787b86; font-size:10px; }
+  .pk-dot { width:8px; height:8px; border-radius:50%; background:#555; display:inline-block; }
+  .pk-mem.on .pk-dot { background:#26a69a; box-shadow:0 0 6px #26a69a; }
+  .pk-actions { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .pk-hint { font-size:12px; color:#787b86; }
+  .pk-cta { padding:9px 18px; border:none; border-radius:8px; background:linear-gradient(135deg,#7b1fa2,#b388ff); color:#fff; font-size:14px; font-weight:600; cursor:pointer; }
+  .pk-cta:disabled { opacity:.5; cursor:not-allowed; }
+  .pk-btn { padding:9px 16px; border:1px solid #3a3f52; border-radius:8px; background:#20263a; color:#c3c7d6; cursor:pointer; font-size:13px; }
+  .pk-hud { pointer-events:auto; background:rgba(19,23,34,.92); border:1px solid #2a2e39; border-radius:22px; padding:6px 16px; font-size:12px; color:#d1d4dc; display:flex; align-items:center; gap:10px; }
+  .pk-hud.paused { border-color:#e65100; color:#ffcc80; }
+  .pk-mini { padding:3px 10px; border-radius:6px; border:1px solid #4a4f63; background:#20263a; color:#c3c7d6; cursor:pointer; font-size:12px; }
+  .pk-mini.danger { border-color:#7a2b2b; color:#ef9a9a; }
+</style>
+</head>
+<body>
+{% include 'nav.html' %}
+{% include 'kline_account_bar.html' %}
+
+<div class="page-wrap">
+  <!-- ── 顶部工具栏 ── -->
+  <div id="toolbar">
+    <span class="tb-brand">K线训练</span>
+    <div class="tb-sep"></div>
+    <span class="tb-sym" id="sym-name">{{ display_name }}</span>
+    <span class="tb-tag" id="sym-exchange">{{ exchange or category_label }}</span>
+    <span class="tb-price" id="hdr-price">--</span>
+    <div class="tb-sep"></div>
+    <div class="period-btns" id="period-btns">
+      {% for p in periods %}
+      <button class="period-btn{% if p == '1H' %} active{% endif %}" data-period="{{ p }}">{{ p }}</button>
+      {% endfor %}
+    </div>
+    <div class="tb-sep"></div>
+    <div class="ind-btns" id="ind-btns">
+      <button class="ind-btn active" data-ind="ma">MA</button>
+      <button class="ind-btn active" data-ind="boll">BOLL</button>
+      <button class="ind-btn" data-ind="sar">SAR</button>
+      <button class="ind-btn active" data-ind="macd">MACD</button>
+      <button class="ind-btn active" data-ind="rsi">RSI</button>
+      <button class="ind-btn" data-ind="adx">ADX</button>
+      <button class="ind-btn" data-ind="atr">ATR</button>
+    </div>
+    {% if pk %}<div class="tb-sep"></div>
+    <span class="tb-tag" style="background:#4a148c;color:#e1bee7">⚔️ 对战 {{ pk_code }}</span>
+    <a class="tb-btn" style="text-decoration:none" href="/kline/pk/board/{{ pk_match_id }}">🏆 榜单</a>
+    <a class="tb-btn" style="text-decoration:none" href="/kline/pk/compare/{{ pk_match_id }}">📈 对比</a>
+    {% endif %}
+    <div style="flex:1"></div>
+    <button class="tb-btn" onclick="showSettings()">⚙ 设置</button>
+    {% if not pk %}<button class="tb-btn" id="btn-random-start" onclick="KlineApp.randomStart()">🎲 随机起点</button>{% endif %}
+    <button class="tb-btn primary" id="btn-start-train" onclick="KlineApp.startTraining()">▶ 开始训练</button>
+    <button class="tb-btn" id="btn-reset" onclick="KlineApp.resetTraining()">↻ 重置</button>
+    <button class="tb-btn" id="btn-summary" onclick="KlineApp.showSummary()">📊 结算</button>
+    {% if blind and not pk %}
+    <div class="tb-sep"></div>
+    <button class="tb-btn primary" id="btn-reveal" onclick="KlineApp.revealBlind()">👁 揭晓答案</button>
+    <button class="tb-btn" id="btn-blind-again" onclick="KlineApp.startBlind()">🎲 再来一局</button>
+    {% endif %}
+  </div>
+
+  <!-- ── 主体区域 ── -->
+  <div class="main-area">
+    <!-- 左侧：图表 -->
+    <div class="left-panel">
+      <div class="charts-area">
+        <div class="chart-wrap" id="main-wrap">
+          <div class="loading-overlay" id="main-loading">加载数据中...</div>
+          {% if blind %}<div class="blind-watermark" id="blind-watermark">👁 盲选训练 · 品种已隐藏</div>{% endif %}
+          <div class="legend-panel" id="main-legend"></div>
+          <div class="main-ind-panel" id="main-ind-btns">
+            <span class="main-ind-label">主图:</span>
+            <button class="main-ind-btn active" data-ind="ma">MA</button>
+            <button class="main-ind-btn active" data-ind="boll">BOLL</button>
+            <button class="main-ind-btn" data-ind="sar">SAR</button>
+          </div>
+        </div>
+        <div class="sub-chart" id="macd-wrap" style="display:none"><span class="sub-label">MACD(12,26,9)</span></div>
+        <div class="sub-chart" id="rsi-wrap" style="display:none"><span class="sub-label">RSI(14)</span></div>
+        <div class="sub-chart" id="adx-wrap" style="display:none"><span class="sub-label">ADX(14)</span></div>
+      </div>
+    </div>
+
+    <!-- 右侧：交易面板 -->
+    <div class="right-panel" id="right-panel">
+      <!-- 回放控制 -->
+      <div class="rp-section">
+        <div class="rp-header">🎬 回放控制</div>
+        <div class="rp-body">
+          <div class="replay-ctrls">
+            <button class="replay-btn" id="btn-prev" onclick="KlineApp.prevBar()" title="上一根 (←)">◀ 上一根</button>
+            <button class="replay-btn" id="btn-next" onclick="KlineApp.nextBar()" title="下一根 (Space)">▶ 下一根</button>
+            <button class="replay-btn" id="btn-auto" onclick="KlineApp.toggleAutoPlay()" title="自动播放">⏩ 自动</button>
+          </div>
+          <div class="replay-ctrls" style="margin-top:6px">
+            <span style="font-size:10px;color:#555">速度:</span>
+            <div class="speed-btns" id="speed-btns">
+              <button class="speed-btn active" data-ms="2500">1x</button>
+              <button class="speed-btn" data-ms="1250">2x</button>
+              <button class="speed-btn" data-ms="500">5x</button>
+              <button class="speed-btn" data-ms="250">10x</button>
+            </div>
+            <div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
+            <span id="progress-text" style="font-size:10px;color:#555;min-width:50px;text-align:right">0/0</span>
+          </div>
+          <div class="speed-slider-wrap">
+            <span style="font-size:9px;color:#555">慢</span>
+            <input type="range" class="speed-slider" id="speed-slider" min="0.5" max="5" step="0.1" value="2.5">
+            <span style="font-size:9px;color:#555">快</span>
+            <span class="speed-label" id="speed-label">2.5s/根</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 账户信息 -->
+      <div class="rp-section">
+        <div class="rp-header">💰 账户</div>
+        <div class="rp-body">
+          <div class="acct-grid">
+            <span class="acct-label">余额</span><span class="acct-val" id="a-balance">100.00</span>
+            <span class="acct-label">权益</span><span class="acct-val" id="a-equity">100.00</span>
+            <span class="acct-label">可用</span><span class="acct-val" id="a-available">100.00</span>
+            <span class="acct-label">未实现盈亏</span><span class="acct-val" id="a-unrealized">0.00</span>
+            <span class="acct-label">保证金</span><span class="acct-val" id="a-margin">0.00</span>
+            <span class="acct-label">保证金率</span><span class="acct-val" id="a-margin-ratio">0%</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 交易操作 -->
+      <div class="rp-section">
+        <div class="rp-header">📈 交易</div>
+        <div class="rp-body">
+          <div class="trade-btns">
+            <button class="trade-btn btn-long" id="btn-long" onclick="KlineApp.doLong()" title="做多 (B)">做多</button>
+            <button class="trade-btn btn-close" id="btn-close-pos" onclick="KlineApp.doClose()" title="平仓 (P)">平仓</button>
+            {% if long_only %}
+            <button class="trade-btn btn-short" id="btn-short" onclick="KlineApp.doShort()" title="该品种仅支持做多" disabled>仅做多</button>
+            {% else %}
+            <button class="trade-btn btn-short" id="btn-short" onclick="KlineApp.doShort()" title="做空 (S)">做空</button>
+            {% endif %}
+          </div>
+          <div class="layer-row">
+            <span style="color:#555">加仓:</span>
+            <button class="layer-btn active" data-layer="1">1</button>
+            <button class="layer-btn" data-layer="2">2</button>
+            <button class="layer-btn" data-layer="3">3</button>
+            <button class="layer-btn" data-layer="5">5</button>
+            <button class="layer-btn" data-layer="8">8</button>
+            <button class="layer-btn" data-layer="10">10</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 止盈止损设置（实时生效，无需刷新） -->
+      <div class="rp-section">
+        <div class="rp-header">🛡 止盈止损 <span class="tpsl-badge" id="tpsl-status">关</span></div>
+        <div class="rp-body">
+          <div class="switch-wrap">
+            <div class="switch" id="sw-tpsl" onclick="KlineApp.toggleTpSl()"></div>
+            <span style="font-size:11px;color:#787b86">全局启用止盈止损</span>
+          </div>
+          <div id="tpsl-config" style="display:none;margin-top:10px">
+            <div class="form-group" style="margin-bottom:8px">
+              <label class="form-label">触发模式</label>
+              <select class="form-select" id="live-tpsl-mode">
+                <option value="percent">百分比</option>
+                <option value="macd">MACD 信号</option>
+                <option value="sar">SAR 信号</option>
+              </select>
+            </div>
+            <div id="live-tpsl-percent">
+              <div class="form-row" style="gap:10px">
+                <div style="flex:1">
+                  <label class="form-label">止盈 %</label>
+                  <input class="form-input" type="number" id="live-tp" value="5" min="0.1" step="0.5">
+                </div>
+                <div style="flex:1">
+                  <label class="form-label">止损 %</label>
+                  <input class="form-input" type="number" id="live-sl" value="3" min="0.1" step="0.5">
+                </div>
+              </div>
+            </div>
+            <div id="live-tpsl-signal" style="display:none">
+              <div class="form-group" style="margin-bottom:0">
+                <label class="form-label">保护性止损 %（0=关闭）</label>
+                <input class="form-input" type="number" id="live-protect-sl" value="0" min="0" step="0.5">
+              </div>
+            </div>
+            <div class="tpsl-hint" id="live-tpsl-hint">按保证金收益率触发：止盈% / 止损%（已换算杠杆）</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 当前持仓 -->
+      <div class="rp-section" id="pos-section" style="display:none">
+        <div class="rp-header">📌 当前持仓</div>
+        <div class="rp-body pos-info" id="pos-info"></div>
+      </div>
+
+      <!-- 交易记录/统计 -->
+      <div style="flex:1;display:flex;flex-direction:column;min-height:0;overflow:hidden">
+        <div class="trade-tabs">
+          <div class="trade-tab active" data-tab="trades" onclick="switchTab(this)">交易记录</div>
+          <div class="trade-tab" data-tab="stats" onclick="switchTab(this)">统计</div>
+        </div>
+        <div class="trade-tab-content active" id="tab-trades">
+          <table class="trade-list">
+            <thead><tr><th>#</th><th>方向</th><th>入场</th><th>出场</th><th>盈亏</th><th>%</th><th>原因</th></tr></thead>
+            <tbody id="trade-tbody"></tbody>
+          </table>
+        </div>
+        <div class="trade-tab-content" id="tab-stats">
+          <div class="rp-body">
+            <div class="stats-grid" id="stats-grid"></div>
+            <div class="equity-mini" id="equity-wrap"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 底部状态栏 ── -->
+  <div id="status-bar">
+    <span>{{ exchange or category_label }} · {{ display_name }}</span>
+    <span>|</span>
+    <span id="bar-count">--</span>
+    <span>|</span>
+    <span>⌨ Space=下一根 B=做多 {% if not long_only %}S=做空 {% endif %}P=平仓 ←→=前后</span>
+  </div>
+</div>
+
+<!-- ── 设置弹窗 ── -->
+<div class="modal-overlay" id="settings-modal">
+  <div class="modal-box">
+    <div class="modal-title">⚙ 训练设置</div>
+    <div class="form-group">
+      <label class="form-label">基础金额</label>
+      <input class="form-input" type="number" id="cfg-amount" value="100" min="1" step="10">
+    </div>
+    <div class="form-group">
+      <label class="form-label">手续费: <span id="cfg-comm-val">0.05</span>%</label>
+      <div class="form-row">
+        <span style="font-size:10px;color:#555">0.01%</span>
+        <input class="form-range" type="range" id="cfg-comm" min="1" max="5" step="1" value="5"
+          oninput="document.getElementById('cfg-comm-val').textContent=(this.value/100).toFixed(2)">
+        <span style="font-size:10px;color:#555">0.05%</span>
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">杠杆倍数: <span id="cfg-lev-val">10</span>x</label>
+      <div class="form-row">
+        <span style="font-size:10px;color:#555">1x</span>
+        <input class="form-range" type="range" id="cfg-leverage" min="1" max="100" step="1" value="10"
+          oninput="document.getElementById('cfg-lev-val').textContent=this.value">
+        <span style="font-size:10px;color:#555">100x</span>
+      </div>
+    </div>
+    <div class="form-group">
+      <div class="switch-wrap">
+        <div class="switch on" id="cfg-sizing"></div>
+        <span style="font-size:12px">分仓模式 (10层)</span>
+      </div>
+    </div>
+    {% if not blind and not pk %}
+    <div class="form-group" style="border-top:1px solid #2a2e39;padding-top:12px;margin-top:6px">
+      <label class="form-label">📅 训练数据区间（固定时段）</label>
+      <div class="form-row" style="gap:8px">
+        <input class="form-input" type="date" id="cfg-range-start" style="flex:1">
+        <span style="color:#555">至</span>
+        <input class="form-input" type="date" id="cfg-range-end" style="flex:1">
+      </div>
+      <div class="form-hint">留空 = 最近 600 根。设置后按固定时段取数（可复现，适合盲选/PK）。</div>
+      <div class="modal-btns" style="margin-top:8px">
+        <button class="modal-btn cancel" onclick="KlineApp.clearRange();hideSettings()">恢复最近N根</button>
+        <button class="modal-btn save" onclick="applyRange()">按区间加载</button>
+      </div>
+    </div>
+    {% endif %}
+    <div class="form-group">
+      <div class="form-hint">💡 止盈止损已移至右侧「🛡 止盈止损」面板，可实时调整并立即生效。</div>
+    </div>
+    <div class="modal-btns">
+      <button class="modal-btn cancel" onclick="hideSettings()">取消</button>
+      <button class="modal-btn save" onclick="saveSettings()">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── 成绩汇总/提交弹窗（所有模式通用） ── -->
+<div class="modal-overlay" id="summary-modal">
+  <div class="modal-box">
+    <div class="modal-title">📊 训练成绩汇总</div>
+    <div id="summary-head" style="font-size:12px;color:#787b86;margin-bottom:12px"></div>
+    <div class="sum-grid">
+      <div class="sum-cell"><div class="sum-label">终值权益</div><div class="sum-val" id="sum-final-balance">--</div></div>
+      <div class="sum-cell"><div class="sum-label">收益率</div><div class="sum-val" id="sum-return-pct">--</div></div>
+      <div class="sum-cell"><div class="sum-label">胜率</div><div class="sum-val" id="sum-win-rate">--</div></div>
+      <div class="sum-cell"><div class="sum-label">最大回撤</div><div class="sum-val" id="sum-max-dd">--</div></div>
+      <div class="sum-cell"><div class="sum-label">盈亏比</div><div class="sum-val" id="sum-plr">--</div></div>
+      <div class="sum-cell"><div class="sum-label">交易次数</div><div class="sum-val" id="sum-trades">--</div></div>
+      <div class="sum-cell"><div class="sum-label">夏普比率</div><div class="sum-val" id="sum-sharpe">--</div></div>
+      <div class="sum-cell"><div class="sum-label">总盈亏</div><div class="sum-val" id="sum-pnl">--</div></div>
+    </div>
+    <div class="modal-btns">
+      <button class="modal-btn cancel" onclick="hideSummary()">继续查看</button>
+      <button class="modal-btn save" id="btn-submit-score" onclick="KlineApp.submitScore()">💾 提交成绩</button>
+    </div>
+  </div>
+</div>
+
+{% if blind %}
+<!-- ── 盲选揭晓面板 ── -->
+<div class="modal-overlay" id="reveal-modal">
+  <div class="modal-box">
+    <div class="modal-title">👁 答案揭晓</div>
+    <div id="reveal-body"></div>
+    <div class="modal-btns">
+      <button class="modal-btn cancel" onclick="hideReveal()">继续查看</button>
+      <button class="modal-btn save" onclick="hideReveal();KlineApp.startBlind()">🎲 再来一局</button>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% if pk and pk_pvp_mode == 'team' %}
+<!-- ── 自由组队覆盖层（大厅/就绪/进行中HUD/结束结算） ── -->
+<div id="pk-team" class="pk-team hidden"></div>
+{% endif %}
+
+<script src="{{ url_for('kline.static', filename='trade.js') }}?v=20260913a"></script>
+<script src="{{ url_for('kline.static', filename='kline.js') }}?v=20260913a"></script>
+<script>
+  // ── Tab切换 ──
+  function switchTab(el) {
+    document.querySelectorAll('.trade-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.trade-tab-content').forEach(c => c.classList.remove('active'));
+    el.classList.add('active');
+    document.getElementById('tab-' + el.dataset.tab).classList.add('active');
+    if (el.dataset.tab === 'stats') KlineApp.refreshStats();
+  }
+
+  // ── 设置弹窗 ──
+  function showSettings() { document.getElementById('settings-modal').classList.add('show'); }
+  function hideSettings() { document.getElementById('settings-modal').classList.remove('show'); }
+
+  // 分仓开关（设置弹窗）
+  document.getElementById('cfg-sizing').onclick = function() { this.classList.toggle('on'); };
+
+  function saveSettings() {
+    const comm = parseInt(document.getElementById('cfg-comm').value) / 10000;
+    const lev = parseInt(document.getElementById('cfg-leverage').value);
+    const sizing = document.getElementById('cfg-sizing').classList.contains('on');
+    const amount = parseFloat(document.getElementById('cfg-amount').value) || 100;
+    // 止盈止损改由右侧面板实时配置，此处不再覆盖
+    KlineApp.applySettings({
+      baseAmount: amount, commissionRate: comm, leverage: lev, positionSizing: sizing,
+    });
+    hideSettings();
+    KlineApp.showToast('设置已保存', 'success');
+  }
+
+  // ── 止盈止损实时配置（改动即刻同步到交易引擎，无需保存/刷新） ──
+  document.getElementById('live-tpsl-mode').addEventListener('change', e => {
+    KlineApp.setTpSlConfig({ tpSlMode: e.target.value });
+  });
+  document.getElementById('live-tp').addEventListener('input', e => {
+    const v = parseFloat(e.target.value);
+    if (!isNaN(v) && v >= 0) KlineApp.setTpSlConfig({ tpPercent: v });
+  });
+  document.getElementById('live-sl').addEventListener('input', e => {
+    const v = parseFloat(e.target.value);
+    if (!isNaN(v) && v >= 0) KlineApp.setTpSlConfig({ slPercent: v });
+  });
+  document.getElementById('live-protect-sl').addEventListener('input', e => {
+    const v = parseFloat(e.target.value);
+    if (!isNaN(v) && v >= 0) KlineApp.setTpSlConfig({ protectiveSlPercent: v });
+  });
+
+  // ── 层数选择 ──
+  let selectedLayers = 1;
+  document.querySelectorAll('.layer-btn').forEach(btn => {
+    btn.onclick = () => {
+      document.querySelectorAll('.layer-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      selectedLayers = parseInt(btn.dataset.layer);
+    };
+  });
+  function getSelectedLayers() { return selectedLayers; }
+
+  // ── 固定区间加载 ──
+  function applyRange() {
+    const s = document.getElementById('cfg-range-start').value;
+    const e = document.getElementById('cfg-range-end').value;
+    if (!s || !e) { KlineApp.showToast('请填写起止日期', 'error'); return; }
+    KlineApp.loadRange(s, e);
+    hideSettings();
+  }
+
+  // ── 盲选揭晓面板关闭 ──
+  function hideReveal() { const m = document.getElementById('reveal-modal'); if (m) m.classList.remove('show'); }
+  // ── 成绩汇总弹窗关闭 ──
+  function hideSummary() { const m = document.getElementById('summary-modal'); if (m) m.classList.remove('show'); }
+
+  // ── 初始化 ──
+  const _BLIND = '{{ 1 if blind else 0 }}' === '1';
+  const _LONG_ONLY = '{{ 1 if long_only else 0 }}' === '1';
+  const _PK = '{{ 1 if pk else 0 }}' === '1';
+  const _PK_ID = '{{ pk_match_id if pk else "" }}';
+  const _PK_TEAM = '{{ 1 if (pk and pk_pvp_mode == "team") else 0 }}' === '1';
+  const _PK_AUTO = '{{ 1 if (pk and pk_auto_sync) else 0 }}' === '1';
+  const _PK_SPEC = '{{ 1 if (pk and pk_spectate) else 0 }}' === '1';
+  document.addEventListener('DOMContentLoaded', () => {
+    if (_PK) KlineApp.initPk(_PK_ID, _LONG_ONLY, { team: _PK_TEAM, autoSync: _PK_AUTO, spectate: _PK_SPEC });
+    else if (_BLIND) KlineApp.initBlind();
+    else KlineApp.init('{{ symbol }}', '{{ category }}', _LONG_ONLY);
+  });
+</script>
+</body>
+</html>

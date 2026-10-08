@@ -1,0 +1,67 @@
+{#- K 线训练·登录态工具条（合并迁移 Phase 4 新建）
+    原项目在 futureStockTrade/templates/nav.html 里用 current_user 渲染用户区，
+    合并后宿主的 nav.html 是数据驱动导航（且正在并行迭代），不去改它；
+    改由 K 线模板在导航之后自带一条细工具条，功能与原用户区等价：
+      未登录 → 登录/注册入口（训练本身不登录也能玩，所以做成轻量胶囊）
+      已登录 → 昵称 / 个人中心 / 登出 + 15s 在线心跳（对战大厅好友列表依赖 last_seen）
+    样式沿用宿主设计语言：浅色卡片、--primary-color 主色、胶囊按钮同 nav-tool-btn。
+    由 kline 蓝图渲染，current_user 由 routes._inject_user 注入。 -#}
+{% if current_user %}
+<div class="kline-account-bar">
+    <span class="kline-account-chip kline-account-name"
+          title="{{ current_user.email }}">{{ current_user.nickname }}</span>
+    <a class="kline-account-chip" href="/kline/profile">个人中心</a>
+    <button type="button" class="kline-account-chip kline-account-logout"
+            onclick="klineAccountLogout()">登出</button>
+</div>
+{% else %}
+<div class="kline-account-bar">
+    <a class="kline-account-chip kline-account-login"
+       href="/kline/auth?next={{ request.path }}">登录 / 注册</a>
+    <span class="kline-account-tip">登录后才能保存成绩与发起对战</span>
+</div>
+{% endif %}
+
+<style>
+.kline-account-bar {
+    display: flex; align-items: center; justify-content: flex-end; gap: 8px;
+    padding: 6px 20px 0; font-size: .82rem; color: var(--text-muted, #777);
+}
+.kline-account-chip {
+    display: inline-flex; align-items: center; padding: 4px 10px; border-radius: 999px;
+    border: 1px solid var(--border-color, #eee); background: var(--card-bg, #fff);
+    color: #666; text-decoration: none; cursor: pointer; font-size: .8rem;
+    white-space: nowrap; transition: background .18s, color .18s, border-color .18s;
+}
+.kline-account-chip:hover {
+    background: #f0f4ff; color: var(--primary-color, #2f6fed);
+    border-color: rgba(47, 111, 237, .35);
+}
+.kline-account-name {
+    background: rgba(47, 111, 237, .08); color: var(--primary-color, #2f6fed);
+    border-color: rgba(47, 111, 237, .22); font-weight: 600; cursor: default;
+}
+.kline-account-name:hover { background: rgba(47, 111, 237, .08); }
+.kline-account-login { border-color: rgba(47, 111, 237, .45); color: var(--primary-color, #2f6fed); }
+.kline-account-logout:hover { background: #fef2f2; color: var(--danger-color, #dc3545); border-color: rgba(220, 53, 69, .35); }
+.kline-account-tip { color: var(--text-muted, #999); }
+</style>
+
+<script>
+function klineAccountLogout() {
+    // 与原项目 navLogout 同口径：无论接口成功与否都刷新页面，避免点了没反应
+    fetch('/kline/api/auth/logout', { method: 'POST' })
+        .then(function () { location.reload(); })
+        .catch(function () { location.reload(); });
+}
+{% if current_user %}
+(function () {
+    // 登录心跳：空闲页面也保持在线（对战大厅好友列表依赖 last_seen）
+    function beat() {
+        fetch('/kline/api/presence', { method: 'POST' }).catch(function () {});
+    }
+    beat();
+    setInterval(beat, 15000);
+})();
+{% endif %}
+</script>

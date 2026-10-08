@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>⚔️ 好友同题对战 · K线训练营</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        body { background: #f4f6fb; margin: 0; }
+        .pk-wrap { max-width: 1100px; margin: 0 auto; padding: 24px 16px 60px; }
+        .pk-hero { text-align: center; padding: 14px 0 18px; }
+        .pk-hero h1 { font-size: 1.9rem; color: #1a237e; margin: 0 0 6px; }
+        .pk-hero p { color: #667085; font-size: 0.95rem; margin: 0; }
+        /* 顶部主切换：自由组队（默认） / 对战码 */
+        .maintabs { display: flex; gap: 8px; justify-content: center; margin: 4px 0 22px; }
+        .maintabs button {
+            padding: 10px 22px; border: 1px solid #d7dce6; border-radius: 24px; cursor: pointer;
+            background: #fff; color: #667085; font-size: 0.95rem; font-weight: 600;
+        }
+        .maintabs button.active { background: linear-gradient(135deg, #4a148c, #7b1fa2); color: #fff; border-color: transparent; }
+        .pk-grid { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 20px; align-items: start; }
+        @media (max-width: 860px) { .pk-grid { grid-template-columns: 1fr; } }
+        .card {
+            background: #fff; border-radius: 14px; padding: 22px 22px 24px;
+            box-shadow: 0 6px 24px rgba(20,40,90,0.08); margin-bottom: 20px;
+        }
+        .card h2 { font-size: 1.12rem; color: #1a237e; margin: 0 0 4px; display: flex; align-items: center; gap: 8px; }
+        .card .sub { color: #9aa0aa; font-size: 0.82rem; margin: 0 0 16px; }
+        .seg { display: flex; gap: 6px; margin-bottom: 18px; background: #eef1f7; border-radius: 9px; padding: 4px; }
+        .seg button {
+            flex: 1; padding: 9px 0; border: none; border-radius: 7px; cursor: pointer;
+            background: transparent; color: #667085; font-size: 0.9rem;
+        }
+        .seg button.active { background: #fff; color: #4a148c; font-weight: 700; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+        .field { margin-bottom: 13px; }
+        .field label { display: block; font-size: 0.82rem; color: #555; margin-bottom: 5px; }
+        .field label .req { color: #ef5350; }
+        .field select, .field input[type="number"], .field input[type="date"], .field input[type="text"] {
+            width: 100%; box-sizing: border-box; padding: 9px 11px; font-size: 0.92rem;
+            border: 1px solid #d7dce6; border-radius: 8px; outline: none; background: #fff;
+        }
+        .field select:focus, .field input:focus { border-color: #7b1fa2; }
+        .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+        .note { color: #8a90a0; font-size: 0.78rem; margin: 4px 0 0; }
+        .cta {
+            width: 100%; padding: 12px; margin-top: 8px; border: none; border-radius: 10px;
+            background: linear-gradient(135deg, #4a148c, #7b1fa2); color: #fff;
+            font-size: 1rem; cursor: pointer; font-weight: 600;
+        }
+        .cta:disabled { opacity: 0.6; cursor: not-allowed; }
+        .cta.alt { background: linear-gradient(135deg, #1a237e, #3949ab); }
+        .join-row { display: flex; gap: 8px; }
+        .join-row input { flex: 1; text-transform: uppercase; letter-spacing: 1px; }
+        .join-row .cta { width: auto; padding: 0 20px; margin: 0; }
+        .msg { min-height: 18px; margin-top: 10px; font-size: 0.85rem; }
+        .msg.err { color: #ef5350; } .msg.ok { color: #26a69a; }
+        .result-box {
+            display: none; margin-top: 16px; padding: 16px; border-radius: 12px;
+            background: #f3e5f5; border: 1px solid #ce93d8;
+        }
+        .result-box .code { font-size: 1.7rem; font-weight: 800; letter-spacing: 4px; color: #4a148c; text-align: center; margin: 6px 0 12px; }
+        .result-box .tip { font-size: 0.8rem; color: #6a1b9a; text-align: center; margin-bottom: 12px; }
+        /* 好友多选列表 */
+        .friends { max-height: 300px; overflow-y: auto; border: 1px solid #eaeef5; border-radius: 10px; padding: 6px; }
+        .fr { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; cursor: pointer; }
+        .fr:hover { background: #f6f7fb; }
+        .fr input { width: auto; }
+        .fr .dot { width: 9px; height: 9px; border-radius: 50%; background: #c5cad3; flex: none; }
+        .fr .dot.on { background: #26a69a; box-shadow: 0 0 0 3px rgba(38,166,154,0.18); }
+        .fr .nm { font-weight: 600; color: #333; }
+        .fr .st { margin-left: auto; font-size: 0.74rem; color: #9aa0aa; }
+        .fr .st.on { color: #26a69a; }
+        .selbar { font-size: 0.8rem; color: #6a1b9a; margin: 8px 2px 0; }
+        /* 推进方式 + 时长预估 */
+        .sync-box { background: #faf7fd; border: 1px solid #ead9f3; border-radius: 10px; padding: 12px 14px; margin-bottom: 14px; }
+        .sync-box .row { display: flex; align-items: center; gap: 10px; }
+        .sync-box input[type="range"] { flex: 1; }
+        .est { font-size: 0.8rem; color: #4a148c; margin-top: 8px; font-weight: 600; }
+        .m-list { display: flex; flex-direction: column; gap: 10px; }
+        .m-item { border: 1px solid #eaeef5; border-radius: 11px; padding: 12px 14px; display: flex; align-items: center; gap: 12px; }
+        .m-item .mi-main { flex: 1; min-width: 0; }
+        .m-item .mi-code { font-weight: 700; color: #4a148c; font-size: 1rem; letter-spacing: 1px; }
+        .m-item .mi-meta { color: #8a90a0; font-size: 0.78rem; margin-top: 3px; }
+        .mi-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+        .tag { font-size: 0.72rem; padding: 2px 8px; border-radius: 20px; background: #eef1f7; color: #667085; }
+        .tag.st-lobby { background: #fff3e0; color: #e65100; }
+        .tag.st-open { background: #fff3e0; color: #e65100; }
+        .tag.st-ready { background: #ede7f6; color: #4a148c; }
+        .tag.st-in-progress, .tag.st-playing { background: #e3f2fd; color: #1565c0; }
+        .tag.st-paused { background: #e0f2f1; color: #00695c; }
+        .tag.st-finished { background: #e8f5e9; color: #2e7d32; }
+        .tag.blind { background: #ede7f6; color: #4a148c; }
+        .tag.host { background: #fce4ec; color: #c2185b; }
+        .tag.rank1 { background: #fff8e1; color: #f9a825; font-weight: 700; }
+        .mi-btns { display: flex; flex-direction: column; gap: 6px; }
+        .mini-btn { padding: 6px 12px; border-radius: 7px; border: 1px solid #7b1fa2; background: #fff; color: #7b1fa2; font-size: 0.78rem; cursor: pointer; text-decoration: none; text-align: center; white-space: nowrap; }
+        .mini-btn.solid { background: #7b1fa2; color: #fff; }
+        .mini-btn:hover { opacity: 0.88; }
+        table.lb { width: 100%; border-collapse: collapse; font-size: 0.86rem; }
+        table.lb th, table.lb td { padding: 8px 10px; text-align: left; border-bottom: 1px solid #eef1f7; }
+        table.lb th { color: #8a90a0; font-weight: 600; font-size: 0.78rem; }
+        table.lb td.num { text-align: right; font-variant-numeric: tabular-nums; }
+        .pos { color: #4a148c; font-weight: 700; }
+        .pos.p1 { color: #f9a825; } .pos.p2 { color: #90a4ae; } .pos.p3 { color: #bcaaa4; }
+        .ret-pos { color: #26a69a; } .ret-neg { color: #ef5350; }
+        .empty { color: #b0b6c0; text-align: center; padding: 22px 0; font-size: 0.88rem; }
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+    {% include 'nav.html' %}
+{% include 'kline_account_bar.html' %}
+
+    <div class="pk-wrap">
+        <div class="pk-hero">
+            <h1>⚔️ 好友同题对战</h1>
+            <p>自由组队 · 邀请好友进房，全员就绪后同时开赛；手动逐根或自动同步推进，跑完自动比成绩</p>
+        </div>
+
+        <div class="maintabs">
+            <button type="button" class="active" data-tab="team" onclick="switchTab('team')">👥 自由组队</button>
+            <button type="button" data-tab="code" onclick="switchTab('code')">🔑 对战码</button>
+        </div>
+
+        <!-- ══════════════ 自由组队（默认） ══════════════ -->
+        <div id="tab-team" class="pk-grid">
+            <div>
+                <div class="card">
+                    <h2>🏠 创建房间并邀请</h2>
+                    <p class="sub">设定题面与交易参数，勾选在线好友一键邀请；成员≥2 即可开赛</p>
+
+                    <div class="seg">
+                        <button type="button" class="active" data-tmode="open" onclick="setTeamMode('open')">明题（自选品种）</button>
+                        <button type="button" data-tmode="blind" onclick="setTeamMode('blind')">盲选（系统随机）</button>
+                    </div>
+
+                    <div class="field">
+                        <label>品类 <span class="req">*</span></label>
+                        <select id="t-cat" onchange="onTeamCatChange()"></select>
+                    </div>
+
+                    <div id="t-open-only">
+                        <div class="field">
+                            <label>品种 <span class="req">*</span></label>
+                            <select id="t-symbol"></select>
+                        </div>
+                        <div class="grid2">
+                            <div class="field">
+                                <label>周期 <span class="req">*</span></label>
+                                <select id="t-period"></select>
+                            </div>
+                            <div class="field">
+                                <label>起始日期 <span class="req">*</span></label>
+                                <input type="date" id="t-start">
+                            </div>
+                        </div>
+                    </div>
+                    <p class="note hidden" id="t-blind-note">🎲 盲选：系统随机选题，结束前对全员隐藏品种与日期（仅公开品类与多空规则）。</p>
+
+                    <div class="field">
+                        <label>K线根数（训练长度）</label>
+                        <input type="number" id="t-barcount" value="480" min="30" max="2000">
+                        <p class="note">≈2 年日线建议 480~500 根；配合自动同步可控在数分钟内完赛。</p>
+                    </div>
+
+                    <div class="grid3">
+                        <div class="field">
+                            <label>本金</label>
+                            <input type="number" id="t-base" value="100" min="1">
+                        </div>
+                        <div class="field">
+                            <label>杠杆</label>
+                            <input type="number" id="t-lev" value="10" min="1" max="125">
+                        </div>
+                        <div class="field">
+                            <label>手续费率(%)</label>
+                            <input type="number" id="t-comm" value="0.05" step="0.01" min="0" max="5">
+                        </div>
+                    </div>
+
+                    <!-- 推进方式 -->
+                    <div class="sync-box">
+                        <div class="seg" style="margin-bottom:10px">
+                            <button type="button" class="active" data-tsync="manual" onclick="setTeamSync('manual')">🖱 手动逐根</button>
+                            <button type="button" data-tsync="auto" onclick="setTeamSync('auto')">⏱ 自动同步</button>
+                        </div>
+                        <div id="t-auto-only" class="hidden">
+                            <label style="font-size:0.82rem;color:#555">目标总时长：<b id="t-target-lbl">300</b> 秒</label>
+                            <div class="row">
+                                <input type="range" id="t-target" min="60" max="900" step="30" value="300" oninput="updateEst()">
+                            </div>
+                            <div class="est" id="t-est"></div>
+                            <p class="note">自动同步：全员就绪后同时开赛，系统按此速度定速推进，过时不候（错过不可补）。</p>
+                        </div>
+                        <div id="t-manual-hint" class="note">手动模式：各自点击「下一根」推进，先到先比，无时限。</div>
+                    </div>
+
+                    <!-- 好友多选 -->
+                    <div class="field">
+                        <label>邀请好友（可多选，仅在线优先）</label>
+                        <div class="friends" id="t-friends"><div class="empty">加载用户中…</div></div>
+                        <div class="selbar" id="t-selbar">已选 0 人</div>
+                    </div>
+
+                    <button class="cta" id="t-create-btn" onclick="doTeamCreate()">🚀 创建房间并邀请</button>
+                    <div class="msg" id="t-create-msg"></div>
+                </div>
+            </div>
+
+            <div>
+                <div class="card">
+                    <h2>📩 我的邀请</h2>
+                    <p class="sub">别人邀你同题对战，接受即进房</p>
+                    <div class="m-list" id="inv-list"><div class="empty">暂无待处理邀请</div></div>
+                </div>
+
+                <div class="card">
+                    <h2>🗂️ 我的战房</h2>
+                    <p class="sub">我创建或参与的全部战房（组队 / 对战码）</p>
+                    <div class="m-list" id="mine-list"><div class="empty">加载中…</div></div>
+                </div>
+
+                <div class="card">
+                    <h2>🏆 荣耀榜</h2>
+                    <p class="sub">全平台最佳收益率 · 点击品类筛选</p>
+                    <div class="seg" id="lb-cats">
+                        <button type="button" class="active" data-cat="" onclick="loadBoard(this,'')">全部</button>
+                    </div>
+                    <div id="lb-wrap"><div class="empty">加载中…</div></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ══════════════ 对战码（次要可选） ══════════════ -->
+        <div id="tab-code" class="pk-grid hidden">
+            <div>
+                <div class="card">
+                    <h2>🎯 创建对战</h2>
+                    <p class="sub">选择题型与交易参数，生成对战码发给好友即可开赛</p>
+                    <div class="seg">
+                        <button type="button" class="active" data-mode="open" onclick="setMode('open')">明题（自选品种）</button>
+                        <button type="button" data-mode="blind" onclick="setMode('blind')">盲选（系统随机）</button>
+                    </div>
+                    <div class="field">
+                        <label>品类 <span class="req">*</span></label>
+                        <select id="c-cat" onchange="onCatChange()"></select>
+                    </div>
+                    <div id="open-only">
+                        <div class="field">
+                            <label>品种 <span class="req">*</span></label>
+                            <select id="c-symbol"></select>
+                        </div>
+                        <div class="grid2">
+                            <div class="field">
+                                <label>周期 <span class="req">*</span></label>
+                                <select id="c-period"></select>
+                            </div>
+                            <div class="field">
+                                <label>起始日期 <span class="req">*</span></label>
+                                <input type="date" id="c-start">
+                            </div>
+                        </div>
+                    </div>
+                    <p class="note hidden" id="blind-note">🎲 盲选：系统将在该品类内随机选题，对战结束前对双方隐藏品种与日期。</p>
+                    <div class="field">
+                        <label>K线根数（训练长度）</label>
+                        <input type="number" id="c-barcount" value="120" min="30" max="2000">
+                    </div>
+                    <div class="grid3">
+                        <div class="field"><label>本金</label><input type="number" id="c-base" value="100" min="1"></div>
+                        <div class="field"><label>杠杆</label><input type="number" id="c-lev" value="10" min="1" max="125"></div>
+                        <div class="field"><label>手续费率(%)</label><input type="number" id="c-comm" value="0.05" step="0.01" min="0" max="5"></div>
+                    </div>
+                    <button class="cta" id="create-btn" onclick="doCreate()">创建对战并获取对战码</button>
+                    <div class="msg" id="create-msg"></div>
+                    <div class="result-box" id="create-result">
+                        <div style="color:#6a1b9a;font-size:0.82rem;text-align:center">✅ 对战已创建，对战码：</div>
+                        <div class="code" id="result-code"></div>
+                        <div class="tip">把对战码发给好友，对方在「加入对战」输入即可同题开赛</div>
+                        <button class="cta" onclick="goTrain(RESULT_ID)">📊 进入对战训练</button>
+                    </div>
+                </div>
+                <div class="card">
+                    <h2>🔑 加入对战</h2>
+                    <p class="sub">输入好友给你的对战码，立即进入同一道题</p>
+                    <div class="join-row">
+                        <input id="j-code" placeholder="如 A1B2C3" maxlength="12">
+                        <button class="cta" onclick="doJoin()">加入</button>
+                    </div>
+                    <div class="msg" id="join-msg"></div>
+                </div>
+            </div>
+            <div>
+                <div class="card">
+                    <h2>🗂️ 我的对战</h2>
+                    <p class="sub">我创建或参与的全部战房</p>
+                    <div class="m-list" id="mine-list-code"><div class="empty">加载中…</div></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let CATEGORIES = [];
+        let USERS = [];
+        let RESULT_ID = null;
+        let TEAM_MODE = 'open';
+        let TEAM_SYNC = 'manual';
+        let CUR_TAB = 'team';
+
+        function $(id) { return document.getElementById(id); }
+        function setMsg(el, text, ok) { el.textContent = text || ''; el.className = 'msg ' + (text ? (ok ? 'ok' : 'err') : ''); }
+
+        async function getJson(url) {
+            const r = await fetch(url);
+            const j = await r.json();
+            if (j.code === 401) { location.href = '/kline/auth?next=' + encodeURIComponent(location.pathname); throw new Error('请先登录'); }
+            if (j.code !== 200 || !j.data) throw new Error(j.message || ('接口错误 ' + j.code));
+            return j.data;
+        }
+        async function postJson(url, body) {
+            const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
+            const j = await r.json();
+            if (j.code === 401) { location.href = '/kline/auth?next=' + encodeURIComponent(location.pathname); throw new Error('请先登录'); }
+            if (j.code !== 200 || !j.data) throw new Error(j.message || ('接口错误 ' + j.code));
+            return j.data;
+        }
+        function esc(s) { return (s == null ? '' : String(s)).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+        function fmtPct(v) { if (v == null || isNaN(v)) return '--'; return (v >= 0 ? '+' : '') + Number(v).toFixed(2) + '%'; }
+        function retCls(v) { return v == null ? '' : (v >= 0 ? 'ret-pos' : 'ret-neg'); }
+        function goTrain(id) { location.href = '/kline/pk/train/' + id; }
+
+        // ── 主切换 ──
+        function switchTab(tab) {
+            CUR_TAB = tab;
+            document.querySelectorAll('.maintabs button').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+            $('tab-team').classList.toggle('hidden', tab !== 'team');
+            $('tab-code').classList.toggle('hidden', tab !== 'code');
+        }
+
+        // ── 品类 / 品种 / 周期（两个 tab 各自独立 id，共享 CATEGORIES） ──
+        async function initForms() {
+            CATEGORIES = await getJson('/kline/api/categories');
+            const opt = CATEGORIES.map(c => `<option value="${c.category}">${c.display_name}${c.long_only ? '（仅做多）' : ''}</option>`).join('');
+            $('c-cat').innerHTML = opt; $('t-cat').innerHTML = opt;
+            $('lb-cats').innerHTML = `<button type="button" class="active" data-cat="" onclick="loadBoard(this,'')">全部</button>` +
+                CATEGORIES.map(c => `<button type="button" data-cat="${c.category}" onclick="loadBoard(this,'${c.category}')">${c.display_name}</button>`).join('');
+            await onCatChange();
+            await onTeamCatChange();
+        }
+        function catMeta(v) { return CATEGORIES.find(c => c.category === v) || {}; }
+        async function onCatChange() {
+            const cat = $('c-cat').value, meta = catMeta(cat);
+            $('c-period').innerHTML = (meta.periods || ['1D']).map(p => `<option value="${p}">${p}</option>`).join('');
+            try { const s = await getJson('/kline/api/symbols/' + cat); $('c-symbol').innerHTML = s.map(x => `<option value="${x.code}">${x.name}</option>`).join(''); }
+            catch (e) { $('c-symbol').innerHTML = '<option value="">（品种加载失败）</option>'; }
+        }
+        async function onTeamCatChange() {
+            const cat = $('t-cat').value, meta = catMeta(cat);
+            $('t-period').innerHTML = (meta.periods || ['1D']).map(p => `<option value="${p}">${p}</option>`).join('');
+            try { const s = await getJson('/kline/api/symbols/' + cat); $('t-symbol').innerHTML = s.map(x => `<option value="${x.code}">${x.name}</option>`).join(''); }
+            catch (e) { $('t-symbol').innerHTML = '<option value="">（品种加载失败）</option>'; }
+            updateEst();
+        }
+
+        // ── 组队：题型 / 推进方式切换 ──
+        function setTeamMode(m) {
+            TEAM_MODE = m;
+            document.querySelectorAll('[data-tmode]').forEach(b => b.classList.toggle('active', b.dataset.tmode === m));
+            $('t-open-only').classList.toggle('hidden', m !== 'open');
+            $('t-blind-note').classList.toggle('hidden', m !== 'blind');
+        }
+        function setTeamSync(m) {
+            TEAM_SYNC = m;
+            document.querySelectorAll('[data-tsync]').forEach(b => b.classList.toggle('active', b.dataset.tsync === m));
+            $('t-auto-only').classList.toggle('hidden', m !== 'auto');
+            $('t-manual-hint').classList.toggle('hidden', m === 'auto');
+        }
+        // 时长预估：speed=clamp(round(target*1000/bar),300,3000)；实际≈speed*bar/1000
+        function updateEst() {
+            const bar = parseInt($('t-barcount').value || '0', 10) || 1;
+            const target = parseInt($('t-target').value || '300', 10);
+            $('t-target-lbl').textContent = target;
+            let ms = Math.round(target * 1000 / bar); ms = Math.max(300, Math.min(3000, ms));
+            const sec = Math.round(ms * bar / 1000);
+            const m = Math.floor(sec / 60), s = sec % 60;
+            $('t-est').textContent = `每根 ${ms}ms · 预计完赛 ≈ ${m ? m + '分' : ''}${s}秒`;
+        }
+
+        // ── 好友列表（在线优先，排除自己） ──
+        async function loadUsers() {
+            const box = $('t-friends');
+            // 轮询会重建列表 DOM，先记住已勾选的好友，渲染后恢复，避免选择被清空
+            const keep = new Set(selectedIds());
+            try {
+                USERS = await getJson('/kline/api/users');
+                const list = USERS.filter(u => !u.is_me).sort((a, b) => (b.online ? 1 : 0) - (a.online ? 1 : 0));
+                if (!list.length) { box.innerHTML = '<div class="empty">还没有其他注册用户</div>'; return; }
+                box.innerHTML = list.map(u => `
+                    <label class="fr" data-uid="${u.id}">
+                        <input type="checkbox" value="${u.id}" ${keep.has(u.id) ? 'checked' : ''} onchange="updSel()">
+                        <i class="dot ${u.online ? 'on' : ''}"></i>
+                        <span class="nm">${esc(u.display)}</span>
+                        <span class="st ${u.online ? 'on' : ''}">${u.online ? '在线' : '离线'}</span>
+                    </label>`).join('');
+                updSel();
+            } catch (e) { box.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+        }
+        function selectedIds() {
+            return Array.from(document.querySelectorAll('#t-friends input:checked')).map(i => parseInt(i.value, 10));
+        }
+        function updSel() { $('t-selbar').textContent = '已选 ' + selectedIds().length + ' 人'; }
+
+        // ── 创建房间并邀请 ──
+        async function doTeamCreate() {
+            const btn = $('t-create-btn'); setMsg($('t-create-msg'), '');
+            const auto = TEAM_SYNC === 'auto';
+            const inviteIds = selectedIds();
+            if (!inviteIds.length) {
+                setMsg($('t-create-msg'), '请先在下方勾选至少一位好友再创建房间');
+                return;
+            }
+            const payload = {
+                category: $('t-cat').value,
+                blind: TEAM_MODE === 'blind',
+                bar_count: parseInt($('t-barcount').value || '480', 10),
+                auto_sync: auto,
+                invite_user_ids: inviteIds,
+                engine_config: {
+                    baseAmount: parseFloat($('t-base').value),
+                    leverage: parseFloat($('t-lev').value),
+                    commissionRate: (parseFloat($('t-comm').value || '0') / 100),
+                },
+            };
+            if (auto) payload.target_sec = parseInt($('t-target').value || '300', 10);
+            if (TEAM_MODE === 'open') {
+                payload.symbol = $('t-symbol').value;
+                payload.period = $('t-period').value;
+                const sd = $('t-start').value;
+                if (!sd) { setMsg($('t-create-msg'), '请选择起始日期'); return; }
+                payload.start = sd + ' 00:00:00';
+            }
+            btn.disabled = true;
+            try {
+                const view = await postJson('/kline/api/pk/team/create', payload);
+                setMsg($('t-create-msg'), `创建成功，已邀请 ${view.invited || 0} 人，正在进房…`, true);
+                setTimeout(() => goTrain(view.id), 600);
+            } catch (e) { setMsg($('t-create-msg'), e.message); }
+            finally { btn.disabled = false; }
+        }
+
+        // ── 我的邀请 ──
+        async function loadInvites() {
+            const box = $('inv-list');
+            try {
+                const list = await getJson('/kline/api/pk/invites');
+                if (!list.length) { box.innerHTML = '<div class="empty">暂无待处理邀请</div>'; return; }
+                box.innerHTML = list.map(iv => {
+                    const cat = (CATEGORIES.find(c => c.category === iv.category) || {}).display_name || iv.category;
+                    const stMap = { lobby: '等待开始', ready: '就绪中', playing: '进行中', paused: '已暂停' };
+                    const host = iv.host_nickname || iv.host_email || '—';
+                    const when = iv.invited_at ? new Date(iv.invited_at * 1000).toLocaleString().slice(0, 16) : '';
+                    return `<div class="m-item">
+                        <div class="mi-main">
+                            <div class="mi-code">${esc(iv.code)}</div>
+                            <div class="mi-meta">房主：${esc(host)} · ${esc(when)}</div>
+                            <div class="mi-tags">
+                                <span class="tag st-${iv.status}">${stMap[iv.status] || iv.status}</span>
+                                <span class="tag">${cat}</span>
+                                ${iv.blind ? '<span class="tag blind">🎲 盲选</span>' : ''}
+                                ${iv.auto_sync ? '<span class="tag">⏱ 自动</span>' : '<span class="tag">🖱 手动</span>'}
+                            </div>
+                        </div>
+                        <div class="mi-btns">
+                            <button class="mini-btn solid" onclick="actInvite('${iv.match_id}','accept')">✅ 接受进房</button>
+                            <button class="mini-btn" onclick="actInvite('${iv.match_id}','decline')">拒绝</button>
+                        </div>
+                    </div>`;
+                }).join('');
+            } catch (e) { box.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+        }
+        async function actInvite(id, act) {
+            try {
+                if (act === 'accept') { const view = await postJson('/kline/api/pk/' + id + '/accept', {}); goTrain(view.id); return; }
+                await postJson('/kline/api/pk/' + id + '/decline', {});
+                loadInvites();
+            } catch (e) { alert(e.message); }
+        }
+
+        // ── 我的战房（组队 tab 与 对战码 tab 各一个容器，数据同源） ──
+        function stLabel(s) {
+            return { lobby: '等待开始', open: '等待加入', ready: '就绪中', playing: '进行中', 'in-progress': '进行中', paused: '已暂停', finished: '已结束' }[s] || s;
+        }
+        async function loadMine() {
+            const boxes = [$('mine-list'), $('mine-list-code')].filter(Boolean);
+            let html = '';
+            try {
+                const list = await getJson('/kline/api/pk/mine');
+                if (!list.length) { html = '<div class="empty">还没有对战，创建一个吧</div>'; }
+                else html = list.map(m => {
+                    const cat = (CATEGORIES.find(c => c.category === m.category) || {}).display_name || m.category;
+                    const isTeam = m.pvp_mode === 'team';
+                    const tags = [
+                        `<span class="tag st-${m.status}">${stLabel(m.status)}</span>`,
+                        isTeam ? '<span class="tag">👥 组队</span>' : '<span class="tag">🔑 对战码</span>',
+                        m.blind ? '<span class="tag blind">🎲 盲选</span>' : '',
+                        m.is_host ? '<span class="tag host">房主</span>' : '',
+                        `<span class="tag">${cat} · ${m.period}${m.blind && m.status !== 'finished' ? '' : (' · ' + (m.symbol || ''))}</span>`,
+                        `<span class="tag">完成 ${m.completed}/${m.participants}</span>`,
+                        (m.my_return != null ? `<span class="tag ${m.my_rank === 1 ? 'rank1' : ''}">我 #${m.my_rank || '-'} · ${fmtPct(m.my_return)}</span>` : '<span class="tag">我 未提交</span>'),
+                    ].join('');
+                    const open = ['lobby', 'ready', 'playing', 'paused', 'open', 'in-progress'].includes(m.status);
+                    return `<div class="m-item">
+                        <div class="mi-main">
+                            <div class="mi-code">${esc(m.code)}</div>
+                            <div class="mi-meta">${(m.created_at || '').slice(0, 16)}</div>
+                            <div class="mi-tags">${tags}</div>
+                        </div>
+                        <div class="mi-btns">
+                            ${open ? `<a class="mini-btn solid" href="/kline/pk/train/${m.id}">进入房间</a>` : ''}
+                            <a class="mini-btn" href="/kline/pk/board/${m.id}">🏆 榜单</a>
+                            ${m.completed > 0 ? `<a class="mini-btn" href="/kline/pk/compare/${m.id}">📈 对比</a>` : ''}
+                        </div>
+                    </div>`;
+                }).join('');
+            } catch (e) { html = `<div class="empty">${esc(e.message)}</div>`; }
+            boxes.forEach(b => b.innerHTML = html);
+        }
+
+        // ── 对战码：创建 / 加入 ──
+        let MODE = 'open';
+        function setMode(m) {
+            MODE = m;
+            document.querySelectorAll('[data-mode]').forEach(b => b.classList.toggle('active', b.dataset.mode === m));
+            $('open-only').classList.toggle('hidden', m !== 'open');
+            $('blind-note').classList.toggle('hidden', m !== 'blind');
+        }
+        async function doCreate() {
+            const btn = $('create-btn'); setMsg($('create-msg'), '');
+            const payload = {
+                category: $('c-cat').value, blind: MODE === 'blind',
+                bar_count: parseInt($('c-barcount').value || '120', 10),
+                engine_config: { baseAmount: parseFloat($('c-base').value), leverage: parseFloat($('c-lev').value), commissionRate: (parseFloat($('c-comm').value || '0') / 100) },
+            };
+            if (MODE === 'open') {
+                payload.symbol = $('c-symbol').value; payload.period = $('c-period').value;
+                const sd = $('c-start').value;
+                if (!sd) { setMsg($('create-msg'), '请选择起始日期'); return; }
+                payload.start = sd + ' 00:00:00';
+            }
+            btn.disabled = true;
+            try {
+                const view = await postJson('/kline/api/pk/create', payload);
+                RESULT_ID = view.id; $('result-code').textContent = view.code;
+                $('create-result').style.display = 'block';
+                setMsg($('create-msg'), '创建成功！', true); loadMine();
+            } catch (e) { setMsg($('create-msg'), e.message); }
+            finally { btn.disabled = false; }
+        }
+        async function doJoin() {
+            const code = $('j-code').value.trim();
+            if (!code) { setMsg($('join-msg'), '请输入对战码'); return; }
+            try { const view = await postJson('/kline/api/pk/join', { code }); setMsg($('join-msg'), '加入成功，正在进入…', true); setTimeout(() => goTrain(view.id), 600); }
+            catch (e) { setMsg($('join-msg'), e.message); }
+        }
+
+        // ── 荣耀榜 ──
+        async function loadBoard(btn, cat) {
+            if (btn) { document.querySelectorAll('#lb-cats button').forEach(b => b.classList.toggle('active', b === btn)); }
+            const wrap = $('lb-wrap');
+            try {
+                const rows = await getJson('/kline/api/leaderboard' + (cat ? ('?category=' + cat) : ''));
+                if (!rows.length) { wrap.innerHTML = '<div class="empty">暂无已提交成绩</div>'; return; }
+                let html = `<table class="lb"><thead><tr><th>#</th><th>选手</th><th>品类</th><th class="num">收益率</th><th class="num">最大回撤</th><th class="num">胜率</th></tr></thead><tbody>`;
+                rows.slice(0, 20).forEach((r, i) => {
+                    const c = (CATEGORIES.find(x => x.category === r.category) || {}).display_name || r.category;
+                    html += `<tr>
+                        <td class="pos ${i < 3 ? 'p' + (i + 1) : ''}">${i + 1}</td>
+                        <td>${esc(r.display || '匿名')}</td>
+                        <td>${c}</td>
+                        <td class="num ${retCls(r.return_pct)}">${fmtPct(r.return_pct)}</td>
+                        <td class="num">${r.max_drawdown_pct != null ? Number(r.max_drawdown_pct).toFixed(1) + '%' : '--'}</td>
+                        <td class="num">${r.win_rate != null ? Number(r.win_rate).toFixed(0) + '%' : '--'}</td>
+                    </tr>`;
+                });
+                html += '</tbody></table>';
+                wrap.innerHTML = html;
+            } catch (e) { wrap.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+        }
+
+        // ── 启动 + 轮询（好友/邀请/战房保持新鲜） ──
+        (async function () {
+            try { await initForms(); } catch (e) { console.error(e); }
+            updateEst();
+            loadUsers(); loadInvites(); loadMine(); loadBoard(null, '');
+            setInterval(() => { if (CUR_TAB === 'team') loadUsers(); }, 8000);
+            setInterval(() => { if (CUR_TAB === 'team') loadInvites(); }, 6000);
+            setInterval(loadMine, 10000);
+        })();
+    </script>
+</body>
+</html>

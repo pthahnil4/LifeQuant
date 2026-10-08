@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>支出管理 - LifeQuant</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/expense.css') }}">
+    <script defer src="{{ url_for('static', filename='js/mdialog.js') }}"></script>
+    <script defer src="{{ url_for('static', filename='js/echarts.min.js') }}"></script>
+    <script defer src="{{ url_for('static', filename='js/expense.js') }}"></script>
+</head>
+<body class="expense-body">
+{% include 'nav.html' %}
+<main class="expense-page" id="expense-page">
+    <header class="ex-hero">
+        <div><div class="ex-eyebrow">个人账本 · CNY · 仅手动录入</div><h1>支出管理</h1><p>知道花了多少，也知道接下来还能安排多少。</p></div>
+        <div class="ex-actions"><button id="privacy" type="button">隐藏金额</button><button id="new-record" class="primary" type="button">＋ 记一笔</button></div>
+    </header>
+    <div id="message" class="ex-message" role="status" hidden></div>
+    <div id="error" class="ex-error" role="alert" hidden></div>
+    <section id="setup-panel" class="ex-card" hidden>
+        <h2>开始建立自己的支出感知</h2><p class="muted">不填预算也能开始记账。分类和标签只初始化一次，之后可自由维护。</p>
+        <form id="setup-form" class="ex-form">
+            <label>初始周期预算（元，可留空）<input name="budget" placeholder="未设置预算" autocomplete="off"></label>
+            <label>记账起始日期<input name="tracking_start_date" type="date" required></label>
+            <label>账本时区<input name="timezone" value="Asia/Shanghai" maxlength="64" required></label>
+            <label>每月周期起始日<input name="cycle_day" type="number" min="1" max="31" value="1" required></label>
+            <label>提醒阈值 %<input name="warning" type="number" min="1" max="98" value="80" required></label>
+            <label>强提醒阈值 %<input name="critical" type="number" min="2" max="99" value="90" required></label>
+            <div class="ex-wide"><button class="primary" type="submit">完成设置，开始记账</button><span class="muted">预算剩余不是银行卡余额；没有自动扣款或转账。</span></div>
+        </form>
+    </section>
+    <div id="workspace" hidden>
+        <div class="ex-toolbar">
+            <div class="ex-actions"><button id="previous-period" type="button" aria-label="上一周期">← 上一期</button><strong id="period-label">加载中…</strong><button id="next-period" type="button" aria-label="下一周期">下一期 →</button><button id="current-period" type="button">本期</button></div>
+            <label>跳转日期 <input id="period-date" type="date"></label>
+            <button id="refresh" type="button">刷新</button>
+        </div>
+        <div id="coverage" class="ex-coverage"></div>
+        <nav class="ex-tabs" aria-label="支出管理页签">
+            <button type="button" data-tab="overview" class="active" aria-selected="true">总览</button>
+            <button type="button" data-tab="records" aria-selected="false">明细</button>
+            <button type="button" data-tab="budget" aria-selected="false">预算与账单</button>
+            <button type="button" data-tab="settings" aria-selected="false">分类标签与设置</button>
+        </nav>
+        <section id="record-panel" class="ex-card" hidden>
+            <div class="ex-section-head"><h2 id="record-title">记一笔</h2><button id="cancel-record" type="button">收起 / 取消编辑</button></div>
+            <form id="record-form">
+                <div class="ex-form">
+                    <label class="ex-wide">标题 / 摘要<input name="title" id="record-title-input" maxlength="120" placeholder="一句话说清这笔用途，例如：订阅费 / 差旅报销 / 日常餐饮" autocomplete="off"></label>
+                    <label>金额（元）<input name="amount" id="record-amount" placeholder="0.00" maxlength="11" required autocomplete="off"></label>
+                    <label>主分类<select name="category_id" id="record-category"></select></label>
+                    <label>发生日期<input name="business_date" type="date" required></label>
+                    <label>常用模板<select id="quick-select"><option value="">选择模板预填</option></select></label>
+                    <fieldset class="ex-wide"><legend>标签（最多 10 个）</legend><div id="record-tags" class="ex-tags"></div><button type="button" id="quick-new-tag" class="text-button">＋ 新建标签</button></fieldset>
+                </div>
+                <details id="record-advanced"><summary>更多：回款、资金划转、商户、备注和账单关联</summary>
+                    <div class="ex-form">
+                        <label>记录类型<select name="kind"><option value="expense">支出：占用预算</option><option value="refund">回款：冲减预算</option><option value="movement">资金划转：不占预算</option></select></label>
+                        <label>商户 / 对方<input name="merchant" maxlength="128"></label>
+                        <label>支付方式<input name="payment_method" list="payment-methods" maxlength="64"><datalist id="payment-methods"></datalist></label>
+                        <label>关联账单<select name="bill_occurrence_id" id="record-bill"></select></label>
+                        <label class="ex-wide">备注<textarea name="note" maxlength="1000" rows="2"></textarea></label>
+                        <label>原支出 ID（回款时可选）<input name="original_record_id" maxlength="32" placeholder="也可从原支出点击登记回款"></label>
+                        <label>无原记录的历史回款说明<input name="unlinked_refund_reason" maxlength="255" placeholder="未关联时必填，且须选择具体分类"></label>
+                        <label class="ex-check"><input name="settle_bill" type="checkbox">本次账单已结清，释放剩余预留</label>
+                    </div>
+                    <p class="muted">已记录信用卡消费后，还款请选择资金划转。普通工资收入不在此记录。未来支出请建立账单计划。</p>
+                </details>
+                <div id="record-preview" class="ex-preview" aria-live="polite">输入金额后显示服务端只读预算预览。</div>
+                <div class="ex-actions"><button class="primary" type="submit" value="save">保存</button><button type="submit" value="continue">保存并继续</button><span id="record-save-state" class="muted"></span></div>
+            </form>
+        </section>
+        <section data-panel="overview">
+            <div id="metrics" class="ex-metrics"></div>
+            <div id="risk" class="ex-card"></div>
+            <div class="ex-chart-grid">
+                <section class="ex-card"><h2>累计净支出与预算</h2><p class="muted">基于已录入记录；参考节奏包含固定计划到期阶梯。</p><div id="cumulative-chart" class="ex-chart"></div></section>
+                <section class="ex-card"><div class="ex-section-head"><h2 id="category-title">分类占比 · 未扣回款</h2><button id="category-back" type="button" hidden>返回一级</button></div><div id="category-chart" class="ex-chart"></div></section>
+            </div>
+            <section class="ex-card"><div class="ex-section-head"><h2 id="daily-title">每日支出与回款</h2><button id="daily-range" type="button">近 30 天</button></div><div id="daily-chart" class="ex-chart"></div><p class="muted">? 表示该日尚未核对；无记录不代表真实零支出。点击日期查看明细。</p></section>
+            <section class="ex-card"><h2>分类净额</h2><p class="muted">一级分类互斥；净额含实际回款，可为负数，不用于环图扇区。</p><div id="category-summary"></div></section>
+            <section class="ex-card"><h2>复盘摘要</h2><div id="review" class="ex-review"></div><h3>标签排行</h3><p class="muted">同一笔可属于多个标签，标签金额不可相加作为总额。</p><div id="tag-ranking"></div></section>
+            <section class="ex-card"><div class="ex-section-head"><h2>最近逐日流水</h2><button type="button" data-go="records">全部明细</button></div><div id="recent-records"></div></section>
+            <section class="ex-card"><h2>每日核对</h2><p class="muted">确认已记全，或确认当日没有支出。修改流水后需要重新核对。</p><div id="daily-checks" class="ex-check-grid"></div></section>
+        </section>
+        <section data-panel="records" hidden>
+            <section class="ex-card">
+                <h2>查询明细</h2>
+                <form id="filter-form" class="ex-form">
+                    <label>起始日期<input name="start" type="date"></label><label>结束日期（含当天）<input name="end" type="date"></label>
+                    <label>分类<select name="category_id" id="filter-category"></select></label>
+                    <label>类型<select name="kind"><option value="">全部</option><option value="expense">支出</option><option value="refund">回款</option><option value="movement">资金划转</option></select></label>
+                    <label>关键词<input name="keyword" maxlength="128" placeholder="标题 / 商户 / 备注 / 支付方式"></label>
+                    <label>最低金额<input name="min_amount" placeholder="不限"></label><label>最高金额<input name="max_amount" placeholder="不限"></label>
+                    <label>固定账单<select name="fixed"><option value="">全部</option><option value="1">有关联</option><option value="0">无关联</option></select></label>
+                    <label>标签匹配<select name="tag_mode"><option value="all">同时包含</option><option value="any">包含任一</option></select></label>
+                    <label>记录状态<select name="trash"><option value="0">有效记录</option><option value="1">回收站</option></select></label>
+                    <fieldset class="ex-wide"><legend>标签筛选</legend><div id="filter-tags" class="ex-tags"></div></fieldset>
+                    <div class="ex-wide ex-actions"><button class="primary" type="submit">查询</button><button id="clear-filter" type="button">清除筛选</button><button id="export" type="button">导出当前范围 CSV</button></div>
+                </form>
+            </section>
+            <section class="ex-card"><h2 id="filter-summary">筛选结果</h2><div id="records-table"></div><div class="ex-toolbar"><button id="previous-page" type="button">上一页</button><span id="page-label"></span><button id="next-page" type="button">下一页</button><label>每页 <select id="page-size"><option>20</option><option selected>50</option><option>100</option></select></label></div></section>
+            <section class="ex-card"><h2 id="filtered-title">筛选范围 · 每日流水</h2><div id="filtered-chart" class="ex-chart"></div></section>
+        </section>
+        <section data-panel="budget" hidden>
+            <section class="ex-card"><div class="ex-section-head"><h2>本周期预算快照</h2><button id="budget-history" type="button">调整历史</button></div>
+                <p id="budget-empty" class="muted"></p>
+                <form id="budget-form">
+                    <div class="ex-form"><label>总预算（元，空为未设置）<input name="budget"></label><label>提醒阈值 %<input name="warning" type="number" min="1" max="98"></label><label>强提醒阈值 %<input name="critical" type="number" min="2" max="99"></label><label>节奏领先百分点（0 关闭）<input name="pace_points" type="number" min="0" max="99"></label></div>
+                    <h3>周预算 · 仅非账单关联净支出</h3><p id="week-pool" class="muted"></p><label>分配方式 <select name="week_mode"><option value="auto">按自然日自动分配</option><option value="manual">手动逐周分配</option></select></label><div id="week-budgets"></div>
+                    <details><summary>分类预算（父子包含，不重复计入总额）</summary><div id="category-budgets" class="ex-form"></div></details>
+                    <label>调整原因（必填）<input name="reason" maxlength="255" required placeholder="例如：本期增加一次性安排"></label>
+                    <p class="muted">仅调整当前选择的周期，含已过周段；未来默认值在设置中修改。修改会保留原分配及调整日志。</p><button class="primary" type="submit">确认调整本周期预算</button>
+                </form>
+            </section>
+            <section class="ex-card"><h2>待付与已处理账单</h2><p class="muted">计划不等于消费。登记实际支付后才计支出；逾期项目跨周期保留一份，退款不自动重新开放结清账单。</p><div id="bills-table"></div></section>
+            <section class="ex-card"><div class="ex-section-head"><h2>固定账单计划</h2><button id="new-template" type="button" class="primary">＋ 新建账单计划</button></div><p class="muted">支持一次性、每月、每年；停用或修改模板只影响未生成的计划。</p><div id="templates-table"></div></section>
+        </section>
+        <section data-panel="settings" hidden>
+            <section class="ex-card"><div class="ex-section-head"><h2>分类管理</h2><button type="button" id="new-category">＋ 新建分类</button></div><p class="muted">一笔记录只有一个末级分类。选择一级时归入其“其他”；只有“未分类”不可移除。</p><div id="categories-table"></div></section>
+            <section class="ex-card"><div class="ex-section-head"><h2>标签管理</h2><button type="button" id="new-tag">＋ 新建标签</button></div><p class="muted">已被引用的分类或标签删除时转为停用，历史关联保留。</p><div id="tags-table"></div></section>
+            <section class="ex-card"><h2>账本设置与未来预算规则</h2><form id="settings-form">
+                <div class="ex-form">
+                    <label>本位币<input value="CNY（外币请手动折算）" disabled></label><label>账本时区<input name="timezone" maxlength="64" required></label><label>记账起始日期<input name="tracking_start_date" type="date" required></label>
+                    <label>未来默认预算（元，可留空）<input name="budget"></label><label>周期起始日（1～31）<input name="cycle_day" type="number" min="1" max="31" required></label><label>周起始日<select name="week_start"><option value="0">周一</option><option value="6">周日</option></select></label>
+                    <label>未来提醒阈值 %<input name="warning" type="number" min="1" max="98" required></label><label>未来强提醒阈值 %<input name="critical" type="number" min="2" max="99" required></label><label>节奏领先百分点（0 关闭）<input name="pace_points" type="number" min="0" max="99" required></label>
+                    <label>账单提前提醒天数<input name="remind_days" type="number" min="0" max="30" required></label><label>每日核对提醒时间<input name="check_time" type="time" required></label><label class="ex-check"><input name="check_enabled" type="checkbox">开启页面内核对提醒</label>
+                    <label>过渡周期预算（更改起始日时明确填写）<input name="transition_budget" placeholder="可明确留空，不自动按天折算"></label><label class="ex-wide">支付方式（一行一项，可自定义）<textarea name="payment_methods" rows="3"></textarea></label>
+                </div>
+                <details><summary>未来默认分类预算（过渡周期也须满足总额约束）</summary><div id="future-category-budgets" class="ex-form"></div></details>
+                <p id="transition-preview" class="ex-preview"></p><p class="muted">周期、周起始和未来预算规则从下一周期生效，不覆盖已有快照。无邮件、短信或离线推送，不自动结转结余。</p>
+                <button class="primary" type="submit">保存设置与未来规则</button>
+            </form></section>
+            <section class="ex-card"><div class="ex-section-head"><h2>常用记录模板</h2><button id="new-quick" type="button">＋ 新建预填模板</button></div><p class="muted">模板只预填表单，仍需点击保存才形成支出。</p><div id="quick-table"></div></section>
+        </section>
+    </div>
+    <footer>基于手动录入 · 未核对不等于未消费 · 预算额度不代表银行余额</footer>
+</main>
+</body>
+</html>

@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+{% set active_page = "config" %}
+{% block title %}配置总览 · OpsCenter{% endblock %}
+{% block crumb_group %}运维工具箱{% endblock %}
+{% block crumb_page %}配置总览{% endblock %}
+
+{% macro envbadge(ok) -%}
+<span class="badge badge--{{ 'success' if ok else 'neutral' }}"><span class="badge__dot"></span>{{ '已设置' if ok else '未设置' }}</span>
+{%- endmacro %}
+
+{% block content %}
+<div class="page-head fade-in">
+  <div class="page-head__top">
+    <div>
+      <h1 class="page-head__title">配置总览</h1>
+      <p class="page-head__desc">
+        运维工具箱 · 只读汇总交易系统关键配置（非金属项 + ast 解析脱敏）· 采集于 {{ c.checked_at }}
+      </p>
+    </div>
+    <div class="page-head__actions">
+      <a class="btn btn--ghost" href="/tools/smoke">✅ 冒烟运行器</a>
+      <a class="btn btn--ghost" href="/tools/diag">🔧 诊断脚本</a>
+      <a class="btn btn--primary" href="/">← 返回总览</a>
+    </div>
+  </div>
+</div>
+
+<div class="banner banner--warning fade-in">
+  🔒 {{ c.safety }}
+</div>
+
+<!-- KPI -->
+{% set live = c.okx.live_count if c.okx.parse_ok else 0 %}
+{% set demo = c.okx.demo_count if c.okx.parse_ok else 0 %}
+<div class="grid grid--cols-12">
+  <div class="col-3"><div class="tile tile--hover fade-in"><div class="tile__glow"></div>
+    <div class="tile__top"><span class="tile__label">OKX 账号</span><span class="tile__icon tile__icon--info">👤</span></div>
+    <div class="tile__value">{{ c.okx.accounts | length if c.okx.parse_ok else '—' }}<small>个</small></div>
+    <div class="tile__foot">{{ '默认 ' + c.okx.default if c.okx.parse_ok and c.okx.default else ('解析失败：' ~ c.okx.message) }}</div>
+  </div></div>
+  <div class="col-3"><div class="tile tile--hover fade-in" style="animation-delay:.05s"><div class="tile__glow"></div>
+    <div class="tile__top"><span class="tile__label">实盘 / 模拟</span><span class="tile__icon tile__icon--{{ 'warning' if live else 'success' }}">⚖️</span></div>
+    <div class="tile__value">{{ live }}<small>/ {{ demo }}</small></div>
+    <div class="tile__foot">flag=0 为实盘（敏感）</div>
+  </div></div>
+  <div class="col-3"><div class="tile tile--hover fade-in" style="animation-delay:.1s"><div class="tile__glow"></div>
+    <div class="tile__top"><span class="tile__label">访问闸门</span><span class="tile__icon tile__icon--{{ 'success' if c.webgate.token_configured else 'warning' }}">🔑</span></div>
+    <div class="tile__value" style="font-size:var(--fs-2xl)">{{ '已设口令' if c.webgate.token_configured else '未配口令' }}</div>
+    <div class="tile__foot">来源：{{ {'env':'环境变量','file':'口令文件','none':'—'}[c.webgate.source] }}</div>
+  </div></div>
+  <div class="col-3"><div class="tile tile--hover fade-in" style="animation-delay:.15s"><div class="tile__glow"></div>
+    <div class="tile__top"><span class="tile__label">监控币种</span><span class="tile__icon tile__icon--info">🪙</span></div>
+    <div class="tile__value">{{ c.coins.counts.all if c.coins.present else '—' }}<small>个</small></div>
+    <div class="tile__foot">星标 {{ c.coins.counts.starred }} · 浮动 {{ c.coins.counts.floating }}</div>
+  </div></div>
+</div>
+
+<!-- OKX 账号（脱敏） -->
+<div class="card fade-in mt-5">
+  <div class="card__head"><div><div class="card__title">👤 OKX 账号注册表（脱敏）</div>
+    <div class="card__subtitle">来自 <span class="text-mono">{{ c.paths.api_config }}</span> · 密钥仅显前后缀与位数，secret/passphrase 只报状态</div></div>
+    {{ envbadge(c.okx.parse_ok) }}</div>
+  <div class="card__body">
+    {% if c.okx.parse_ok and c.okx.accounts %}
+    <div class="table-wrap">
+      <table class="table">
+        <thead><tr><th>账号</th><th>环境</th><th class="num">api_key（掩码）</th><th class="num">secret_key</th><th class="num">passphrase</th></tr></thead>
+        <tbody>
+          {% for a in c.okx.accounts %}
+          <tr>
+            <td><div class="table__strong">{{ a.name }}{% if a.is_default %}<span class="tag-inline">默认</span>{% endif %}</div>
+              <div class="table__mono text-mute">{{ a.key }}</div></td>
+            <td><span class="badge badge--{{ a.env_level }}"><span class="badge__dot"></span>{{ a.env }}</span></td>
+            <td class="num table__mono">{{ a.api_mask }}</td>
+            <td class="num">{{ a.secret.label }}</td>
+            <td class="num">{{ a.passphrase.label }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if c.okx.unconfigured_count %}
+    <p class="fs-xs" style="color:var(--warning);margin:var(--sp-3) 0 0">
+      ⚠ {{ c.okx.unconfigured_count }} 个账号 api_key 仍为示例占位值（未填真实密钥）。</p>
+    {% endif %}
+    {% else %}
+    <div class="empty"><span class="empty__icon">🔐</span>{{ c.okx.message or '无可展示的账号配置' }}</div>
+    {% endif %}
+  </div>
+</div>
+
+<div class="grid grid--cols-12 mt-5">
+  <!-- 路径与端口 -->
+  <div class="col-6">
+    <div class="card fade-in">
+      <div class="card__head"><div><div class="card__title">🗂️ 路径与端口</div></div></div>
+      <div class="card__body">
+        <div class="list-row"><div class="list-row__main"><div class="list-row__title">交易 Web 地址</div></div>
+          <div class="list-row__aside table__mono">{{ c.paths.trading_api }}</div></div>
+        <div class="list-row"><div class="list-row__main"><div class="list-row__title">运维站端口</div></div>
+          <div class="list-row__aside table__mono">{{ c.paths.opscenter_port }}</div></div>
+        <div class="list-row"><div class="list-row__main"><div class="list-row__title">日志目录（只读）</div></div>
+          <div class="list-row__aside table__mono" style="max-width:280px;word-break:break-all">{{ c.paths.log_dir }}</div></div>
+        <div class="list-row"><div class="list-row__main"><div class="list-row__title">数据目录</div></div>
+          <div class="list-row__aside table__mono" style="max-width:280px;word-break:break-all">{{ c.paths.data_dir }}</div></div>
+        <div class="list-row"><div class="list-row__main"><div class="list-row__title">访问口令文件</div></div>
+          <div class="list-row__aside table__mono">{{ c.webgate.token_file }}</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 访问闸门 -->
+  <div class="col-6">
+    <div class="card fade-in" style="animation-delay:.05s">
+      <div class="card__head"><div><div class="card__title">🔑 Web 访问闸门</div></div>
+        <span class="badge badge--{{ 'success' if c.webgate.token_configured else 'warning' }}"><span class="badge__dot"></span>{{ '含回环需过口令' if c.webgate.token_configured else '未配口令=仅放行回环' }}</span></div>
+      <div class="card__body">
+        <div class="stat" style="margin-bottom:var(--sp-3)">
+          <div class="stat__k">口令来源</div>
+          <div class="stat__v" style="font-size:var(--fs-md)">{{ {'env':'环境变量 CRYPTO_WEB_TOKEN','file':'data/web_token.txt','none':'— 未检测到'}[c.webgate.source] }}</div>
+        </div>
+        <p class="text-mute fs-xs" style="line-height:1.8;margin:0">
+          交易系统 web_auth 采用 fail-safe 口径：<b>缺口令=关闭远程</b>而非无防护；配了口令则含回环都要过。
+          运维站与其同构读取口令（口令值本身<b>绝不显示</b>），同机共享 <span class="text-mono">data/web_token.txt</span> 即可直连交易 Web。
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 环境变量开关 -->
+<div class="card fade-in mt-5">
+  <div class="card__head"><div><div class="card__title">🎛️ 环境变量开关</div>
+    <div class="card__subtitle">敏感项（口令 / DB 串）只报是否设置，值一律不显</div></div></div>
+  <div class="card__body">
+    <div class="table-wrap"><table class="table">
+      <thead><tr><th>变量</th><th>状态</th><th>当前值</th><th>含义</th></tr></thead>
+      <tbody>
+        {% for e in c.env_flags %}
+        <tr>
+          <td class="table__mono">{{ e.name }}{% if e.secret %} <span class="badge badge--neutral">敏感</span>{% endif %}</td>
+          <td>{{ envbadge(e.present) }}</td>
+          <td class="table__mono text-mute">{{ e.value }}</td>
+          <td class="fs-xs text-mute">{{ e.meaning }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table></div>
+  </div>
+</div>
+
+<!-- 币种清单 -->
+{% if c.coins.present %}
+<div class="card fade-in mt-5">
+  <div class="card__head"><div><div class="card__title">🪙 监控币种（config.json）</div>
+    <div class="card__subtitle">全量 {{ c.coins.counts.all }} · 星标 {{ c.coins.counts.starred }} · 浮动 {{ c.coins.counts.floating }} · 默认选中 {{ c.coins.counts.default }}</div></div></div>
+  <div class="card__body">
+    {% set star = c.coins.starred %}
+    <div class="coin-chips">
+      {% for coin in c.coins.all_coins %}
+      <span class="coin-chip {% if coin in star %}coin-chip--star{% endif %}">{% if coin in star %}★ {% endif %}{{ coin }}</span>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

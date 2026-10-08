@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ symbol }} 详情 - 期货 Pro3 策略</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        .strategy-selector {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 12px;
+            padding: 10px 16px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        .strategy-btn {
+            padding: 6px 16px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            background: #f8f9fa;
+            cursor: pointer;
+            font-size: 0.88rem;
+            transition: all 0.2s;
+        }
+        .strategy-btn:hover { border-color: var(--primary-color); }
+        .strategy-btn.active {
+            background: var(--primary-color);
+            color: white;
+            border-color: var(--primary-color);
+        }
+        .boll-bar-group {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .tag-excluded {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            background: #fee;
+            color: #c33;
+            border: 1px solid #fcc;
+        }
+        tr.trade-excluded {
+            opacity: 0.55;
+            background: #fff8f8;
+        }
+    </style>
+</head>
+<body>
+    {% include 'nav.html' %}
+
+    <div class="page-wrapper">
+        <div class="detail-page">
+            <!-- 返回与标题 -->
+            <div class="detail-topbar">
+                <a href="/futures/" class="back-link">← 返回期货监控台</a>
+                <h1 class="detail-title">{{ symbol }} <span class="detail-subtitle" id="detail-subtitle">策略详情 &amp; 回测分析</span></h1>
+                <a href="/futures/multi/{{ symbol }}" class="back-link multi-link">多周期总览 →</a>
+            </div>
+
+            <!-- 策略选择器 -->
+            <div class="strategy-selector">
+                <span class="bar-label">🎯 策略:</span>
+                <button class="strategy-btn active" data-strategy="pro3">Pro3 策略</button>
+                <button class="strategy-btn" data-strategy="dualpro3">双周期Pro3</button>
+                <button class="strategy-btn" data-strategy="boll">BOLL 限价策略</button>
+            </div>
+
+            <!-- Pro3 K线周期选择器 -->
+            <div id="pro3-bar-selector" class="bar-selector">
+                <span class="bar-label">📊 K线周期:</span>
+                <button class="bar-btn" data-bar="5m">5m</button>
+                <button class="bar-btn" data-bar="15m">15m</button>
+                <button class="bar-btn" data-bar="30m">30m</button>
+                <button class="bar-btn active" data-bar="1H">1H</button>
+                <button class="bar-btn" data-bar="4H">4H</button>
+                <button class="bar-btn" data-bar="1D">1D</button>
+                <button class="bar-btn" data-bar="1W">1W</button>
+            </div>
+
+            <!-- BOLL 双周期选择器（默认隐藏）-->
+            <div id="boll-bar-selector" class="bar-selector" style="display:none;">
+                <div id="boll-short-selector" class="boll-bar-group">
+                    <span class="bar-label">📊 短周期:</span>
+                    <button class="bar-btn" data-short="5m">5m</button>
+                    <button class="bar-btn" data-short="15m">15m</button>
+                    <button class="bar-btn active" data-short="1H">1H</button>
+                </div>
+                <div id="boll-long-selector" class="boll-bar-group" style="margin-left:20px;">
+                    <span class="bar-label">📐 长周期:</span>
+                    <button class="bar-btn" data-long="1H">1H</button>
+                    <button class="bar-btn" data-long="4H">4H</button>
+                    <button class="bar-btn active" data-long="1D">1D</button>
+                    <button class="bar-btn" data-long="1W">1W</button>
+                </div>
+            </div>
+
+            <!-- 双周期Pro3 双周期选择器（默认隐藏）-->
+            <div id="dualpro3-bar-selector" class="bar-selector" style="display:none;">
+                <div id="dualpro3-short-selector" class="boll-bar-group">
+                    <span class="bar-label">📊 短周期:</span>
+                    <button class="bar-btn" data-dshort="5m">5m</button>
+                    <button class="bar-btn" data-dshort="15m">15m</button>
+                    <button class="bar-btn active" data-dshort="1H">1H</button>
+                </div>
+                <div id="dualpro3-long-selector" class="boll-bar-group" style="margin-left:20px;">
+                    <span class="bar-label">📐 长周期:</span>
+                    <button class="bar-btn" data-dlong="1H">1H</button>
+                    <button class="bar-btn" data-dlong="4H">4H</button>
+                    <button class="bar-btn active" data-dlong="1D">1D</button>
+                    <button class="bar-btn" data-dlong="1W">1W</button>
+                </div>
+            </div>
+
+            <!-- 回看周期长度选择器（控制数据回看的时间范围） -->
+            <div id="detail-lookback-selector" class="bar-selector">
+                <span class="bar-label">📅 回看范围:</span>
+                <button class="bar-btn" data-lookback="30D">30日</button>
+                <button class="bar-btn" data-lookback="3M">3个月</button>
+                <button class="bar-btn" data-lookback="6M">6个月</button>
+                <button class="bar-btn active" data-lookback="1Y">1年</button>
+                <button class="bar-btn" data-lookback="3Y">3年</button>
+                <button class="bar-btn" data-lookback="5Y">5年</button>
+            </div>
+
+            <!-- 加载中 -->
+            <div id="detail-loading" class="loading">正在加载策略数据...</div>
+
+            <!-- 错误提示 -->
+            <div id="detail-error" class="card-error" style="display:none; padding:20px;"></div>
+
+            <!-- 主内容区 -->
+            <div id="detail-content" style="display:none;">
+
+                <!-- 当前行情概览 -->
+                <div class="detail-summary" id="market-summary">
+                </div>
+
+                <!-- 历史交易记录 -->
+                <section class="detail-section">
+                    <h2 class="section-title">历史交易记录 <span id="trade-count" style="font-size:0.8rem;color:#999;"></span></h2>
+                    <div class="table-wrapper">
+                        <table class="data-table">
+                            <thead id="trade-thead"></thead>
+                            <tbody id="trade-tbody">
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- 策略回测结果 -->
+                <section class="detail-section">
+                    <h2 class="section-title">策略回测结果</h2>
+                    <div class="backtest-grid" id="stats-grid">
+                    </div>
+                </section>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    (function() {
+        const SYMBOL = "{{ symbol }}";
+        const loadingEl = document.getElementById('detail-loading');
+        const errorEl = document.getElementById('detail-error');
+        const contentEl = document.getElementById('detail-content');
+
+        // ================================================================
+        // 状态变量
+        // ================================================================
+        let CURRENT_STRATEGY = 'pro3';
+        let CURRENT_BAR = '1H';
+        let CURRENT_LOOKBACK = '1Y';
+        let CURRENT_SHORT_BAR = '1H';
+        let CURRENT_LONG_BAR = '1D';
+        let CURRENT_DUAL_SHORT_BAR = '1H';
+        let CURRENT_DUAL_LONG_BAR = '1D';
+
+        // ================================================================
+        // 策略选择器
+        // ================================================================
+        function setupStrategySelector() {
+            document.querySelectorAll('.strategy-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const strategy = btn.dataset.strategy;
+                    if (strategy === CURRENT_STRATEGY) return;
+                    CURRENT_STRATEGY = strategy;
+                    document.querySelectorAll('.strategy-btn').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    document.getElementById('pro3-bar-selector').style.display = strategy === 'pro3' ? '' : 'none';
+                    document.getElementById('boll-bar-selector').style.display = strategy === 'boll' ? '' : 'none';
+                    document.getElementById('dualpro3-bar-selector').style.display = strategy === 'dualpro3' ? '' : 'none';
+                    loadDetail();
+                });
+            });
+        }
+
+        function setupBarSelector() {
+            const container = document.getElementById('pro3-bar-selector');
+            if (!container) return;
+            container.querySelectorAll('.bar-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const bar = btn.dataset.bar;
+                    if (bar === CURRENT_BAR) return;
+                    CURRENT_BAR = bar;
+                    container.querySelectorAll('.bar-btn').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    loadDetail();
+                });
+            });
+        }
+
+        function setupBollSelectors() {
+            const shortC = document.getElementById('boll-short-selector');
+            if (shortC) {
+                shortC.querySelectorAll('.bar-btn').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        const bar = btn.dataset.short;
+                        if (bar === CURRENT_SHORT_BAR) return;
+                        CURRENT_SHORT_BAR = bar;
+                        shortC.querySelectorAll('.bar-btn').forEach(b => b.classList.remove('active'));
+                        btn.classList.add('active');
+                        loadDetail();
+                    });
+                });
+            }
+            const longC = document.getElementById('boll-long-selector');
+            if (longC) {
+                longC.querySelectorAll('.bar-btn').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        const bar = btn.dataset.long;
+                        if (bar === CURRENT_LONG_BAR) return;
+                        CURRENT_LONG_BAR = bar;
+                        longC.querySelectorAll('.bar-btn').forEach(b => b.classList.remove('active'));
+                        btn.classList.add('active');
+                        loadDetail();
+                    });
+                });
+            }
+        }
+
+        function setupDualPro3Selectors() {
+            const shortC = document.getElementById('dualpro3-short-selector');
+            if (shortC) {
+                shortC.querySelectorAll('.bar-btn').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        const bar = btn.dataset.dshort;
+                        if (bar === CURRENT_DUAL_SHORT_BAR) return;
+                        CURRENT_DUAL_SHORT_BAR = bar;
+                        shortC.querySelectorAll('.bar-btn').forEach(b => b.classList.remove('active'));
+                        btn.classList.add('active');
+                        loadDetail();
+                    });
+                });
+            }
+            const longC = document.getElementById('dualpro3-long-selector');
+            if (longC) {
+                longC.querySelectorAll('.bar-btn').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        const bar = btn.dataset.dlong;
+                        if (bar === CURRENT_DUAL_LONG_BAR) return;
+                        CURRENT_DUAL_LONG_BAR = bar;
+                        longC.querySelectorAll('.bar-btn').forEach(b => b.classList.remove('active'));
+                        btn.classList.add('active');
+                        loadDetail();
+                    });
+                });
+            }
+        }
+
+        function setupLookbackSelector() {
+            const container = document.getElementById('detail-lookback-selector');
+            if (!container) return;
+            container.querySelectorAll('.bar-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const lookback = btn.dataset.lookback;
+                    if (lookback === CURRENT_LOOKBACK) return;
+                    CURRENT_LOOKBACK = lookback;
+                    container.querySelectorAll('.bar-btn').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    loadDetail();
+                });
+            });
+        }
+
+        // ================================================================
+        // 工具函数
+        // ================================================================
+        function fmtMoney(v) {
+            const n = parseFloat(v);
+            if (isNaN(n)) return v;
+            return n.toFixed(2);
+        }
+
+        function fmtPct(v, forceSign) {
+            const n = parseFloat(v);
+            if (isNaN(n)) return v;
+            const s = n.toFixed(2) + '%';
+            return forceSign && n > 0 ? '+' + s : s;
+        }
+
+        function fmtRatio(v) {
+            const n = parseFloat(v);
+            if (isNaN(n)) return v;
+            if (n === Infinity) return '\u221E';
+            return n.toFixed(2);
+        }
+
+        function colorClass(val, threshold) {
+            threshold = threshold || 0;
+            if (val > threshold) return 'val-green';
+            if (val < threshold) return 'val-red';
+            return '';
+        }
+
+        function pctClass(val) {
+            return colorClass(parseFloat(val));
+        }
+
+        // ================================================================
+        // Pro3 行情概览
+        // ================================================================
+        function renderMarketSummary(data) {
+            const m = data.market;
+            const cp = data.current_position;
+            const posCls = cp.status.indexOf('多') >= 0 ? 'val-green' : cp.status.indexOf('空') >= 0 ? 'val-red' : '';
+            const items = [
+                { label: '最新价格', value: fmtMoney(m.price), cls: 'val-blue' },
+                { label: '趋势方向', value: m.action_signal, cls: m.action_signal === '上涨' ? 'val-green' : m.action_signal === '下跌' ? 'val-red' : 'val-yellow' },
+                { label: 'MACD柱', value: fmtMoney(m.macd_histogram), cls: pctClass(m.macd_histogram) },
+                { label: 'DIF', value: fmtMoney(m.macd_dif), cls: pctClass(m.macd_dif) },
+                { label: 'ADX', value: fmtMoney(m.adx), cls: m.adx > 25 ? 'val-green' : 'val-yellow' },
+                { label: '+DI / -DI', value: fmtMoney(m.plus_di) + ' / ' + fmtMoney(m.minus_di), cls: '' },
+                { label: '平滑MACD', value: fmtMoney(m.smoothed_macd), cls: pctClass(m.smoothed_macd) },
+                { label: '当前权重', value: fmtMoney(m.hist_weight), cls: '' },
+                { label: '当前持仓', value: cp.status, cls: posCls },
+                { label: '持仓盈亏', value: (cp.profit_pct >= 0 ? '+' : '') + fmtMoney(cp.profit_pct) + '%', cls: pctClass(cp.profit_pct) },
+                { label: '入场价', value: fmtMoney(cp.entry_price), cls: 'val-blue' }
+            ];
+            document.getElementById('market-summary').innerHTML = items.map(function(item) {
+                return '<div class="summary-item"><span class="summary-label">' + item.label +
+                    '</span><span class="summary-value ' + item.cls + '">' + item.value + '</span></div>';
+            }).join('');
+        }
+
+        // ================================================================
+        // BOLL 行情概览
+        // ================================================================
+        function renderBollMarketSummary(data) {
+            const m = data.market;
+            const cp = data.current_position;
+            const items = [
+                { label: '最新价格', value: fmtMoney(m.price), cls: 'val-blue' },
+                { label: '长周期方向', value: m.action_signal, cls: m.action_signal === '上涨' ? 'val-green' : m.action_signal === '下跌' ? 'val-red' : 'val-yellow' },
+                { label: 'BOLL上轨', value: fmtMoney(m.boll_top), cls: 'val-red' },
+                { label: 'BOLL中轨', value: fmtMoney(m.boll_mid), cls: 'val-blue' },
+                { label: 'BOLL下轨', value: fmtMoney(m.boll_bot), cls: 'val-green' },
+                { label: 'ADX', value: fmtMoney(m.adx), cls: m.adx > 25 ? 'val-green' : 'val-yellow' },
+                { label: '+DI / -DI', value: fmtMoney(m.plus_di) + ' / ' + fmtMoney(m.minus_di), cls: '' },
+                { label: 'ATR', value: fmtMoney(m.atr), cls: '' },
+                { label: '末笔状态', value: cp.status, cls: '' },
+                { label: '末笔盈亏', value: (cp.profit_pct >= 0 ? '+' : '') + fmtMoney(cp.profit_pct) + '%', cls: pctClass(cp.profit_pct) },
+                { label: '末笔入场', value: fmtMoney(cp.entry_price), cls: 'val-blue' }
+            ];
+            document.getElementById('market-summary').innerHTML = items.map(function(item) {
+                return '<div class="summary-item"><span class="summary-label">' + item.label +
+                    '</span><span class="summary-value ' + item.cls + '">' + item.value + '</span></div>';
+            }).join('');
+        }
+
+        // ================================================================
+        // 双周期Pro3 行情概览（Pro3指标 + 长周期方向）
+        // ================================================================
+        function renderDualPro3MarketSummary(data) {
+            const m = data.market;
+            const cp = data.current_position;
+            const longDir = data.long_direction || '观望';
+            const posCls = cp.status.indexOf('多') >= 0 ? 'val-green' : cp.status.indexOf('空') >= 0 ? 'val-red' : '';
+            const items = [
+                { label: '最新价格', value: fmtMoney(m.price), cls: 'val-blue' },
+                { label: '长周期方向', value: longDir, cls: longDir === '上涨' ? 'val-green' : longDir === '下跌' ? 'val-red' : 'val-yellow' },
+                { label: '短周期趋势', value: m.action_signal, cls: m.action_signal === '上涨' ? 'val-green' : m.action_signal === '下跌' ? 'val-red' : 'val-yellow' },
+                { label: 'MACD柱', value: fmtMoney(m.macd_histogram), cls: pctClass(m.macd_histogram) },
+                { label: 'DIF', value: fmtMoney(m.macd_dif), cls: pctClass(m.macd_dif) },
+                { label: 'ADX', value: fmtMoney(m.adx), cls: m.adx > 25 ? 'val-green' : 'val-yellow' },
+                { label: '+DI / -DI', value: fmtMoney(m.plus_di) + ' / ' + fmtMoney(m.minus_di), cls: '' },
+                { label: '平滑MACD', value: fmtMoney(m.smoothed_macd), cls: pctClass(m.smoothed_macd) },
+                { label: '当前权重', value: fmtMoney(m.hist_weight), cls: '' },
+                { label: '当前持仓', value: cp.status, cls: posCls },
+                { label: '持仓盈亏', value: (cp.profit_pct >= 0 ? '+' : '') + fmtMoney(cp.profit_pct) + '%', cls: pctClass(cp.profit_pct) },
+                { label: '入场价', value: fmtMoney(cp.entry_price), cls: 'val-blue' }
+            ];
+            document.getElementById('market-summary').innerHTML = items.map(function(item) {
+                return '<div class="summary-item"><span class="summary-label">' + item.label +
+                    '</span><span class="summary-value ' + item.cls + '">' + item.value + '</span></div>';
+            }).join('');
+        }
+
+        // ================================================================
+        // Pro3 交易记录
+        // ================================================================
+        function renderTradeRecordsPro3(trades) {
+            document.getElementById('trade-count').textContent = '(共 ' + trades.length + ' 笔)';
+            document.getElementById('trade-thead').innerHTML = '<tr><th>#</th><th>方向</th><th>开仓时间</th>' +
+                '<th>开仓价</th><th>平仓时间</th><th>平仓价</th><th>盈亏</th>' +
+                '<th>最大盈利</th><th>最大亏损</th><th>入场ADX</th><th>持仓时长</th></tr>';
+            var tbody = document.getElementById('trade-tbody');
+            if (trades.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:#bbb;padding:30px;">暂无交易记录</td></tr>';
+                return;
+            }
+            tbody.innerHTML = trades.map(function(t) {
+                var dirTag = t.direction === '多头' ? 'tag tag-long' : 'tag tag-short';
+                return '<tr><td>' + t.index + '</td>' +
+                    '<td><span class="' + dirTag + '">' + t.direction + '</span></td>' +
+                    '<td>' + t.open_time + '</td><td>' + fmtMoney(t.open_price) + '</td>' +
+                    '<td>' + t.close_time + '</td><td>' + fmtMoney(t.close_price) + '</td>' +
+                    '<td class="' + pctClass(t.profit) + '">' + (t.profit >= 0 ? '+' : '') + fmtMoney(t.profit) + '%</td>' +
+                    '<td class="val-green">+' + fmtMoney(t.max_win) + '%</td>' +
+                    '<td class="val-red">' + fmtMoney(t.max_loss) + '%</td>' +
+                    '<td>' + fmtMoney(t.entry_adx) + '</td><td>' + t.duration + '</td></tr>';
+            }).join('');
+        }
+
+        // ================================================================
+        // BOLL 交易记录（含剔除标记）
+        // ================================================================
+        function renderTradeRecordsBoll(trades) {
+            var excludedCount = trades.filter(function(t) { return t.excluded; }).length;
+            document.getElementById('trade-count').textContent = '(共 ' + trades.length + ' 笔，含' + excludedCount + '笔剔除)';
+            document.getElementById('trade-thead').innerHTML = '<tr><th>#</th><th>方向</th><th>开仓时间</th>' +
+                '<th>开仓价</th><th>平仓时间</th><th>平仓价</th><th>盈亏</th>' +
+                '<th>最大盈利</th><th>最大亏损</th><th>是否剔除</th></tr>';
+            var tbody = document.getElementById('trade-tbody');
+            if (trades.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#bbb;padding:30px;">暂无交易记录</td></tr>';
+                return;
+            }
+            tbody.innerHTML = trades.map(function(t) {
+                var dirTag = t.direction === '多头' ? 'tag tag-long' : 'tag tag-short';
+                var excludedHtml = t.excluded ? '<span class="tag-excluded">剔除</span>' : '<span style="color:#ccc;">—</span>';
+                var rowCls = t.excluded ? ' class="trade-excluded"' : '';
+                return '<tr' + rowCls + '><td>' + t.index + '</td>' +
+                    '<td><span class="' + dirTag + '">' + t.direction + '</span></td>' +
+                    '<td>' + t.open_time + '</td><td>' + fmtMoney(t.open_price) + '</td>' +
+                    '<td>' + t.close_time + '</td><td>' + fmtMoney(t.close_price) + '</td>' +
+                    '<td class="' + pctClass(t.profit) + '">' + (t.profit >= 0 ? '+' : '') + fmtMoney(t.profit) + '%</td>' +
+                    '<td class="val-green">+' + fmtMoney(t.max_win) + '%</td>' +
+                    '<td class="val-red">' + fmtMoney(t.max_loss) + '%</td>' +
+                    '<td>' + excludedHtml + '</td></tr>';
+            }).join('');
+        }
+
+        // ================================================================
+        // Pro3 策略统计
+        // ================================================================
+        function renderStatsPro3(data) {
+            var s = data.stats;
+            var grid = document.getElementById('stats-grid');
+            var cards = [
+                { title: '收益概况', items: [
+                    { label: '测试周期', value: data.start_time + ' ~ ' + data.end_time },
+                    { label: '总天数', value: data.total_days + ' 天' },
+                    { label: '定投总收益', value: fmtPct(s.total_return_pct, true), cls: pctClass(s.total_return_pct) },
+                    { label: '每日盈利', value: fmtPct(data.daily_profit, true), cls: pctClass(data.daily_profit) },
+                    { label: '每周盈利', value: fmtPct(data.weekly_profit, true), cls: pctClass(data.weekly_profit) }
+                ]},
+                { title: '交易统计', items: [
+                    { label: '总交易次数', value: s.total_trades },
+                    { label: '胜率', value: (s.win_rate * 100).toFixed(1) + '%', cls: s.win_rate >= 0.5 ? 'val-green' : 'val-red' },
+                    { label: '盈利交易', value: s.winning_trades + ' 次', cls: 'val-green' },
+                    { label: '亏损交易', value: s.losing_trades + ' 次', cls: 'val-red' },
+                    { label: '平均每笔盈利', value: fmtPct(s.avg_profit_pct, true), cls: 'val-green' },
+                    { label: '平均每笔亏损', value: fmtPct(s.avg_loss_pct), cls: 'val-red' }
+                ]},
+                { title: '风险指标', items: [
+                    { label: '最大回撤', value: fmtPct(s.max_drawdown_pct), cls: 'val-red' },
+                    { label: '盈利因子', value: fmtRatio(s.profit_factor), cls: s.profit_factor >= 1.5 ? 'val-green' : 'val-yellow' },
+                    { label: '盈亏比', value: fmtRatio(s.profit_loss_ratio), cls: s.profit_loss_ratio >= 1.5 ? 'val-green' : 'val-yellow' },
+                    { label: '最大单笔盈利', value: fmtPct(s.max_single_profit_pct, true), cls: 'val-green' },
+                    { label: '最大单笔亏损', value: fmtPct(s.max_single_loss_pct), cls: 'val-red' }
+                ]},
+                { title: '持仓统计', items: [
+                    { label: '平均持仓时长', value: s.avg_total_dur_h.toFixed(1) + ' 小时' },
+                    { label: '盈利单平均时长', value: s.avg_win_dur_h.toFixed(1) + ' 小时', cls: 'val-green' },
+                    { label: '亏损单平均时长', value: s.avg_loss_dur_h.toFixed(1) + ' 小时', cls: 'val-red' }
+                ]},
+                { title: '资金明细', items: [
+                    { label: '初始资金', value: '100.00' },
+                    { label: '最终资金', value: fmtMoney(s.fix_money), cls: pctClass(s.fix_money - 100) },
+                    { label: '盈利总和', value: fmtPct(s.total_profit_pct, true), cls: 'val-green' },
+                    { label: '亏损总和', value: fmtPct(s.total_loss_pct), cls: 'val-red' }
+                ]}
+            ];
+            grid.innerHTML = cards.map(function(card) {
+                var itemsHtml = card.items.map(function(item) {
+                    return '<div class="bt-metric"><span class="bt-label">' + item.label +
+                        '</span><span class="bt-value' + (item.cls ? ' ' + item.cls : '') + '">' +
+                        item.value + '</span></div>';
+                }).join('');
+                return '<div class="backtest-card">' + itemsHtml + '</div>';
+            }).join('');
+        }
+
+        // ================================================================
+        // BOLL 策略统计
+        // ================================================================
+        function renderStatsBoll(data) {
+            var s = data.stats;
+            var grid = document.getElementById('stats-grid');
+            var cards = [
+                { title: '收益概况', items: [
+                    { label: '测试周期', value: data.start_time + ' ~ ' + data.end_time },
+                    { label: '总天数', value: data.total_days + ' 天' },
+                    { label: '复投最终收益', value: fmtMoney(s.contract_money), cls: pctClass(s.contract_money - 100) },
+                    { label: '定投最终收益', value: fmtMoney(s.fix_money), cls: pctClass(s.fix_money - 100) },
+                    { label: '混合最终收益', value: fmtMoney(s.mix_money), cls: pctClass(s.mix_money - 100) },
+                    { label: '每日盈利', value: fmtPct(data.daily_profit, true), cls: pctClass(data.daily_profit) },
+                    { label: '每周盈利', value: fmtPct(data.weekly_profit, true), cls: pctClass(data.weekly_profit) }
+                ]},
+                { title: '交易统计', items: [
+                    { label: '总交易次数', value: s.total_trades },
+                    { label: '胜率', value: (s.win_rate * 100).toFixed(1) + '%', cls: s.win_rate >= 0.5 ? 'val-green' : 'val-red' },
+                    { label: '盈利交易', value: s.winning_trades + ' 次', cls: 'val-green' },
+                    { label: '亏损交易', value: s.losing_trades + ' 次', cls: 'val-red' },
+                    { label: '剔除交易', value: s.excluded_trades + ' 次', cls: 'val-yellow' },
+                    { label: '剔除总亏损', value: fmtPct(s.excluded_total_loss), cls: 'val-red' },
+                    { label: '平均每笔盈利', value: fmtPct(s.avg_profit_pct, true), cls: 'val-green' },
+                    { label: '平均每笔亏损', value: fmtPct(s.avg_loss_pct), cls: 'val-red' }
+                ]},
+                { title: '盈亏比指标', items: [
+                    { label: '盈亏均值比', value: fmtRatio(s.mean_pl_ratio), cls: s.mean_pl_ratio >= 1.5 ? 'val-green' : 'val-yellow' },
+                    { label: '盈亏总和比', value: fmtRatio(s.sum_pl_ratio), cls: s.sum_pl_ratio >= 1.5 ? 'val-green' : 'val-yellow' },
+                    { label: '持仓盈亏均值比', value: fmtRatio(s.hold_pl_ratio), cls: s.hold_pl_ratio >= 1.5 ? 'val-green' : 'val-yellow' },
+                    { label: '持仓盈亏总和比', value: fmtRatio(s.hold_sum_ratio), cls: s.hold_sum_ratio >= 1.5 ? 'val-green' : 'val-yellow' },
+                    { label: '盈利因子', value: fmtRatio(s.profit_factor), cls: s.profit_factor >= 1.5 ? 'val-green' : 'val-yellow' }
+                ]},
+                { title: '到手率指标', items: [
+                    { label: '盈利到手率', value: (s.profit_capture_rate * 100).toFixed(1) + '%', cls: 'val-green' },
+                    { label: '亏损到手率', value: (s.loss_capture_rate * 100).toFixed(1) + '%', cls: 'val-red' }
+                ]},
+                { title: '风险与绩效', items: [
+                    { label: '最大回撤', value: fmtPct(s.max_drawdown_pct), cls: 'val-red' },
+                    { label: '卡玛比率', value: fmtRatio(s.calmar_ratio), cls: s.calmar_ratio >= 1 ? 'val-green' : 'val-yellow' },
+                    { label: '年化收益', value: fmtPct(s.annual_return, true), cls: pctClass(s.annual_return) }
+                ]}
+            ];
+            grid.innerHTML = cards.map(function(card) {
+                var itemsHtml = card.items.map(function(item) {
+                    return '<div class="bt-metric"><span class="bt-label">' + item.label +
+                        '</span><span class="bt-value' + (item.cls ? ' ' + item.cls : '') + '">' +
+                        item.value + '</span></div>';
+                }).join('');
+                return '<div class="backtest-card">' + itemsHtml + '</div>';
+            }).join('');
+        }
+
+        // ================================================================
+        // 加载数据（根据策略切换 API）
+        // ================================================================
+        async function loadDetail() {
+            loadingEl.style.display = 'block';
+            contentEl.style.display = 'none';
+            errorEl.style.display = 'none';
+            document.getElementById('detail-subtitle').textContent = '加载中...';
+
+            try {
+                var url;
+                if (CURRENT_STRATEGY === 'pro3') {
+                    url = '/futures/api/strategy/detail/' + encodeURIComponent(SYMBOL) + '?bar=' + CURRENT_BAR + '&lookback=' + CURRENT_LOOKBACK;
+                } else if (CURRENT_STRATEGY === 'dualpro3') {
+                    url = '/futures/api/dualpro3/' + encodeURIComponent(SYMBOL) + '?short_bar=' + CURRENT_DUAL_SHORT_BAR + '&long_bar=' + CURRENT_DUAL_LONG_BAR + '&lookback=' + CURRENT_LOOKBACK;
+                } else {
+                    url = '/futures/api/boll/' + encodeURIComponent(SYMBOL) + '?short_bar=' + CURRENT_SHORT_BAR + '&long_bar=' + CURRENT_LONG_BAR + '&lookback=' + CURRENT_LOOKBACK;
+                }
+                var response = await fetch(url);
+                var result = await response.json();
+
+                if (result.code === 200 && result.data) {
+                    var data = result.data;
+                    loadingEl.style.display = 'none';
+                    contentEl.style.display = 'block';
+
+                    if (CURRENT_STRATEGY === 'pro3') {
+                        document.getElementById('detail-subtitle').textContent =
+                            '策略详情 · ' + data.total_days + '天历史回测 · ' + data.stats.total_trades + '笔交易';
+                        renderMarketSummary(data);
+                        renderTradeRecordsPro3(data.trade_records);
+                        renderStatsPro3(data);
+                    } else if (CURRENT_STRATEGY === 'dualpro3') {
+                        document.getElementById('detail-subtitle').textContent =
+                            '双周期Pro3 · ' + data.short_bar + '/' + data.long_bar + ' · ' + data.total_days + '天 · ' + data.stats.total_trades + '笔交易';
+                        renderDualPro3MarketSummary(data);
+                        renderTradeRecordsPro3(data.trade_records);
+                        renderStatsPro3(data);
+                    } else {
+                        document.getElementById('detail-subtitle').textContent =
+                            'BOLL限价 · ' + data.short_bar + '/' + data.long_bar + ' · ' + data.total_days + '天 · ' + data.stats.total_trades + '笔交易';
+                        renderBollMarketSummary(data);
+                        renderTradeRecordsBoll(data.trade_records);
+                        renderStatsBoll(data);
+                    }
+                } else {
+                    showError(result.message || '数据加载失败');
+                }
+            } catch (e) {
+                showError('网络请求失败: ' + e.message);
+            }
+        }
+
+        function showError(msg) {
+            loadingEl.style.display = 'none';
+            errorEl.style.display = 'block';
+            errorEl.textContent = msg;
+        }
+
+        // 启动
+        setupStrategySelector();
+        setupBarSelector();
+        setupBollSelectors();
+        setupDualPro3Selectors();
+        setupLookbackSelector();
+        loadDetail();
+    })();
+    </script>
+</body>
+</html>

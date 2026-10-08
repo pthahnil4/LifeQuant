@@ -1,0 +1,84 @@
+/* 支出页面统一布局；所有选择器均限定在本模块。 */
+.expense-body { background: #f4f6f4; color: #263c36; }
+.expense-page { max-width: 1380px; min-width: 920px; margin: 0 auto; padding: 28px 26px 50px; font: 14px/1.65 system-ui, 'Microsoft YaHei', sans-serif; }
+.expense-page *, .ex-dialog * { box-sizing: border-box; }
+.expense-page [hidden], .ex-dialog [hidden] { display: none !important; }
+.expense-page h1 { font-size: 29px; letter-spacing: 2px; margin: 3px 0; color: #224b3e; }
+.expense-page h2 { font-size: 17px; margin: 0 0 12px; color: #2c5146; }
+.expense-page h3 { font-size: 14px; margin: 20px 0 8px; }
+.expense-page p { margin: 6px 0 14px; }
+.expense-page .muted, .ex-dialog .muted { color: #708079; font-size: 12px; }
+.ex-hero { display: flex; align-items: center; justify-content: space-between; padding: 25px 30px; border: 1px solid #dbe6df; background: linear-gradient(110deg,#e6f0e9,#f7faf4); border-radius: 18px; margin-bottom: 20px; }
+.ex-hero p { color: #637f72; margin: 0; }
+.ex-eyebrow { color: #61796a; font-size: 11px; letter-spacing: 2px; }
+.ex-toolbar, .ex-section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.ex-section-head h2 { margin: 0; }
+.ex-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.expense-page button, .ex-dialog button { font: inherit; color: #3c6355; cursor: pointer; padding: 7px 14px; background: #fff; border: 1px solid #d6e0d9; border-radius: 8px; white-space: nowrap; }
+.expense-page button:hover, .ex-dialog button:hover { background: #eaf1ec; border-color: #a3b8aa; }
+.expense-page button.primary, .ex-dialog button.primary { background: #3a7564; border-color: #3a7564; color: white; }
+.expense-page button.danger, .ex-dialog button.danger { color: #b14947; }
+.expense-page button:disabled, .ex-dialog button:disabled { cursor: not-allowed; opacity: .48; }
+.expense-page button.text-button { border: 0; background: transparent; padding: 4px 6px; }
+.expense-page input, .expense-page select, .expense-page textarea, .ex-dialog input, .ex-dialog select, .ex-dialog textarea { font: inherit; color: #29473b; padding: 8px 10px; border: 1px solid #d6dfd8; border-radius: 7px; background: #fff; max-width: 100%; }
+.expense-page input:focus, .expense-page select:focus, .expense-page textarea:focus, .ex-dialog input:focus { outline: 2px solid #a5c5b5; outline-offset: 1px; }
+.expense-page textarea, .ex-dialog textarea { resize: vertical; }
+.expense-page label, .ex-dialog label { display: flex; flex-direction: column; gap: 5px; color: #566b60; font-size: 12px; }
+.expense-page label.ex-check, .ex-dialog label.ex-check { flex-direction: row; align-items: center; }
+.ex-check input { width: auto; }
+.ex-tabs { display: flex; gap: 26px; border-bottom: 1px solid #dce5de; margin: 20px 0; }
+.expense-page .ex-tabs button { border: 0; border-radius: 0; padding: 10px 4px; background: transparent; border-bottom: 3px solid transparent; color: #7a8980; }
+.expense-page .ex-tabs button.active { color: #2d6953; border-bottom-color: #3a7564; font-weight: 700; }
+.ex-card { background: #fff; border: 1px solid #e0e7e1; border-radius: 13px; padding: 21px 23px; margin-bottom: 18px; box-shadow: 0 2px 4px #243c3010; }
+.ex-form { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 14px; margin-bottom: 16px; }
+.ex-wide { grid-column: 1 / -1; }
+.ex-dialog { color: #29473b; max-height: 68vh; overflow: auto; padding: 4px; font: 14px/1.6 system-ui, 'Microsoft YaHei', sans-serif; }
+.ex-dialog .ex-form { grid-template-columns: repeat(2,minmax(0,1fr)); }
+.ex-dialog .ex-error { margin-top: 12px; }
+.ex-dialog pre { white-space: pre-wrap; overflow-wrap: anywhere; background: #f2f5f1; padding: 12px; font-size: 12px; max-height: 200px; overflow: auto; }
+.expense-page fieldset, .ex-dialog fieldset { border: 1px solid #e5eae5; border-radius: 8px; padding: 8px 12px; }
+.expense-page legend, .ex-dialog legend { font-size: 12px; color: #718277; }
+.ex-tags { display: flex; flex-wrap: wrap; gap: 5px 12px; }
+.ex-tags label { display: inline-flex; flex-direction: row; align-items: center; font-size: 12px; gap: 4px; }
+.ex-tags input { margin: 0; accent-color: #3a7564; }
+.ex-metrics { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 16px; margin-bottom: 18px; }
+.ex-metric { padding: 20px 22px; border: 1px solid #dfe6df; border-radius: 13px; background: white; }
+.ex-metric.featured { background: #315f50; color: white; border-color: #315f50; }
+.ex-metric .caption { font-size: 12px; opacity: .75; }
+.ex-metric strong { display: block; font-size: 27px; line-height: 1.6; font-weight: 600; font-variant-numeric: tabular-nums; }
+.ex-metric small { font-size: 11px; opacity: .8; }
+.ex-chart-grid { display: grid; grid-template-columns: 1.8fr 1fr; gap: 18px; }
+.ex-chart { height: 305px; width: 100%; }
+.ex-progress { height: 8px; background: #eef2ee; border-radius: 5px; overflow: hidden; margin: 9px 0; }
+.ex-progress > span { display: block; height: 100%; border-radius: inherit; background: #478876; }
+.ex-progress.warning > span { background: #b9953d; }
+.ex-progress.critical > span { background: #c98243; }
+.ex-progress.over > span, .ex-progress.exhausted > span { background: #b65854; }
+.ex-error, .ex-message, .ex-preview, .ex-coverage { padding: 11px 16px; border-radius: 8px; margin-bottom: 14px; }
+.ex-error { color: #913d3a; background: #fbecea; border: 1px solid #eed0cb; }
+.ex-message, .ex-preview { background: #ecf4ef; color: #3c6654; border: 1px solid #d8e8dc; }
+.ex-preview { margin-top: 15px; font-size: 12px; }
+.ex-coverage { background: #edf0eb; font-size: 12px; color: #6b786d; }
+.expense-page details { margin: 15px 0; }
+.expense-page summary { cursor: pointer; color: #527660; padding: 5px 0; }
+.expense-page details[open] summary { margin-bottom: 10px; }
+.ex-table-wrap { overflow-x: auto; }
+.expense-page table, .ex-dialog table { width: 100%; border-collapse: collapse; font-size: 12px; text-align: left; }
+.expense-page th, .ex-dialog th { color: #758277; background: #f7f9f6; font-weight: 500; white-space: nowrap; }
+.expense-page td, .expense-page th, .ex-dialog td, .ex-dialog th { padding: 10px; border-bottom: 1px solid #eaf0e9; vertical-align: top; }
+.expense-page td { overflow-wrap: anywhere; max-width: 230px; }
+.expense-page td button, .ex-dialog td button { padding: 3px 7px; margin: 1px; font-size: 11px; }
+.ex-day-row td { background: #f3f7f2; color: #758374; font-size: 11px; }
+.ex-chip { display: inline-block; border: 1px solid #dce6df; border-radius: 5px; padding: 1px 6px; margin: 1px; font-size: 11px; color: #64776a; }
+.ex-record-title { font-weight: 700; color: #22453a; font-size: 13px; }
+.ex-record-title.empty { font-weight: 400; font-style: italic; color: #a4afa6; }
+.expense-page td .ex-record-title { display: inline-block; max-width: 230px; }
+.ex-check-grid { display: grid; grid-template-columns: repeat(7,minmax(0,1fr)); gap: 8px; }
+.expense-page .ex-check-grid button { padding: 8px 5px; font-size: 11px; white-space: normal; }
+.expense-page .ex-check-grid button.confirmed { background: #e8f1e9; border-color: #bcd2bf; }
+.ex-review { display: flex; flex-wrap: wrap; gap: 14px 36px; }
+.ex-empty { text-align: center; padding: 25px; color: #98a198; }
+.ex-money { font-variant-numeric: tabular-nums; }
+.expense-page.ex-private .ex-money, .ex-dialog.ex-private .ex-money { filter: blur(7px); user-select: none; }
+.expense-page.ex-private .ex-chart, .expense-page.ex-private input[name="amount"], .expense-page.ex-private input[name="budget"], .expense-page.ex-private input[name="transition_budget"], .ex-dialog.ex-private input[name="amount"], .ex-dialog.ex-private input[name="budget"] { filter: blur(7px); }
+.expense-page footer { text-align: center; color: #97a093; margin-top: 30px; font-size: 11px; }

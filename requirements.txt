@@ -1,0 +1,100 @@
+# Web 框架
+flask>=2.0.0
+
+# Werkzeug（futureStockTrade 合并迁移 Phase 5 显式声明）
+# 合并进来的模块直接 import 它，不只是靠 Flask 传递依赖：
+#   crypto/kline_training/auth_service.py、store.py → werkzeug.security 口令哈希
+#   crypto/expense_routes.py → werkzeug.exceptions
+# 口令哈希未指定 method，取 Werkzeug 默认算法；上限锁 <4.0 是为了防止未来
+# 大版本改默认算法后，历史 users 表里的 password_hash 校验不上。
+Werkzeug>=3.0,<4.0
+
+# 数据分析
+pandas>=1.3.0
+numpy>=1.21.0
+
+# 量化回测
+backtrader>=1.9.76
+
+# OKX 交易所 API
+python-okx>=0.3.0
+
+# CCXT 统一行情接口（kline_fetcher K线抓取工具链，exchange_id='okx'）
+ccxt>=4.0.0
+
+# HTTP 客户端（OKX SDK 底层；项目直接用于显式超时配置与网络异常处理）
+httpx>=0.24.0
+
+# requests（futureStockTrade 合并迁移 Phase 5 补录 —— 宿主原有缺口，非合并引入）
+# 代码里是顶层硬 import，缺了直接 ModuleNotFoundError：
+#   crypto/market_cap_updater.py（市值驱动配置体系的实时市值抓取）
+#   crypto/ApiUtils/alicloud_market.py（聚宽/云市场数据源）
+# 以前能跑是因为 akshare 把 requests 当传递依赖带了进来；把运气当依赖不可靠，
+# 显式声明。
+requests>=2.28.0
+
+# psutil（futureStockTrade 合并迁移 Phase 5 补录 —— 宿主原有缺口，非合并引入）
+# crypto/process_lifecycle.py 用它判断「上个进程是否还活着」，据此决定重启自愈
+# 走归因分支还是按异常死亡处理。缺包时代码只打一行 warning 并降级，服务不崩，
+# 但自愈判定会失真，属于必须装上的运行期依赖。
+psutil>=5.9.0
+
+# Markdown 渲染（futureStockTrade 合并迁移 Phase 5 补录 —— 宿主原有缺口）
+# crypto/capability_routes.py 的「OKX 能力」页把 doc/*.md 渲染成 HTML；
+# 缺包时该页降级为纯文本，其余路由不受影响，但页面会不可读。
+Markdown>=3.4.0
+
+# 定时任务调度
+APScheduler>=3.10.0
+
+# 行情数据源 AKShare（futureStockTrade 合并迁移 Phase 5 补录）
+# 期货/股票监控台与 K 线训练的股票、期货 provider 都靠它取数：
+#   crypto/futures/akshare_api.py、crypto/stocks/stock_akshare_api.py
+#   crypto/market_strategy/futures_boll_limit_dualtimeframe.py
+#   crypto/kline_training/providers/{stock,futures}_provider.py
+# 该库接口变更频繁（主版本内也会改字段名），锁 <2.0，升级前必须回归。
+akshare>=1.18,<2.0
+
+# Excel(.xlsx) 导出（星标币种行情导出功能依赖）
+openpyxl>=3.0.0
+
+# MySQL 数据库（JSON 存储迁移批次1起启用）
+SQLAlchemy>=2.0.0
+PyMySQL>=1.1.0
+
+# MySQL 8 认证插件支撑（futureStockTrade 合并迁移 Phase 5 补录）
+# MySQL 8 默认 caching_sha2_password，PyMySQL 缺这个包会在握手阶段直接失败。
+# 宿主一直连的是 MySQL，之前只在服务器上手工装过，清单里没写，新环境照单
+# 装完仍会连不上库，因此在这里补齐。
+cryptography>=41.0
+
+# 业务日期时区（Windows 及无系统时区库的部署环境）
+tzdata>=2024.1
+
+# 日记本访问密码哈希（缺失时代码自动退到 bcrypt / 标准库 pbkdf2，不崩）
+argon2-cffi>=21.3.0
+
+# ============================================================================
+# 可选依赖：默认不装，装错反而拖慢启动
+# ----------------------------------------------------------------------------
+# TDengine 历史K线缓存（闲置能力，默认关闭）
+#   crypto/kline_training/td_cache/ 是唯一使用方，且 __init__.py 里用
+#   try/except 包住 `from taosrest import connect`：不装也能正常启动，
+#   只是 /kline 的历史分钟线缓存不可用。原项目用它是为了缓存 NEAR 1 分钟K线，
+#   宿主已有自己的 1 分钟链路（crypto/kline_fetcher + /kline-live），无人调用。
+#   需要启用时再放开下面这行（并配好 TDENGINE_* 环境变量，见 settings.py）：
+# taospy>=2.6,<3.0
+#
+# 未列入清单（合并后核对：项目代码内无任何 import，属原项目残留）
+#   python-dotenv —— 原项目根 config.py 用它读 .env；本项目的凭据解析走
+#   「环境变量 + data/ 外置文件」（crypto/data_paths.py 一套机制），
+#   合并后的 crypto/kline_training/settings.py 不读 .env，加了反而是假依赖。
+#   matplotlib / scipy / tushare / pandas-ta / TA-Lib / easytrader —— 同原项目结论。
+#
+# 日记本口令哈希的第二档兜底（crypto/diary_repo.py）
+#   算法探测顺序是 argon2 → bcrypt → 标准库 PBKDF2，哈希串带算法前缀，
+#   验证时按前缀分派。argon2-cffi 已在正式清单里，正常情况下走不到 bcrypt；
+#   只有在 argon2 的 ffi 后端装不上的机器（个别精简 Linux 镜像）才用得到。
+#   不装也不会崩，自动退到标准库 pbkdf2（240000 轮）。需要时放开这行：
+# bcrypt>=4.0.0
+# ============================================================================

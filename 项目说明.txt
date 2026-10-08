@@ -1,0 +1,234 @@
+================================================================================
+  MACD & ADX Pro3 加密货币策略监控系统 —— 项目说明书
+================================================================================
+
+一、项目概述
+--------------------------------------------------------------------------------
+本项目是一个基于 Flask 的前后端分离 Web 应用，用于实时监控 OKX 交易所多个
+加密货币合约品种的 MACD + ADX 技术指标和策略信号。
+
+核心策略引擎使用的是 MACD_Smoothed_ADX_Pro3（ADX自适应平滑系数系统），
+根据市场 ADX 趋势强度自动调整 MACD 柱的平滑权重，判断12种市场状态并生成
+交易信号。
+
+前端以卡片形式展示各币种的：最新价格、MACD柱/DIF、ADX/+DI/-DI、市场状态、
+趋势方向、最后交易价、当前盈亏、持仓时长等，每60秒自动刷新。
+
+
+二、文件结构说明
+--------------------------------------------------------------------------------
+
+【根目录文件】
+
+  app.py
+       Flask 主应用，定义所有 Web 路由和 API 接口：
+       - GET  /                    前端页面
+       - GET  /api/strategy/coins  获取所有可用币种列表
+       - GET  /api/strategy/config 获取当前配置（币种列表 + 已选币种）
+       - POST /api/strategy/config 保存用户选择的币种（写入 config.json）
+       - GET  /api/strategy/coin/<symbol>  获取单个币种的策略数据
+
+  real_strategy_adapter.py
+       策略适配器，负责：
+       - 加载/保存 config.json 币种配置
+       - 调用底层策略模块 MACD_Smoothed_ADX_Pro3 获取实时数据
+       - 计算12种市场状态（determine_market_state）
+       - 计算综合大盘行情判断
+       - 写入 strategy.log 日志
+
+  strategy_engine.py
+       MACD_Smoothed_ADX_Pro3 策略的副本（与子目录中的策略文件内容相同），
+       用于本地回测和调试。Web 服务实际使用的是子目录中的策略模块。
+
+  config.json
+       币种配置文件（JSON），结构：
+       {
+         "all_coins": [...],          // 所有可选币种列表
+         "default_selected": [...]    // 当前已选中的币种
+       }
+       用户在前端修改币种选择后，此文件会被自动更新。
+
+  api_config.py
+       OKX 交易所 API 密钥配置，包括：
+       - api_key / secret_key / passphrase（请替换为你自己的密钥）
+       - flag: "0"=实盘 / "1"=模拟盘
+       - 提供 AccountAPI、TradeAPI、MarketAPI 等快捷获取函数
+
+  requirements.txt
+       项目 Python 依赖清单：
+       - flask       Web 框架
+       - pandas      数据处理
+       - numpy       数值计算
+       - backtrader  回测框架
+       - okx         OKX 交易所 Python SDK
+
+  strategy.log
+       策略运行日志文件，记录每次数据获取、错误重试、综合行情判断等。
+
+【子目录】
+
+  MACD_Smoothed_ADX_Pro3_Project/
+      ├── MACD_Smoothed_ADX_Pro3.py   核心策略文件（ADX自适应算法 + 交易逻辑）
+      ├── api_config.py               OKX API 配置（策略模块专用，与根目录独立）
+      └── requirements.txt            策略模块的依赖清单
+
+  templates/
+      └── index.html                  前端 HTML 页面（Flask Jinja2 模板）
+
+  static/
+      ├── css/
+      │   └── style.css               前端样式表
+      └── js/
+          └── main.js                 前端 JavaScript 逻辑（币种选择、数据获取、卡片渲染）
+
+
+【多市场模块边界】（2026-10-08 合并 futureStockTrade 后的现状）
+
+  主应用与全部市场模块都在 crypto/ 包里，由 crypto/app.py 汇总注册蓝图，
+  同一个进程、同一个端口对外；各模块的数据落点互不共用：
+
+    crypto/                    加密货币监控台（OKX 行情 + 实盘下单，路由 /）
+    crypto/futures/            期货监控台（akshare 行情，路由 /futures）
+                               数据：future.csv、star品种行情.csv、futures_config.json
+    crypto/stocks/             股票监控台（akshare + 聚美数据，路由 /stocks）
+                               数据：stock_config.json；只读行情，零交易端点
+    crypto/kline_training/     K 线训练台（OKX 公共行情 + SQLite，路由 /kline）
+                               数据：data/kline_training.db（用户/成绩/对战记录）
+                               会话：session['kline_uid']，与 Web 闸门口令相互独立
+    doc/futureStockTrade归档/  被并入方的历史文档（含聚美接口笔记），仅参考
+
+  数据格式尚未统一到 MySQL（迁移决策 D3：先原样搬），细节见根目录 数据存储说明.md
+  第 8 节；迁移过程与验收记录见 doc/futureStockTrade合并迁移方案与清单.md。
+
+
+三、部署指南（宝塔面板）
+--------------------------------------------------------------------------------
+
+1. 在宝塔面板安装"Python项目管理器"插件（2.0版本以上）。
+
+2. 将整个项目目录上传到服务器，例如 /www/wwwroot/cryptoTrade/
+
+3. 在 Python项目管理器 中添加项目：
+   - 项目路径：选择项目根目录（如 /www/wwwroot/cryptoTrade）
+   - 启动文件：app.py
+   - Python版本：建议 Python 3.8+
+   - 框架：Flask
+   - 运行方式：默认（或 gunicorn）
+   - 端口：7777（可根据需要修改；勿用 6000，浏览器会报 ERR_UNSAFE_PORT）
+
+4. 在【模块】标签页中，选择项目虚拟环境，安装依赖：
+   点击"安装依赖"，或者进入虚拟环境终端执行：
+       pip install -r requirements.txt
+
+5. 修改 api_config.py，填入你自己的 OKX API 密钥。
+
+6. 修改 config.json，调整"all_coins"为你要监控的币种列表，
+   "default_selected"为默认选中币种。
+
+7. 【重要】配置 Web 访问口令。面板下面挂着真实下单/强平/启停调度接口，
+   默认带一层访问闸门（crypto/web_auth.py），口径如下：
+     - 没配口令 → 只有本机能打开，从手机或其它设备访问一律 403；
+     - 配了口令 → 所有设备（包括服务器自己）都要先输一次口令，之后 30 天内
+       靠浏览器 cookie 免登。
+   配法二选一（优先级从高到低），改完重启项目生效：
+     a) 环境变量 CRYPTO_WEB_TOKEN=<口令>      （宝塔项目设置里加）
+     b) 把口令单行写进 /www/wwwroot/cryptoTrade/data/web_token.txt
+   手机上不想打字，可以直接访问 http://你的域名:7777/?token=<口令> ，
+   验证通过后会跳回首页并把口令从地址栏抹掉。想退出就访问 /auth/logout。
+   监听地址/端口也可用 CRYPTO_WEB_HOST / CRYPTO_WEB_PORT 覆盖（默认 0.0.0.0 / 7777）。
+
+8. 启动项目，访问 http://你的域名:7777 即可看到监控面板。
+
+8b.【可选】三个市场模块的开关（futureStockTrade 合并进来后新增）。
+   期货 / 股票 / K 线训练与加密货币监控跑在同一个进程、同一个 7777 端口上，
+   但行情来源不同：期货与股票走 akshare（要国内网络出口），K 线训练走 OKX 公共
+   行情加本地 SQLite。哪台机器不具备对应条件，就用环境变量单独关掉它，
+   主功能不受影响：
+       FST_ENABLE_FUTURES=0    关 /futures      期货监控台
+       FST_ENABLE_STOCKS=0     关 /stocks       股票监控台
+       FST_ENABLE_KLINE=0      关 /kline        K 线训练台
+   取值 0/false/no/off 都算关闭，默认全开。关闭或依赖缺失时访问该路径不是裸 404，
+   而是一个说明「状态 + 原因 + 怎么恢复」的提示页（接口回 503 JSON）。
+   另有两个调试开关：
+       CRYPTO_WEB_PORT / CRYPTO_WEB_HOST      改端口与监听地址（默认 7777 / 0.0.0.0）
+       CRYPTO_ALLOW_DUP_PORT=1                允许并存第二个实例（谨慎：Windows 下
+                                              双实例会因端口复用互相劫持请求，且
+                                              调度器可能重复下单）
+   启动脚本默认会先探一次自己将要绑的端口，发现已有服务在监听就直接报错退出，
+   避免「口令明明输对却间歇性失败」这类双实例假故障。
+
+注意：如果端口被占用或需要域名访问，可在宝塔【网站】中设置反向代理。
+
+
+四、操作指南
+--------------------------------------------------------------------------------
+
+1. 打开浏览器访问项目地址，页面会自动加载并显示已选币种的策略数据。
+
+2. 【选择监控币种】
+   - 在页面顶部的币种选择面板中，点击币种标签切换选中/取消。
+   - 点击"保存选择"按钮，配置会保存到服务器 config.json 中，下次打开依然生效。
+
+3. 【查看数据】
+   - 每个币种以卡片形式展示，包含价格、MACD、ADX、市场状态、趋势方向等。
+   - 顶部"综合行情判断"面板自动汇总所有币种的多空情况。
+
+4. 【手动刷新】
+   - 点击底部"手动刷新数据"按钮，立即重新获取所有币种数据。
+   - 页面默认每60秒自动刷新一次。
+
+5. 【颜色说明】
+   - 绿色：看涨信号、盈利、上涨趋势
+   - 红色：看跌信号、亏损、下跌趋势
+   - 黄色：震荡、观望
+   - 蓝色：价格、持仓时间等中性数据
+
+6. 【日志查看】
+   - 所有策略执行日志记录在 strategy.log 文件中，可用于排查问题。
+
+
+五、配置说明
+--------------------------------------------------------------------------------
+
+1. api_config.py（API 密钥）
+   - api_key:    你的 OKX API Key
+   - secret_key: 你的 OKX Secret Key
+   - passphrase: 你的 OKX Passphrase
+   - flag:       "0"=实盘交易，"1"=模拟盘交易
+
+2. config.json（币种）
+   - all_coins:         所有可选币种（需为 OKX 永续合约格式，如 BTC-USDT-SWAP）
+   - default_selected:  默认已选币种（必须是 all_coins 的子集）
+
+3. 策略参数
+   - 策略核心参数在 MACD_Smoothed_ADX_Pro3_Project/MACD_Smoothed_ADX_Pro3.py 中
+   - 包括 K线周期（bar）、ADX阈值、MACD平滑系数等，一般无需修改
+
+
+六、常见问题
+--------------------------------------------------------------------------------
+
+Q: 页面显示"加载失败"或数据为空？
+A: 检查 OKX API 密钥是否正确，网络是否能访问 OKX 接口，查看 strategy.log 日志。
+
+Q: 如何添加新的监控币种？
+A: 编辑 config.json，在 "all_coins" 中添加 OKX 支持的永续合约名称即可。
+
+Q: 宝塔部署后页面打不开？
+A: 检查端口是否放行（宝塔安全设置），防火墙是否允许；查看 Python项目管理器
+   中的项目日志是否有报错。
+
+Q: 宝塔启动失败？
+A: 确保已安装所有依赖（pip install -r requirements.txt），Python 版本 ≥ 3.8。
+
+Q: 手机上打开显示“该服务只允许本机访问”（403）？
+A: 这是没配访问口令时的默认行为，不是故障。按部署指南第 7 步写入
+   data/web_token.txt 或环境变量 CRYPTO_WEB_TOKEN，重启后即可远程访问。
+
+Q: 页面一直停在“访问验证”输口令界面，或接口返回 401？
+A: 口令不对（区分大小写，只去两端空格），或浏览器禁了 cookie。也可以直接用
+   /?token=<口令> 访问一次，或用 Authorization: Bearer <口令> 调接口（脚本用）。
+
+================================================================================
+  文档生成日期：2026-05-09
+================================================================================

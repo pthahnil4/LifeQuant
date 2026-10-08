@@ -1,0 +1,134 @@
+# ============================================================
+# cryptoTrade 版本控制忽略清单
+# 原则：源码 + 配置 + 文档入库；运行期产物（日志/缓存/状态）不入库
+# ============================================================
+
+# ---------- Python 运行缓存 ----------
+# 不带斜杠：同时覆盖目录形式和被误写成文件的 __pycache__
+__pycache__
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+env/
+
+# ---------- 日志（运行期持续追加，会淹没 diff）----------
+*.log
+crypto/logs/
+logs/
+crypto/strategy.log
+
+# ---------- 运行期状态 / 可重建缓存 ----------
+# 交易执行器防重签名（进程运行时自己维护，误 checkout 会影响下单判断）
+crypto/task/utils/trade_state.json
+*.state.json
+# 合约规格 24h TTL 缓存
+data/instrument_spec_cache.json
+# 回测从交易所拉取的 K 线缓存（可重新下载）
+crypto/backtest/data_cache/
+# K 线抓取输出（体积较大，可由抓取工具重新生成）
+crypto/kline_fetcher/data/
+# 邮件 HTML 预览生成物
+data/mail_preview/
+# 隔离冒烟跑批（data/run_isolated_smoke.py）的本地临时库与逐用例日志：
+# 每次跑批都会重建，日志仅用于失败复盘，不入库
+data/tmp_isolated_smoke/
+data/isolated_smoke/
+*.sqlite
+# 本地测试数据库及其事务文件
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+# 配置快照、业务数据备份及诊断生成物（保留本机，不随源码发布）
+crypto/*.bak_*
+crypto/_universe_backup/
+data/plan_backups/
+data/_*.txt
+data/_okx_list_tools.json
+data/instinct_corpus_report.md
+data/instinct_wiki_report.md
+
+# ---------- 敏感连接串 / 实盘凭据 ----------
+# 远端 MySQL 完整连接串（含账号密码）。本地/服务器保留，不进版本库。
+# 若确实需要入库，删除下面这一行即可。
+data/db_url.txt
+# Web 访问口令（crypto/web_auth.py 读，控制谁能访问实盘面板）。留本机不入库；
+# 也可改用环境变量 CRYPTO_WEB_TOKEN，两选一。
+data/web_token.txt
+# Flask 会话签名密钥（crypto/kline_training/settings.py 首次启动自动生成）。
+# 一旦入库，任何人都能用它伪造 K 线训练的登录 Cookie；删了只会让登录态失效，
+# 账号与成绩数据不受影响。
+data/app_secret_key.txt
+# K 线训练管理员邮箱清单（可选，覆盖宿主邮件配置里的 ADMIN_EMAIL）。
+data/kline_admin_emails.txt
+# 聚美智数 / 阿里云 API 市场 AppCode（crypto/stocks/gateway_config.py 读）。
+# 第三方行情凭据，只留本机；也可改用环境变量 JUMEI_APPCODE / JUMEI_CME_APPCODE。
+data/jumei_appcode.txt
+data/jumei_cme_appcode.txt
+# 阿里云 API 市场账号级 AppKey / AppSecret 留档（Phase 5 从 crypto/ApiUtils/*.py
+# 的源码注释里搬出来）。当前工具类只用 APPCODE，这两项闲置，但同样是凭据，
+# 不能留在会被 git add -A 带走的源码注释里。
+data/jumei_appkey_secret.txt
+# 数据文件就地替换前留下的 .bak 备份（training.db 迁移等），不随源码发布。
+data/*.bak
+# OKX 实盘 API 密钥（api_key/secret_key/passphrase 全明文）。这两份是运行必需
+# 文件，只不入库、不删除、不改名，程序照旧 import api_config。
+# 新环境搭配置请看脱敏模板：crypto/api_config.example.py 与
+# crypto/MACD_Smoothed_ADX_Pro3_Project/api_config.example.py（拷成 api_config.py 再填）。
+# 注意：这两份是两套独立结构（多账号注册表 / 单账号字典），要填两处。
+crypto/api_config.py
+crypto/MACD_Smoothed_ADX_Pro3_Project/api_config.py
+# SMTP 发件配置：内含发件邮箱 + QQ 邮箱授权码。本文件由 Web 页面生成——
+# 在「任务系统 → 邮件配置」保存一次就会整体重建（见 app.py POST
+# /api/task/config/email），因此只存本机不入库；模板见 email_config.example.py。
+crypto/task/config/email_config.py
+# InfluxDB 连接配置：两处硬写了长期有效的 API token + 服务器公网 IP。
+# ① influxdb_config.py 被 demo51~demo65 共 11 个脚本 import，是 demo 链路的配置
+#    入口，文件留本机不动；新环境按 influxdb_config.example.py 拷一份填 token。
+# ② influxdb2_fixed.py 是同一 token 的另一份拷贝，全项目 0 处引用（旧版自包含 demo）。
+# 交易运行链路完全不依赖这两份，不入库不影响实盘；如需入库，换占位符后 git add -f。
+crypto/demo/influxdb_config.py
+crypto/demo/influxdb2_fixed.py
+
+# ---------- 批量数据导出 / 数据库备份（体积大且含真实业务数据）----------
+# MySQL 全库导出：含真实交易与业务数据，本地留存即可
+data/crypto_backup*.sql
+# 路由表前后对比快照（每次核对会重建）
+data/_fst_*/
+data/_fst_route_table/
+data/_fst_stock_route_table/
+data/_fst_kline_route_table/
+data/_fst_kline_flow/
+# 运行期快照 / 回归结果（可重新生成）
+data/kline_live_snapshot.json
+data/memory_regression_*.json
+
+# ---------- 临时文件与测试库 ----------
+# 根目录遗留的临时输出、测试 sqlite 与误建的 NUL 文件
+_tmp_*
+*_test_db.sqlite
+_tmp_*.sqlite
+nul
+NUL
+NUL2
+2.txt
+*.pyc
+.ruff_cache/
+
+# ---------- 编辑器 / 系统 ----------
+.idea/
+.vscode/
+.qoder/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# stray junk
+=
+2.txt

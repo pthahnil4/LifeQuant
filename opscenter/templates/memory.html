@@ -1,0 +1,195 @@
+{% extends "base.html" %}
+{% set active_page = "memory" %}
+{% block title %}内存治理 · OpsCenter{% endblock %}
+{% block crumb_group %}系统健康{% endblock %}
+{% block crumb_page %}内存治理{% endblock %}
+
+{% macro trend(chart, gid, height) %}
+{% if chart.available %}
+<div class="chart">
+  <svg viewBox="{{ chart.viewbox }}" preserveAspectRatio="none" style="height:{{ height }}px">
+    <defs>
+      <linearGradient id="{{ gid }}" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="var(--brand-400)" stop-opacity=".38"/>
+        <stop offset="100%" stop-color="var(--brand-400)" stop-opacity="0"/>
+      </linearGradient>
+    </defs>
+    <line class="chart__grid" x1="0" y1="16" x2="800" y2="16"/>
+    <line class="chart__grid" x1="0" y1="{{ chart.baseline }}" x2="800" y2="{{ chart.baseline }}"/>
+    {% for t in chart.th_lines %}
+    <line class="chart__thresh chart__thresh--{{ t.color }}" x1="0" y1="{{ t.y }}" x2="800" y2="{{ t.y }}"/>
+    <text class="chart__axis chart__axis--{{ t.color }}" x="6" y="{{ (t.y - 5) }}">{{ t.label }}</text>
+    {% endfor %}
+    <path class="chart__area" style="fill:url(#{{ gid }})" d="{{ chart.area_path }}"/>
+    <polyline class="chart__line draw-line" points="{{ chart.line_points }}"/>
+    <circle class="chart__dot" cx="{{ chart.last_x }}" cy="{{ chart.last_y }}" r="4"/>
+  </svg>
+</div>
+{% else %}
+<div class="empty"><span class="empty__icon">📉</span>数据不足（需 ≥2 个采样点）</div>
+{% endif %}
+{% endmacro %}
+
+{% set rs = m.rss_stats %}
+{% set ss = m.sys_stats %}
+{% set n_restart = m.events | selectattr('kind', 'equalto', 'restart') | list | length %}
+{% set n_snapshot = m.events | selectattr('kind', 'equalto', 'snapshot') | list | length %}
+
+{% block content %}
+<div class="page-head fade-in">
+  <div class="page-head__top">
+    <div>
+      <h1 class="page-head__title">内存治理</h1>
+      <p class="page-head__desc">
+        排障主力 · RSS 增长曲线 + 阈值告警 + 自动清理/自愈事件全回溯 ·
+        {% if m.stale %}暂无可读采样{% else %}最近采样 {{ m.checked_at }}{% endif %}
+      </p>
+    </div>
+    <div class="page-head__actions">
+      <a class="btn btn--ghost" href="/health">🩺 健康检查</a>
+      <a class="btn btn--primary" href="/">← 返回总览</a>
+    </div>
+  </div>
+</div>
+
+{% if m.stale %}
+<div class="banner banner--info fade-in">ℹ️ 未读到内存采样数据。请确认 <span class="text-mono">{{ log_dir }}\memory_history.jsonl</span>。</div>
+{% endif %}
+
+<!-- KPI 磁贴 -->
+<div class="grid grid--cols-12">
+  <div class="col-3">
+    <div class="tile tile--hover fade-in">
+      <div class="tile__glow"></div>
+      <div class="tile__top"><span class="tile__label">当前进程 RSS</span>
+        <span class="tile__icon tile__icon--{{ rs.level or 'neutral' }}">🧠</span></div>
+      <div class="tile__value">{% if rs.cur is not none %}{{ rs.cur }}{% else %}—{% endif %}<small>MB</small></div>
+      <div class="tile__foot">峰值 {{ rs.peak or '—' }}MB · 窗口均值 {{ rs.avg_win or '—' }}</div>
+    </div>
+  </div>
+  <div class="col-3">
+    <div class="tile tile--hover fade-in" style="animation-delay:.05s">
+      <div class="tile__glow"></div>
+      <div class="tile__top"><span class="tile__label">系统内存使用率</span>
+        <span class="tile__icon tile__icon--{{ ss.level or 'neutral' }}">💾</span></div>
+      <div class="tile__value">{% if ss.cur is not none %}{{ ss.cur }}{% else %}—{% endif %}<small>%</small></div>
+      <div class="tile__foot">峰值 {{ ss.peak or '—' }}% · 撞 OOM 线 {{ ss.over_danger }} 次</div>
+    </div>
+  </div>
+  <div class="col-3">
+    <div class="tile tile--hover fade-in" style="animation-delay:.1s">
+      <div class="tile__glow"></div>
+      <div class="tile__top"><span class="tile__label">阈值告警</span>
+        <span class="tile__icon tile__icon--{{ 'danger' if m.alerts else 'success' }}">🚨</span></div>
+      <div class="tile__value">{{ m.alerts|length }}<small>条</small></div>
+      <div class="tile__foot">RSS 撞危险线 {{ rs.over_kill }} 次</div>
+    </div>
+  </div>
+  <div class="col-3">
+    <div class="tile tile--hover fade-in" style="animation-delay:.15s">
+      <div class="tile__glow"></div>
+      <div class="tile__top"><span class="tile__label">清理 / 自愈事件</span>
+        <span class="tile__icon tile__icon--{{ 'warning' if n_restart else 'info' }}">♻️</span></div>
+      <div class="tile__value">{{ m.events|length }}<small>次</small></div>
+      <div class="tile__foot">内存重启 {{ n_restart }} · 泄漏快照 {{ n_snapshot }}</div>
+    </div>
+  </div>
+</div>
+
+<!-- 统计条 -->
+<div class="card fade-in mt-5">
+  <div class="card__head"><div><div class="card__title">📐 关键指标</div>
+    <div class="card__subtitle">全量历史统计 · RSS 采样 {{ rs.n }} 点 / 系统内存采样 {{ ss.n }} 点</div></div>
+    <span class="kv">告警线 关注 {{ m.thresholds.warn_mb }}MB · 危险 {{ m.thresholds.kill_mb }}MB · OOM {{ m.thresholds.oom_pct }}%</span></div>
+  <div class="card__body">
+    <div class="stat-grid">
+      <div class="stat"><div class="stat__k">RSS 峰值</div><div class="stat__v">{{ rs.peak or '—' }}<small>MB</small></div></div>
+      <div class="stat"><div class="stat__k">RSS 最低 / 均值</div><div class="stat__v">{{ rs.min or '—' }}<small>/</small> {{ rs.avg_win or '—' }}<small>MB</small></div></div>
+      <div class="stat"><div class="stat__k">超关注线(600)次数</div><div class="stat__v">{{ rs.over_warn }}<small>次</small></div></div>
+      <div class="stat"><div class="stat__k">磁盘峰值</div><div class="stat__v">{{ ss.disk_peak or '—' }}<small>%</small></div></div>
+    </div>
+  </div>
+</div>
+
+<!-- RSS 趋势 -->
+<div class="card fade-in mt-5">
+  <div class="card__head"><div><div class="card__title">📈 进程内存 RSS 趋势</div>
+    <div class="card__subtitle">app 心跳 · 每 2 分钟采样 · 窗口 {{ rs.win_from }} ~ {{ rs.win_to }}（{{ rs.n }} 点内最近 {{ m.rss_series|length }} 点）</div></div>
+    <span class="badge badge--{{ rs.level or 'neutral' }}"><span class="badge__dot"></span>{{ rs.cur or '—' }} MB</span></div>
+  <div class="card__body">
+    {{ trend(rss_chart, 'gradRss', 240) }}
+    {% if rss_chart.available %}
+    <div class="chart-legend mt-4">
+      <span class="chart-legend__item"><span class="chart-legend__line" style="background:var(--brand-400)"></span>RSS</span>
+      <span class="chart-legend__item"><span class="chart-legend__line" style="background:var(--warning)"></span>关注 600MB</span>
+      <span class="chart-legend__item"><span class="chart-legend__line" style="background:var(--danger)"></span>危险 800MB</span>
+      <span class="chart-legend__item text-mute">区间 {{ rss_chart.min }} ~ {{ rss_chart.max }} MB</span>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- 系统内存趋势 -->
+<div class="card fade-in mt-5">
+  <div class="card__head"><div><div class="card__title">🖥️ 系统内存使用率趋势</div>
+    <div class="card__subtitle">embedded/guard 心跳 · 反映整机 OOM 压力（非仅本进程）</div></div>
+    <span class="badge badge--{{ ss.level or 'neutral' }}"><span class="badge__dot"></span>{{ ss.cur or '—' }}%</span></div>
+  <div class="card__body">
+    {{ trend(mem_chart, 'gradMem', 240) }}
+    {% if mem_chart.available %}
+    <div class="chart-legend mt-4">
+      <span class="chart-legend__item"><span class="chart-legend__line" style="background:var(--brand-400)"></span>系统内存使用率</span>
+      <span class="chart-legend__item"><span class="chart-legend__line" style="background:var(--danger)"></span>OOM 90%</span>
+      <span class="chart-legend__item text-mute">区间 {{ mem_chart.min }} ~ {{ mem_chart.max }}% · 峰值 {{ ss.peak or '—' }}%</span>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- 阈值告警 + 自愈事件 -->
+<div class="grid grid--cols-12 mt-5">
+  <div class="col-6">
+    <div class="card fade-in">
+      <div class="card__head"><div><div class="card__title">🚨 阈值告警</div><div class="card__subtitle">OOM 风险 / RSS 撞线（新→旧）</div></div>
+        {% if m.alerts %}<span class="badge badge--danger">{{ m.alerts|length }}</span>{% endif %}</div>
+      <div class="card__body">
+        {% if m.alerts %}
+        <div class="timeline">
+          {% for a in m.alerts %}
+          <div class="timeline__item">
+            <span class="timeline__dot timeline__dot--{{ a.level }}"></span>
+            <div class="timeline__title">{{ a.text }}<span class="badge badge--{{ a.level }}">{{ a.kind }}</span></div>
+            <div class="timeline__meta">{{ a.ts }}</div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty"><span class="empty__icon">✅</span>近期无阈值告警</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-6">
+    <div class="card fade-in" style="animation-delay:.05s">
+      <div class="card__head"><div><div class="card__title">♻️ 自动清理 / 自愈事件</div><div class="card__subtitle">内存重启归因 + tracemalloc 泄漏快照</div></div></div>
+      <div class="card__body">
+        {% if m.events %}
+        <div class="timeline">
+          {% for e in m.events %}
+          <div class="timeline__item">
+            <span class="timeline__dot timeline__dot--{{ e.level }}"></span>
+            <div class="timeline__title">{{ e.label }}
+              <span class="badge badge--{{ 'warning' if e.kind=='restart' else 'info' }}">{{ '自愈重启' if e.kind=='restart' else '排查快照' }}</span></div>
+            <div class="timeline__meta">{{ e.ts }} · {{ e.detail }}</div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty"><span class="empty__icon">🧹</span>暂无内存重启或快照记录（RSS 从未撞线）</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

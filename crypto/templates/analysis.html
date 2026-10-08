@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>实盘分析记录 - LifeQuant</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        /* ============ 全宽页面容器：92vw 近全宽，最大化信息展示面积 ============ */
+        /* 本页局部放宽导航内层，使导航与 92vw 内容左右对齐、宽屏下 11 个入口全展开（仅影响本页） */
+        .nav-inner { max-width: 92vw; }
+        .ana-page { width: 92vw; max-width: 92vw; margin: 18px auto 40px; box-sizing: border-box; }
+        .ana-head { margin-bottom: 14px; }
+        .ana-head h1 { margin: 0 0 4px; font-size: 1.5rem; }
+        .ana-head .ana-sub { color: var(--text-muted); font-size: 0.88rem; margin: 0; }
+
+        /* 卡片通用：白底圆角轻阴影，统一各区块视觉层级 */
+        .ana-card {
+            background: var(--card-bg); border: 1px solid var(--border-color);
+            border-radius: 10px; box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+            padding: 14px 16px; margin-bottom: 14px;
+        }
+        .ana-card-title { font-size: 0.95rem; font-weight: 700; margin: 0 0 10px; color: var(--text-main); }
+
+        /* ============ 顶部工具条：币种 + 快照操作 + 计时，单行紧凑 ============ */
+        .ana-toolbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+        .ana-toolbar label { display: flex; align-items: center; gap: 6px; font-size: 0.88rem; color: #555; }
+        .ana-toolbar .ana-sel { min-width: 190px; }
+        .ana-toolbar .ana-spacer { flex: 1; }
+        #ana-snap-ts { color: #999; font-size: 0.82rem; white-space: nowrap; }
+
+        /* ============ 单币快照录入区 ============ */
+        #ana-snapshot-box { margin-top: 14px; border: 1px dashed var(--border-color); border-radius: 8px; padding: 14px 16px; background: #fbfcfe; }
+        .ana-snap-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 12px; }
+        .ana-snap-item { background: var(--card-bg); border-radius: 6px; padding: 8px 12px; border: 1px solid var(--border-color); }
+        .ana-snap-item .as-label { font-size: 0.72rem; color: var(--text-muted); margin-bottom: 4px; }
+        .ana-snap-item .as-value { font-size: 1.05rem; font-weight: 700; }
+        .ana-judgment-row { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 10px; font-size: 0.9rem; }
+        .ana-judgment-row label { display: flex; align-items: center; gap: 5px; cursor: pointer; }
+        .ana-reason-input { width: 100%; min-height: 64px; padding: 8px 10px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 0.88rem; resize: vertical; box-sizing: border-box; font-family: inherit; }
+
+        /* ============ 命中率统计卡片：更紧凑的 minmax(150px,1fr) ============ */
+        .ana-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+        .compare-card { background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+        .compare-card .cc-label { font-size: 0.76rem; color: var(--text-muted); margin-bottom: 6px; }
+        .compare-card .cc-value { font-size: 1.3rem; font-weight: 700; }
+        .cc-green { color: #28a745; } .cc-red { color: #dc3545; }
+        .cc-blue { color: #2c7be5; } .cc-orange { color: #fd7e14; }
+
+        /* ============ 筛选栏 ============ */
+        .ana-filter { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+        .ana-filter label { display: flex; align-items: center; gap: 6px; font-size: 0.86rem; color: #555; }
+        .ana-filter .ana-spacer { flex: 1; }
+
+        /* ============ 数据表格：table-layout:fixed + colgroup 精确分配列宽 ============ */
+        .ana-table-wrap { overflow-x: auto; border-radius: 8px; border: 1px solid var(--border-color); background: var(--card-bg); }
+        .ana-table { width: 100%; min-width: 1180px; border-collapse: collapse; table-layout: fixed; }
+        .ana-table th, .ana-table td { padding: 9px 10px; text-align: left; border-bottom: 1px solid var(--border-color); font-size: 0.85rem; overflow-wrap: break-word; word-break: break-word; vertical-align: middle; }
+        .ana-table th { background: #f8f9fa; font-weight: 600; font-size: 0.82rem; color: var(--text-muted); white-space: nowrap; }
+        .ana-table tr:last-child td { border-bottom: none; }
+        .ana-table tbody tr:hover { background: #f8fbff; }
+
+        /* 徽标 */
+        .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 0.75rem; font-weight: 600; }
+        .badge-long { background: #d4edda; color: #155724; }
+        .badge-short { background: #f8d7da; color: #721c24; }
+        .badge-watch { background: #e2e3e5; color: #383d41; }
+
+        /* 复盘/结果单元格 */
+        .ana-reason-cell { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #666; font-size: 0.8rem; }
+        .ana-review-cell { font-size: 0.8rem; line-height: 1.5; white-space: nowrap; }
+        .ana-hit { color: #28a745; font-weight: 600; }
+        .ana-miss { color: #dc3545; font-weight: 600; }
+        .ana-pending { color: #999; }
+        .ana-open { color: #b8860b; font-weight: 600; }
+        .action-btns { display: flex; gap: 6px; }
+        .empty-state { text-align: center; padding: 34px 16px; color: var(--text-muted); }
+
+        /* ============ 批量快照矩阵弹窗：88vw 居中 overlay，长字段不截断 ============ */
+        #ana-batch-box {
+            position: fixed; inset: 0; z-index: 9998; display: flex;
+            align-items: center; justify-content: center;
+            background: rgba(0,0,0,0.45); padding: 3vh 0;
+        }
+        .ana-batch-modal {
+            width: 88vw; max-width: 88vw; max-height: 92vh;
+            background: var(--card-bg); border-radius: 12px; overflow: hidden;
+            display: flex; flex-direction: column; box-shadow: 0 12px 40px rgba(0,0,0,0.3);
+        }
+        .ana-batch-head { display: flex; align-items: center; gap: 12px; padding: 14px 18px; border-bottom: 1px solid var(--border-color); background: #f8f9fa; }
+        .ana-batch-head strong { font-size: 1rem; }
+        .ana-batch-head .ana-spacer { flex: 1; }
+        .ana-batch-close { border: none; background: transparent; font-size: 1.2rem; line-height: 1; cursor: pointer; color: #999; padding: 2px 6px; border-radius: 4px; }
+        .ana-batch-close:hover { background: #eee; color: #333; }
+        .ana-batch-body { padding: 0; overflow: auto; flex: 1; }
+        .ana-batch-body .ana-table { min-width: 1100px; }
+        .ana-batch-foot { display: flex; align-items: center; gap: 10px; padding: 12px 18px; border-top: 1px solid var(--border-color); background: #fbfcfe; }
+        #ana-batch-msg { color: #999; font-size: 0.82rem; flex: 1; }
+        .ana-batch-reason { width: 100%; }
+
+        /* 极窄屏：工具条与筛选栏自然换行，表格横向滚动（.ana-table-wrap 已支持） */
+        @media (max-width: 640px) {
+            .ana-page { width: 96vw; max-width: 96vw; }
+            .ana-batch-modal { width: 96vw; max-width: 96vw; }
+        }
+    </style>
+</head>
+<body>
+    {% include 'nav.html' %}
+
+    <div class="ana-page">
+        <div class="ana-head">
+            <h1>📝 实盘分析记录</h1>
+            <p class="ana-sub">手动快照币种实时价格与长短周期方向，记录个人涨跌判断与分析原因；记录满「N×短周期」后自动回填近/远窗口价格用于命中率复盘</p>
+        </div>
+
+        <!-- 顶部工具条：币种选择 + 快照操作 + 实时计时 -->
+        <div class="ana-card">
+            <div class="ana-toolbar">
+                <label>币种
+                    <select id="ana-inst" class="config-input ana-sel">
+                        <option value="">加载中...</option>
+                    </select>
+                </label>
+                <button id="ana-snap-btn" class="m-btn m-btn-primary" onclick="genAnalysisSnapshot()">📸 生成快照</button>
+                <button id="ana-batch-btn" class="m-btn m-btn-success" onclick="genBatchSnapshot(this)">🚀 一键批量快照</button>
+                <button class="m-btn m-btn-secondary m-btn-sm" onclick="loadAnalysisRecords()" title="重新拉取分析记录列表，并顺带回填已到期的近/远窗口复盘价格（不影响币种下拉，币种每次进入页面已自动同步）">🔄 刷新记录</button>
+                <span class="ana-spacer"></span>
+                <span id="ana-snap-ts"></span>
+            </div>
+
+            <!-- 单币快照展示与录入区 -->
+            <div id="ana-snapshot-box" style="display:none">
+                <div class="ana-snap-grid" id="ana-snap-grid"></div>
+                <div class="ana-judgment-row">
+                    <span style="color:#555">个人判断：</span>
+                    <label><input type="radio" name="ana-judgment" value="rise"> 涨</label>
+                    <label><input type="radio" name="ana-judgment" value="fall"> 跌</label>
+                    <label><input type="radio" name="ana-judgment" value="watch" checked> 观望</label>
+                </div>
+                <div class="ana-judgment-row">
+                    <span style="color:#555">结构价计划(可选)：</span>
+                    <label>目标 <input type="number" id="ana-target" class="config-input" step="any" min="0" style="width:110px" placeholder="目标价"></label>
+                    <label>失效 <input type="number" id="ana-invalid" class="config-input" step="any" min="0" style="width:110px" placeholder="失效价"></label>
+                    <button type="button" class="m-btn m-btn-secondary m-btn-sm" onclick="anaPrefillPlan('boll')" title="按当前判断预填：看涨=上轨目标/下轨失效，看跌反之">BOLL轨</button>
+                    <button type="button" class="m-btn m-btn-secondary m-btn-sm" onclick="anaPrefillPlan('theta')" title="按 快照价±θ(0.3×ATR，地板0.1%) 预填噪声带">±θ预填</button>
+                    <span style="font-size:0.74rem;color:#999">仅涨/跌可挂；先触目标=win(+R)、先触失效=loss，不受时间窗约束</span>
+                </div>
+                <textarea id="ana-reason" class="ana-reason-input" placeholder="分析原因（可选）：为什么这样判断？趋势结构 / 指标信号 / 消息面 ..."></textarea>
+                <div style="margin-top:10px;display:flex;gap:8px">
+                    <button class="m-btn m-btn-success m-btn-sm" onclick="saveAnalysisRecord()">💾 保存记录</button>
+                    <button class="m-btn m-btn-secondary m-btn-sm" onclick="hideAnalysisSnapshot()">取消</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 命中率统计卡片 -->
+        <div class="ana-card">
+            <div class="ana-card-title">📊 命中率统计</div>
+            <div class="ana-stats" id="ana-stats"></div>
+            <div id="ana-confusion" style="margin-top:14px"></div>
+        </div>
+
+        <!-- 筛选栏 + 记录列表 -->
+        <div class="ana-card">
+            <div class="ana-filter" style="margin-bottom:12px">
+                <label>币种
+                    <select id="ana-filter-inst" class="config-input" style="width:auto">
+                        <option value="">全部</option>
+                    </select>
+                </label>
+                <label>判断
+                    <select id="ana-filter-judgment" class="config-input" style="width:auto">
+                        <option value="">全部</option>
+                        <option value="rise">涨</option>
+                        <option value="fall">跌</option>
+                        <option value="watch">观望</option>
+                    </select>
+                </label>
+                <label>开始 <input type="date" id="ana-filter-start" class="config-input" style="width:auto"></label>
+                <label>结束 <input type="date" id="ana-filter-end" class="config-input" style="width:auto"></label>
+                <button class="m-btn m-btn-primary m-btn-sm" onclick="loadAnalysisRecords()">🔍 查询</button>
+                <span class="ana-spacer"></span>
+                <button class="m-btn m-btn-danger m-btn-sm" onclick="batchDeleteAnalysisRecords(this)" title="删除列表里已勾选的分析记录（配合表头复选框全选）">🗑 批量删除</button>
+            </div>
+
+            <div class="ana-table-wrap">
+                <table class="ana-table">
+                    <colgroup>
+                        <col style="width:3%"><!-- 勾选 -->
+                        <col style="width:10%"><!-- 时间 -->
+                        <col style="width:7%"><!-- 币种 -->
+                        <col style="width:6%"><!-- 快照价 -->
+                        <col style="width:6%"><!-- 短周期 -->
+                        <col style="width:8%"><!-- 长周期 -->
+                        <col style="width:5%"><!-- 个人判断 -->
+                        <col style="width:13%"><!-- 分析原因 -->
+                        <col style="width:7%"><!-- 近窗口端点 -->
+                        <col style="width:7%"><!-- 远窗口端点 -->
+                        <col style="width:11%"><!-- 先触碰判定 -->
+                        <col style="width:6%"><!-- 结构价计划 -->
+                        <col style="width:6%"><!-- 操作 -->
+                    </colgroup>
+                    <thead>
+                        <tr>
+                            <th style="text-align:center"><input type="checkbox" id="ana-check-all" onclick="toggleAllAnaRows(this)" title="全选/全不选"></th>
+                            <th>时间</th><th>币种</th><th>快照价</th><th>短周期</th><th>长周期</th>
+                            <th>个人判断</th><th>分析原因</th><th id="ana-th-near">近窗口后</th><th id="ana-th-far">远窗口后</th><th title="窗口内K线路径谁先触 P0±θ 带（计分主口径）；◔=横盘/双触未兑现">先触碰</th><th title="结构价计划：先触目标=win(+R)/先触失效=loss(-1R)，无时间窗约束">结构价</th><th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="ana-tbody">
+                        <tr><td colspan="13" class="empty-state">加载中...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- 批量快照矩阵弹窗：一键生成全部币种快照 → 逐行填判断 → 一次性提交（88vw 居中） -->
+    <div id="ana-batch-box" style="display:none" onclick="if(event.target===this)hideBatchSnapshot()">
+        <div class="ana-batch-modal">
+            <div class="ana-batch-head">
+                <strong>🚀 批量快照矩阵（共 <span id="ana-batch-count">0</span> 币）</strong>
+                <span class="ana-spacer"></span>
+                <button class="m-btn m-btn-primary m-btn-sm" onclick="toggleAllBatchRows(true)">全选</button>
+                <button class="m-btn m-btn-secondary m-btn-sm" onclick="toggleAllBatchRows(false)">全不选</button>
+                <button class="ana-batch-close" onclick="hideBatchSnapshot()" title="关闭">✕</button>
+            </div>
+            <div class="ana-batch-body">
+                <table class="ana-table">
+                    <colgroup>
+                        <col style="width:44px"><!-- 保存 -->
+                        <col style="width:9%"><!-- 币种 -->
+                        <col style="width:8%"><!-- 实时价 -->
+                        <col style="width:11%"><!-- 短周期 -->
+                        <col style="width:14%"><!-- 长周期 -->
+                        <col style="width:7%"><!-- ATR% -->
+                        <col style="width:16%"><!-- BOLL 上/中/下 -->
+                        <col style="width:14%"><!-- 个人判断 -->
+                        <col><!-- 分析原因（弹性占满剩余，长文本可编辑不截断） -->
+                    </colgroup>
+                    <thead>
+                        <tr>
+                            <th>保存</th><th>币种</th><th>实时价</th><th>短周期</th><th>长周期</th>
+                            <th>ATR%</th><th>BOLL 上/中/下</th><th>个人判断</th><th>分析原因</th>
+                        </tr>
+                    </thead>
+                    <tbody id="ana-batch-tbody"></tbody>
+                </table>
+            </div>
+            <div class="ana-batch-foot">
+                <span id="ana-batch-msg"></span>
+                <button class="m-btn m-btn-success m-btn-sm" onclick="saveBatchSnapshots()">💾 批量保存勾选行</button>
+                <button class="m-btn m-btn-secondary m-btn-sm" onclick="hideBatchSnapshot()">关闭</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast 提示（showToast 依赖 #toast + style.css 的 .task-toast） -->
+    <div class="task-toast" id="toast"></div>
+
+    <script src="{{ url_for('static', filename='js/mdialog.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/analysis.js') }}"></script>
+    <script>
+        // 独立页：加载即初始化（拉币种列表 + 首屏记录）；Tab 版仍由 switchTab 惰性触发
+        document.addEventListener('DOMContentLoaded', function () {
+            if (typeof initAnalysisTab === 'function') { initAnalysisTab(); }
+        });
+    </script>
+</body>
+</html>

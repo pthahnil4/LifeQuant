@@ -1,0 +1,178 @@
+{% extends "base.html" %}
+{% set active_page = "lifecycle" %}
+{% block title %}进程生命周期 · OpsCenter{% endblock %}
+{% block crumb_group %}系统健康{% endblock %}
+{% block crumb_page %}进程生命周期{% endblock %}
+
+{% block content %}
+<div class="page-head fade-in">
+  <div class="page-head__top">
+    <div>
+      <h1 class="page-head__title">进程生命周期时间线</h1>
+      <p class="page-head__desc">
+        只读解析 <span class="text-mono">boot_ledger.jsonl</span> + <span class="text-mono">proc_exit.json</span>
+        · 复盘重启归因与自愈记录，还原"为什么重启"
+      </p>
+    </div>
+    <div class="page-head__actions">
+      {% if lc.running_for and lc.running_for != '—' %}<span class="kv">♻️ 已运行 {{ lc.running_for }}</span>{% endif %}
+      <a class="btn btn--primary" href="/">← 返回总览</a>
+    </div>
+  </div>
+</div>
+
+{% if not lc.source_available %}
+<div class="banner banner--info fade-in">ℹ️ 未读到启动台账。请确认 <span class="text-mono">{{ log_dir }}\boot_ledger.jsonl</span> 是否存在。</div>
+{% endif %}
+
+<!-- KPI 磁贴 -->
+<div class="grid grid--cols-12">
+  <div class="col-3">
+    <div class="tile tile--hover fade-in">
+      <div class="tile__glow"></div>
+      <div class="tile__top"><span class="tile__label">累计启动</span>
+        <span class="tile__icon tile__icon--info">🚀</span></div>
+      <div class="tile__value">{{ lc.total }}<small>次</small></div>
+      <div class="tile__foot">boot_ledger 记录条数</div>
+    </div>
+  </div>
+
+  <div class="col-3">
+    <div class="tile tile--hover fade-in" style="animation-delay:.05s">
+      <div class="tile__glow"></div>
+      <div class="tile__top"><span class="tile__label">今日重启</span>
+        <span class="tile__icon tile__icon--{{ 'success' if lc.today_restarts == 0 else 'warning' }}">♻️</span></div>
+      <div class="tile__value">{{ lc.today_restarts }}<small>次</small></div>
+      <div class="tile__foot">{% if lc.today_restarts == 0 %}今日零重启{% else %}关注异常重启{% endif %}</div>
+    </div>
+  </div>
+
+  <div class="col-3">
+    <div class="tile tile--hover fade-in" style="animation-delay:.1s">
+      <div class="tile__glow"></div>
+      <div class="tile__top"><span class="tile__label">当前运行时长</span>
+        <span class="tile__icon tile__icon--success">⏱️</span></div>
+      <div class="tile__value" style="font-size:var(--fs-xl)">{{ lc.running_for }}</div>
+      <div class="tile__foot">{% if lc.running_since %}自 {{ lc.running_since }}{% else %}—{% endif %}</div>
+    </div>
+  </div>
+
+  <div class="col-3">
+    <div class="tile tile--hover fade-in" style="animation-delay:.15s">
+      <div class="tile__glow"></div>
+      <div class="tile__top"><span class="tile__label">最近退出归因</span>
+        <span class="tile__icon tile__icon--{{ lc.latest_exit.level if lc.latest_exit else 'neutral' }}">🔚</span></div>
+      <div class="tile__value" style="font-size:var(--fs-xl)">{% if lc.latest_exit %}{{ lc.latest_exit.label }}{% else %}无标记{% endif %}</div>
+      <div class="tile__foot">{% if lc.latest_exit %}{{ lc.latest_exit.ts }}{% else %}未见 proc_exit.json{% endif %}</div>
+    </div>
+  </div>
+</div>
+
+<!-- 启动归因时间线 + 归因分布/退出标记 -->
+<div class="grid grid--cols-12 mt-5">
+  <div class="col-8">
+    <div class="card fade-in">
+      <div class="card__head"><div><div class="card__title">♻️ 启动归因时间线</div>
+        <div class="card__subtitle">新 → 旧 · 六态归因口径与交易系统一致</div></div>
+        <span class="kv">共 {{ lc.total }} 条</span></div>
+      <div class="card__body">
+        {% if lc.events %}
+        <div class="timeline">
+          {% for e in lc.events %}
+          <div class="timeline__item">
+            <span class="timeline__dot timeline__dot--{{ e.level }}"></span>
+            <div class="timeline__title">{{ e.label }}
+              <span class="badge badge--{{ e.level }}">{{ e.reason }}</span>
+              {% if e.consumed %}<span class="badge badge--neutral">已消费</span>{% endif %}
+            </div>
+            <div class="timeline__meta">
+              {{ e.ts }} · seq {{ e.seq }}{% if e.pid %} · PID {{ e.pid }}{% endif %}
+              {%- if e.lag_sec is not none %} · 心跳滞后 {{ e.lag_sec }}s{% endif %}
+            </div>
+            <div class="timeline__meta text-dim">
+              {{ e.desc }}{%- if e.prev_exit %} · 上次退出：<b>{{ e.prev_exit_label }}</b>{% endif %}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty"><span class="empty__icon">🗒️</span>暂无启动台账</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-4">
+    <div class="stack">
+      <div class="card fade-in" style="animation-delay:.05s">
+        <div class="card__head"><div><div class="card__title">📊 归因分布</div><div class="card__subtitle">累计 {{ lc.total }} 次启动</div></div></div>
+        <div class="card__body">
+          {% if lc.distribution %}
+            {% set mx = lc.distribution|map(attribute='count')|max %}
+            <div class="dist">
+              {% for d in lc.distribution %}
+              <div class="dist__row">
+                <span class="dist__label">{{ d.label }}</span>
+                <span class="dist__track"><span class="dist__fill" style="width:{{ (d.count / mx * 100)|round }}%;background:var(--{{ d.level }})"></span></span>
+                <span class="dist__count">{{ d.count }}</span>
+              </div>
+              {% endfor %}
+            </div>
+          {% else %}
+          <div class="empty"><span class="empty__icon">📊</span>暂无归因数据</div>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="card fade-in" style="animation-delay:.1s">
+        <div class="card__head"><div><div class="card__title">🔚 最近退出标记</div><div class="card__subtitle"><span class="text-mono">proc_exit.json</span></div></div>
+          {% if lc.latest_exit %}<span class="badge badge--{{ lc.latest_exit.level }}">{{ lc.latest_exit.label }}</span>{% endif %}</div>
+        <div class="card__body">
+          {% if lc.latest_exit %}
+          <div class="list-row" style="border:none;padding-top:0"><div class="list-row__main"><div class="list-row__title">退出时间</div><div class="list-row__sub text-mono">{{ lc.latest_exit.ts }}</div></div></div>
+          {% if lc.latest_exit.pid %}<div class="list-row" style="border:none"><div class="list-row__main"><div class="list-row__title">进程 PID</div><div class="list-row__sub text-mono">{{ lc.latest_exit.pid }}</div></div></div>{% endif %}
+          {% if lc.latest_exit.source %}<div class="list-row" style="border:none"><div class="list-row__main"><div class="list-row__title">来源</div><div class="list-row__sub">{{ lc.latest_exit.source }}</div></div></div>{% endif %}
+          {% if lc.latest_exit.note %}<div class="list-row" style="border:none"><div class="list-row__main"><div class="list-row__title">备注</div><div class="list-row__sub">{{ lc.latest_exit.note }}</div></div></div>{% endif %}
+          <div class="list-row" style="border:none"><div class="list-row__main"><div class="list-row__title">是否已被接回消费</div>
+            <div class="list-row__sub">{{ ('已消费 · ' ~ lc.latest_exit.consumed_at) if lc.latest_exit.consumed else '未消费（下次启动将据此归因）' }}</div></div></div>
+          {% else %}
+          <div class="empty"><span class="empty__icon">✅</span>无待处理退出标记</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 启动台账明细表 -->
+<div class="grid grid--cols-12 mt-5">
+  <div class="col-12">
+    <div class="card fade-in">
+      <div class="card__head"><div><div class="card__title">🗂️ 启动台账明细</div><div class="card__subtitle">逐条还原重启上下文</div></div></div>
+      <div class="card__body">
+        {% if lc.events %}
+        <div class="table-wrap">
+          <table class="table">
+            <thead><tr><th>Seq</th><th>时间</th><th>归因</th><th>上次退出</th><th>心跳滞后</th><th>PID</th></tr></thead>
+            <tbody>
+              {% for e in lc.events %}
+              <tr>
+                <td class="table__mono">{{ e.seq }}</td>
+                <td class="table__mono">{{ e.ts }}</td>
+                <td><span class="badge badge--{{ e.level }}">{{ e.label }}</span></td>
+                <td>{{ e.prev_exit_label if e.prev_exit else '—' }}</td>
+                <td class="table__mono">{{ (e.lag_sec ~ 's') if e.lag_sec is not none else '—' }}</td>
+                <td class="table__mono">{{ e.pid or '—' }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="empty"><span class="empty__icon">🗂️</span>暂无台账记录</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

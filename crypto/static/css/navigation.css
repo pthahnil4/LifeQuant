@@ -1,0 +1,223 @@
+/* ================================================================
+   导航自定义管理 —— 前端样式
+   ----------------------------------------------------------------
+   基础 .main-nav / .nav-inner / .nav-link 仍由 style.css 提供；
+   本文件只补「分类下拉 / 更多分组 / 移动端抽屉 / 拖拽编辑态 / 管理页」，
+   全部以 nav- / nvs- 前缀限定作用域，不污染业务页面样式。
+   分类菜单与提示层放到独立浮层容器 #navOverlay，规避 .nav-links 的 overflow 裁剪。
+   ================================================================ */
+
+/* 首屏防闪：JS 引导期（<html> 带 .nav-booting）隐藏服务端默认平铺兜底，
+   等 navigation.js 首次 render 完成后由 JS 移除该类再揭示，杜绝「一排式→分类」变脸。
+   用 visibility 而非 display，保留占位、避免品牌区与操作按钮在引导期跳动。
+   无 JS 时该类不会被加上，兜底链接照常可见。 */
+html.nav-booting .nav-links { visibility: hidden; }
+
+/* 顶层项在编辑态下留出「把手」与操作按钮空间 */
+.main-nav.nav-editing .nav-link,
+.main-nav.nav-editing .nav-group-btn {
+    outline: 1px dashed #b9c6da;
+    outline-offset: -1px;
+    cursor: default;
+}
+.main-nav.nav-editing { background: #fbfdff; }
+
+/* 拖拽把手：仅编辑态可见，平时不显示，避免误触 */
+.nav-drag-handle {
+    display: none;
+    margin-right: 4px;
+    color: #94a3b8;
+    cursor: grab;
+    font-size: 0.9em;
+    user-select: none;
+}
+.main-nav.nav-editing .nav-drag-handle { display: inline-block; }
+.nav-item.dragging { opacity: .45; }
+
+/* 分类（group）在顶层呈现为一个按钮，点击展开子项 */
+.nav-group { position: relative; display: inline-flex; align-items: center; flex-shrink: 0; }
+.nav-group-btn {
+    display: inline-flex; align-items: center; gap: 3px;
+    padding: 7px 10px; border: none; background: transparent; border-radius: 6px;
+    color: #666; font-size: .86rem; white-space: nowrap; cursor: pointer;
+    transition: background .2s, color .2s;
+}
+.nav-group-btn:hover { background: #f0f4ff; color: var(--primary-color, #2f6fed); }
+.nav-group-btn .nav-caret { font-size: .6rem; transition: transform .2s; }
+.nav-group.open .nav-group-btn { background: #f0f4ff; color: var(--primary-color, #2f6fed); }
+.nav-group.open .nav-group-btn .nav-caret { transform: rotate(180deg); }
+.nav-group.contains-active .nav-group-btn { color: var(--primary-color, #2f6fed); font-weight: 600; }
+
+/* 外链角标（target=_blank 或站外） */
+.nav-ext-mark { font-size: .7em; margin-left: 3px; opacity: .7; }
+
+/* 顶层直达计数上限：由 JS 依 desktop_max_visible 与实测宽度决定 */
+
+/* ---- 浮层菜单（分类子项 & 提示），脱离 .nav-links 裁剪 ---- */
+.nav-overlay { position: fixed; inset: 0; z-index: 900; pointer-events: none; }
+.nav-popup {
+    position: absolute; pointer-events: auto; min-width: 180px; max-width: 320px;
+    background: #fff; border: 1px solid #e8e8e8; border-radius: 10px;
+    box-shadow: 0 10px 30px rgba(0,0,0,.14); padding: 6px;
+    max-height: calc(100vh - 70px); overflow: auto;
+}
+.nav-popup-item {
+    display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-radius: 7px;
+    color: #444; text-decoration: none; font-size: .88rem; white-space: nowrap;
+}
+.nav-popup-item:hover { background: #f0f4ff; color: var(--primary-color, #2f6fed); }
+.nav-popup-item.active { background: var(--primary-color, #2f6fed); color: #fff; }
+
+/* ---- 「更多」下拉：与分类共用浮层，纵向展开分组 ---- */
+.nav-more { position: relative; flex-shrink: 0; }
+.nav-more-menu {
+    position: absolute; top: calc(100% + 6px); right: 0; display: none;
+    min-width: 200px; max-width: 320px; background: #fff; border: 1px solid #e8e8e8;
+    border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,.14); padding: 6px;
+    flex-direction: column; gap: 2px; z-index: 950; max-height: 70vh; overflow: auto;
+}
+.nav-more.open .nav-more-menu { display: flex; }
+.nav-more-section-label { padding: 6px 10px 2px; font-size: .74rem; color: #94a3b8; font-weight: 700; }
+
+/* ---- 导航操作按钮（整理/菜单） ---- */
+.nav-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; margin-left: 6px; }
+.nav-tool-btn {
+    display: inline-flex; align-items: center; gap: 4px; padding: 6px 10px; border-radius: 6px;
+    border: 1px solid transparent; background: transparent; color: #666; font-size: .82rem; cursor: pointer;
+    white-space: nowrap;
+}
+.nav-tool-btn:hover { background: #f0f4ff; color: var(--primary-color, #2f6fed); }
+.nav-tool-btn.is-active { background: var(--primary-color, #2f6fed); color: #fff; }
+.nav-save-dot { width: 8px; height: 8px; border-radius: 50%; background: #f59e0b; display: none; }
+.nav-tool-btn.has-pending .nav-save-dot { display: inline-block; }
+
+/* 保存/同步状态提示条 */
+.nav-toast {
+    position: fixed; top: 60px; right: 16px; z-index: 960; padding: 8px 14px; border-radius: 8px;
+    font-size: .82rem; color: #fff; box-shadow: 0 6px 20px rgba(0,0,0,.18);
+    background: #16a34a; opacity: 0; transform: translateY(-8px); transition: opacity .25s, transform .25s;
+    pointer-events: none; max-width: 70vw;
+}
+.nav-toast.show { opacity: 1; transform: translateY(0); }
+.nav-toast.err { background: #dc2626; }
+.nav-toast.warn { background: #d97706; }
+
+/* ---- 移动端抽屉 ---- */
+.nav-menu-btn { display: none; }
+.nav-drawer {
+    position: fixed; top: 0; right: 0; bottom: 0; width: min(80vw, 320px); z-index: 970;
+    background: #fff; box-shadow: -6px 0 24px rgba(0,0,0,.18); transform: translateX(100%);
+    transition: transform .24s ease; overflow-y: auto; padding: 14px 12px calc(20px + env(safe-area-inset-bottom));
+    display: flex; flex-direction: column; gap: 4px;
+}
+.nav-drawer.open { transform: translateX(0); }
+.nav-drawer-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.nav-drawer-close { border: none; background: transparent; font-size: 1.4rem; cursor: pointer; color: #666; }
+.nav-drawer-item {
+    display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 10px; border-radius: 8px;
+    text-decoration: none; color: #333; font-size: .95rem;
+}
+.nav-drawer-item:hover, .nav-drawer-item.active { background: #f0f4ff; }
+.nav-drawer-item.active { background: var(--primary-color, #2f6fed); color: #fff; }
+.nav-drawer-group-label {
+    display: flex; align-items: center; justify-content: space-between; min-height: 44px; padding: 0 10px;
+    font-weight: 600; color: #475569; cursor: pointer; border-radius: 8px;
+}
+.nav-drawer-group-label:hover { background: #f1f5f9; }
+.nav-drawer-sub { display: none; flex-direction: column; padding-left: 10px; }
+.nav-drawer-group.open .nav-drawer-sub { display: flex; }
+.nav-scrim { position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 965; opacity: 0; transition: opacity .2s; }
+.nav-scrim.show { opacity: 1; }
+
+/* ---- 窄屏：切换为紧凑顶栏 + 抽屉 ---- */
+@media (max-width: 767px) {
+    .nav-links { display: none !important; }
+    .nav-more { display: none !important; }
+    .nav-menu-btn { display: inline-flex; }
+    .nav-brand { font-size: .98rem; }
+}
+
+/* ---- 拖拽编辑提示 ---- */
+.nav-edit-hint {
+    font-size: .78rem; color: #b45309; background: #fef3c7; border-radius: 6px;
+    padding: 2px 8px; margin-left: 6px;
+}
+
+/* ================================================================
+   导航配置管理页（/navigation-settings）：nvs- 前缀
+   ================================================================ */
+.nvs-page { max-width: 1180px; margin: 20px auto 60px; padding: 0 20px; box-sizing: border-box; }
+.nvs-head h1 { margin: 0 0 4px; font-size: 1.5rem; }
+.nvs-head .nvs-sub { color: #64748b; font-size: .88rem; margin: 0 0 16px; }
+.nvs-toolbar { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+.nvs-btn {
+    padding: 7px 12px; border-radius: 8px; border: 1px solid #dbe3ef; background: #fff; color: #334155;
+    font-size: .85rem; cursor: pointer;
+}
+.nvs-btn:hover { border-color: #b9c6da; }
+.nvs-btn.primary { background: var(--primary-color, #2f6fed); color: #fff; border-color: transparent; }
+.nvs-btn.danger { color: #dc2626; border-color: #fecaca; }
+.nvs-btn:disabled { opacity: .5; cursor: not-allowed; }
+
+.nvs-layout { display: grid; grid-template-columns: minmax(0,1fr) 340px; gap: 16px; align-items: start; }
+@media (max-width: 900px) { .nvs-layout { grid-template-columns: minmax(0,1fr); } }
+
+.nvs-card { background: #fff; border: 1px solid #e6ebf2; border-radius: 12px; padding: 14px 16px; box-shadow: 0 2px 6px rgba(0,0,0,.04); }
+.nvs-card h2 { margin: 0 0 10px; font-size: 1rem; }
+
+/* 树形列表 */
+.nvs-tree { list-style: none; margin: 0; padding: 0; }
+.nvs-row {
+    display: flex; align-items: center; gap: 8px; padding: 8px 6px; border-radius: 8px; border: 1px solid transparent;
+}
+.nvs-row:hover { background: #f8fafc; }
+.nvs-row.selected { background: #eff6ff; border-color: #bfdbfe; }
+.nvs-row.grouphdr { font-weight: 600; }
+.nvs-row.child { padding-left: 30px; }
+.nvs-row .nvs-grip { cursor: grab; color: #94a3b8; }
+.nvs-row .nvs-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nvs-row .nvs-url { color: #94a3b8; font-size: .78rem; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nvs-tag { font-size: .68rem; padding: 1px 6px; border-radius: 8px; background: #f1f5f9; color: #64748b; }
+.nvs-tag.hidden { background: #fef3c7; color: #b45309; }
+.nvs-tag.external { background: #ecfeff; color: #0e7490; }
+.nvs-mini-btn { border: none; background: transparent; cursor: pointer; color: #64748b; padding: 2px 6px; border-radius: 6px; }
+.nvs-mini-btn:hover { background: #eef2f7; color: #0f172a; }
+.nvs-mini-btn.del:hover { color: #dc2626; }
+
+/* 详情表单 */
+.nvs-form label { display: block; font-size: .8rem; color: #475569; margin: 10px 0 4px; }
+.nvs-form input[type=text], .nvs-form select {
+    width: 100%; box-sizing: border-box; padding: 8px 10px; border: 1px solid #dbe3ef; border-radius: 8px; font-size: .88rem;
+}
+.nvs-form .nvs-check { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: .85rem; color: #334155; }
+.nvs-form-actions { margin-top: 16px; display: flex; gap: 8px; }
+.nvs-empty { color: #94a3b8; font-size: .86rem; padding: 20px 4px; }
+
+/* 状态栏 */
+.nvs-statusbar {
+    position: sticky; bottom: 0; margin-top: 16px; padding: 10px 14px; border-radius: 10px;
+    background: #0f172a; color: #e2e8f0; font-size: .82rem; display: flex; align-items: center; gap: 12px;
+}
+.nvs-statusbar .dirty { color: #fbbf24; }
+.nvs-statusbar .saved { color: #4ade80; }
+.nvs-statusbar .err { color: #f87171; }
+.nvs-statusbar .spacer { flex: 1; }
+
+/* 预览 */
+.nvs-preview { border: 1px dashed #cbd5e1; border-radius: 10px; padding: 10px; background: #f8fafc; }
+.nvs-preview-cap { font-size: .72rem; color: #94a3b8; margin-bottom: 6px; }
+.nvs-pv-bar { display: flex; flex-wrap: wrap; gap: 6px; }
+.nvs-pv-item { font-size: .78rem; padding: 4px 8px; border-radius: 6px; background: #fff; border: 1px solid #e2e8f0; color: #475569; }
+.nvs-pv-item.grp { background: #eef2ff; border-color: #c7d2fe; }
+
+/* 图标选择器 */
+.nvs-icon-grid { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.nvs-icon-opt { width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; border: 1px solid #e2e8f0; border-radius: 8px; cursor: pointer; background: #fff; font-size: 1rem; }
+.nvs-icon-opt.sel { border-color: var(--primary-color, #2f6fed); box-shadow: 0 0 0 2px rgba(47,111,237,.15); }
+
+/* 对话框（恢复入口 / 二次确认） */
+.nvs-dialog { border: none; border-radius: 14px; padding: 0; max-width: 92vw; width: 720px; box-shadow: 0 20px 60px rgba(0,0,0,.3); }
+.nvs-dialog::backdrop { background: rgba(15,23,42,.45); }
+.nvs-dialog-inner { padding: 18px 20px; max-height: 82vh; overflow: auto; }
+.nvs-dialog h2 { margin: 0 0 10px; }
+.nvs-dialog-foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }

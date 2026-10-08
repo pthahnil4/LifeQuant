@@ -1,0 +1,845 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>热量缺口管理 - LifeQuant</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="{{ url_for('static', filename='js/mdialog.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/echarts.min.js') }}"></script>
+    <style>
+        /* ============================================================
+           热量缺口管理页面 - 定制样式（自包含，不影响其他页面）
+           ============================================================ */
+        .calorie-page { max-width: 1280px; margin: 0 auto; padding: 24px 20px 48px; }
+        .calorie-page * { box-sizing: border-box; }
+
+        /* ---------- 页面头部横幅 ---------- */
+        .calorie-hero {
+            display: flex; justify-content: space-between; align-items: center; gap: 16px;
+            background: linear-gradient(135deg, #eaf4fd 0%, #f2f9ff 55%, #e9f7ef 100%);
+            border: 1px solid #d8eaf8; border-radius: 16px;
+            padding: 20px 26px; margin-bottom: 22px;
+        }
+        .calorie-hero .hero-main { display: flex; align-items: center; gap: 14px; }
+        .calorie-hero .hero-icon {
+            width: 52px; height: 52px; border-radius: 14px; flex-shrink: 0;
+            background: linear-gradient(135deg, #ff8a50, #ff5e62);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.6rem; box-shadow: 0 6px 16px rgba(255, 94, 98, 0.28);
+        }
+        .calorie-hero h1 {
+            margin: 0; font-size: 1.45rem; font-weight: 700; color: #1c3d5a; letter-spacing: .5px;
+        }
+        .calorie-hero .calorie-desc {
+            margin: 4px 0 0; font-size: .85rem; color: #5a7d99; line-height: 1.5;
+        }
+        .calorie-hero .hero-date {
+            display: flex; flex-direction: column; align-items: center; gap: 2px;
+            background: rgba(255, 255, 255, 0.75); border: 1px solid #d8eaf8;
+            border-radius: 12px; padding: 8px 18px; white-space: nowrap;
+        }
+        .calorie-hero .hero-date .hero-date-num {
+            font-size: 1.05rem; font-weight: 700; color: #0b5fa8; font-variant-numeric: tabular-nums;
+        }
+        .calorie-hero .hero-date .hero-date-label { font-size: .72rem; color: #7a95ad; }
+        /* 顶部『美食打卡点』入口按钮 */
+        .calorie-hero .hero-spot-link {
+            display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+            background: linear-gradient(135deg, #ff8a50, #ff5e62); color: #fff;
+            border-radius: 12px; padding: 10px 18px; text-decoration: none;
+            font-size: .88rem; font-weight: 700; letter-spacing: .5px;
+            box-shadow: 0 5px 14px rgba(255, 94, 98, 0.30);
+            transition: transform .2s ease, box-shadow .2s ease;
+        }
+        .calorie-hero .hero-spot-link:hover {
+            transform: translateY(-2px); box-shadow: 0 8px 20px rgba(255, 94, 98, 0.40);
+        }
+
+        /* ---------- 统计看板 ---------- */
+        .calorie-overview {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 12px; margin-bottom: 20px;
+        }
+        .ov-item {
+            position: relative; overflow: hidden;
+            background: var(--card-bg); border: 1px solid #eef2f7; border-radius: 14px;
+            padding: 14px 16px 12px; box-shadow: 0 2px 10px rgba(30, 60, 90, 0.06);
+            display: flex; flex-direction: column; gap: 3px;
+            transition: transform .2s ease, box-shadow .2s ease;
+        }
+        .ov-item:hover {
+            transform: translateY(-3px); box-shadow: 0 8px 20px rgba(30, 60, 90, 0.10);
+        }
+        .ov-item .ov-icon {
+            width: 32px; height: 32px; border-radius: 9px; margin-bottom: 6px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1rem; color: #fff; box-shadow: 0 3px 8px rgba(30, 60, 90, 0.15);
+        }
+        .ov-item .ov-num {
+            font-size: 1.45rem; font-weight: 700; line-height: 1.15;
+            color: #1c3d5a; font-variant-numeric: tabular-nums; word-break: break-all;
+        }
+        .ov-item .ov-label { font-size: .76rem; color: var(--text-muted); line-height: 1.35; }
+
+        /* 各卡片主题色 */
+        .ov-item.t-blue    .ov-icon { background: linear-gradient(135deg, #007bff, #4da3ff); }
+        .ov-item.t-purple  .ov-icon { background: linear-gradient(135deg, #6f42c1, #9b6fe0); }
+        .ov-item.t-teal    .ov-icon { background: linear-gradient(135deg, #17a2b8, #48c8d9); }
+        .ov-item.t-orange  .ov-icon { background: linear-gradient(135deg, #fd7e14, #ffab5e); }
+        .ov-item.t-pink    .ov-icon { background: linear-gradient(135deg, #e83e8c, #f47ab3); }
+        .ov-item.t-indigo  .ov-icon { background: linear-gradient(135deg, #6610f2, #8f4dfa); }
+        .ov-item.t-green   .ov-icon { background: linear-gradient(135deg, #28a745, #5ad177); }
+        .ov-item.t-red     .ov-icon { background: linear-gradient(135deg, #dc3545, #f26b78); }
+        .ov-item.t-gold    .ov-icon { background: linear-gradient(135deg, #d4a017, #f2cc5b); }
+
+        /* 预计达成日期卡：日期串较长，字号收敛避免折行 */
+        .ov-item #ov-eta-date { font-size: 1.12rem; white-space: nowrap; word-break: keep-all; }
+
+        /* 进度大卡：整行展示 */
+        .ov-item.ov-progress-card {
+            grid-column: 1 / -1;
+            flex-direction: row; align-items: center; gap: 18px;
+            padding: 16px 24px;
+            background: linear-gradient(120deg, #28a745, #20c997);
+            border: none; box-shadow: 0 6px 18px rgba(40, 167, 69, 0.22);
+        }
+        .ov-item.ov-progress-card:hover {
+            transform: translateY(-2px); box-shadow: 0 10px 24px rgba(40, 167, 69, 0.30);
+        }
+        .ov-progress-card .ov-icon {
+            background: rgba(255, 255, 255, 0.22); box-shadow: none;
+            width: 44px; height: 44px; font-size: 1.3rem; margin: 0; border-radius: 12px;
+        }
+        .ov-progress-card .ov-progress-info { display: flex; flex-direction: column; gap: 2px; }
+        .ov-progress-card .ov-num { color: #fff; font-size: 1.7rem; }
+        .ov-progress-card .ov-label { color: rgba(255, 255, 255, 0.85); font-size: .78rem; }
+        .ov-progress-card .ov-progress {
+            flex: 1; min-width: 120px; height: 10px;
+            background: rgba(255, 255, 255, 0.28); border-radius: 6px; overflow: hidden;
+        }
+        .ov-progress-card .ov-progress-bar {
+            height: 100%; background: linear-gradient(90deg, #ffffff, #e8fff3);
+            border-radius: 6px; transition: width .6s cubic-bezier(.4, 0, .2, 1);
+            box-shadow: 0 0 8px rgba(255, 255, 255, 0.5);
+        }
+
+        /* ---------- 通用面板 ---------- */
+        .form-panel, .history-panel {
+            background: var(--card-bg); border: 1px solid #eef2f7; border-radius: 16px;
+            box-shadow: 0 2px 10px rgba(30, 60, 90, 0.06); margin-bottom: 20px;
+        }
+        .form-panel { padding: 18px 24px 22px; }
+        .history-panel { padding: 18px 24px 22px; }
+
+        .panel-header {
+            display: flex; justify-content: space-between; align-items: center; gap: 12px;
+            padding-bottom: 14px; margin-bottom: 16px;
+            border-bottom: 1px solid #f0f3f7; cursor: pointer; user-select: none;
+        }
+        .panel-header.static { cursor: default; }
+        .panel-title {
+            display: flex; align-items: center; gap: 8px;
+            font-size: 1.02rem; font-weight: 700; color: #1c3d5a;
+        }
+        .panel-icon {
+            width: 30px; height: 30px; border-radius: 8px; flex-shrink: 0;
+            display: flex; align-items: center; justify-content: center; font-size: .95rem;
+        }
+        .form-panel .panel-icon { background: linear-gradient(135deg, #eaf4fd, #d6ecfd); }
+        .history-panel .panel-icon { background: linear-gradient(135deg, #eef7ee, #dcf0dd); }
+        .panel-title .arrow {
+            display: inline-flex; font-size: .7rem; color: #7a95ad;
+            transition: transform .25s ease; margin-left: 2px;
+        }
+        .panel-title .arrow.open { transform: rotate(180deg); }
+        .panel-hint { font-size: .78rem; color: #8aa3ba; font-weight: 400; }
+        .record-count {
+            font-size: .74rem; font-weight: 500; color: #5a7d99;
+            background: #f0f6fc; border-radius: 10px; padding: 2px 10px; margin-left: 6px;
+        }
+
+        /* ---------- 记录表单 ---------- */
+        .form-grid {
+            display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px 16px;
+        }
+        .form-group { display: flex; flex-direction: column; gap: 5px; }
+        .form-group label { font-size: .82rem; color: #5a7d99; font-weight: 600; }
+        .form-group input, .form-group select {
+            padding: 8px 12px; border: 1.5px solid #e2e9f1; border-radius: 9px;
+            font-size: .9rem; outline: none; background: #fbfdff;
+            transition: border-color .2s, box-shadow .2s, background .2s;
+        }
+        .form-group input:focus, .form-group select:focus {
+            border-color: var(--primary-color); background: #fff;
+            box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.12);
+        }
+        .form-group input::placeholder { color: #b3c2d2; }
+
+        /* ---------- 三餐区 ---------- */
+        .meal-row-3 {
+            display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px;
+            margin-top: 16px;
+        }
+        .meal-section {
+            position: relative;
+            border: 1px solid #e8edf3; border-radius: 12px; padding: 13px 14px;
+            background: #fbfdff; transition: border-color .2s, box-shadow .2s;
+        }
+        .meal-section:hover { border-color: #cfe0f0; box-shadow: 0 4px 14px rgba(30, 60, 90, 0.07); }
+        .meal-section::before {
+            content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+            border-radius: 12px 12px 0 0;
+        }
+        .meal-section[data-meal="breakfast"]::before { background: linear-gradient(90deg, #ffb347, #ffcc80); }
+        .meal-section[data-meal="lunch"]::before     { background: linear-gradient(90deg, #4facfe, #00c6fb); }
+        .meal-section[data-meal="dinner"]::before    { background: linear-gradient(90deg, #7f7fd5, #91a8ff); }
+        .meal-section .meal-title {
+            display: flex; align-items: center; gap: 8px;
+            font-size: .88rem; font-weight: 700; color: #1c3d5a; margin-bottom: 8px;
+        }
+        .meal-section .meal-total {
+            margin-left: auto; font-size: .78rem; font-weight: 600; color: var(--primary-color);
+            background: #eaf4fd; border-radius: 10px; padding: 2px 10px;
+            font-variant-numeric: tabular-nums;
+        }
+        .meal-foods {
+            display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px;
+            min-height: 30px; max-height: 96px; overflow-y: auto;
+        }
+        .meal-food-chip {
+            display: inline-flex; align-items: center; gap: 5px;
+            background: linear-gradient(135deg, #e8f4fd, #dff0fb);
+            border: 1px solid #c6e2f7; border-radius: 16px; padding: 3px 10px;
+            font-size: .8rem; animation: chipIn .18s ease;
+        }
+        @keyframes chipIn {
+            from { opacity: 0; transform: scale(.85); }
+            to   { opacity: 1; transform: scale(1); }
+        }
+        .meal-food-chip .chip-name { color: #0b5fa8; font-weight: 600; }
+        /* chip 内联数量：「食物名 × [数量] (单位)」，改数量实时重算该行总热量 */
+        .meal-food-chip .chip-qty-wrap {
+            display: inline-flex; align-items: center; gap: 1px;
+            color: #0b5fa8; font-weight: 600; font-size: .78rem;
+        }
+        .meal-food-chip .chip-qty {
+            width: 34px; border: none; border-radius: 6px; margin: 0 1px;
+            background: rgba(255, 255, 255, 0.75); color: #0b5fa8;
+            font-family: inherit; font-size: .74rem; font-weight: 600; text-align: center;
+            padding: 1px 2px; outline: none; appearance: textfield; -moz-appearance: textfield;
+        }
+        .meal-food-chip .chip-qty::-webkit-outer-spin-button,
+        .meal-food-chip .chip-qty::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+        .meal-food-chip .chip-qty:focus { box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25); background: #fff; }
+        .meal-food-chip .chip-unit { color: #7a95ad; font-size: .72rem; white-space: nowrap; }
+        .meal-food-chip .chip-cal {
+            color: #5a7d99; font-size: .74rem; background: rgba(255, 255, 255, 0.7);
+            border-radius: 8px; padding: 0 6px; font-variant-numeric: tabular-nums;
+        }
+        .meal-food-chip .chip-remove {
+            cursor: pointer; border: none; background: none; color: #9db4c8;
+            font-size: .78rem; padding: 0 2px; line-height: 1; border-radius: 50%;
+            transition: color .15s, background .15s;
+        }
+        .meal-food-chip .chip-remove:hover { color: #fff; background: var(--danger-color); }
+
+        .meal-add-row { display: flex; gap: 6px; align-items: center; }
+        .meal-add-row .food-input { flex: 1; position: relative; min-width: 0; }
+        .meal-add-row .qty-input { width: 50px; }
+        .meal-add-row .cal-input { width: 72px; }
+        .meal-add-row input {
+            padding: 7px 8px; border: 1.5px solid #e2e9f1; border-radius: 8px;
+            font-size: .85rem; outline: none; background: #fff;
+            transition: border-color .2s, box-shadow .2s;
+        }
+        .meal-add-row input:focus { border-color: var(--primary-color); box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.10); }
+        .meal-add-row input::placeholder { color: #b3c2d2; }
+
+        /* 食物搜索建议（下拉需浮出餐卡边界，z-index 高于相邻面板） */
+        .food-suggest {
+            position: absolute; top: calc(100% + 4px); left: 0; right: 0;
+            background: #fff; border: 1px solid #e2e9f1; border-radius: 10px;
+            max-height: 200px; overflow-y: auto; z-index: 1000; display: none;
+            box-shadow: 0 10px 28px rgba(30, 60, 90, 0.16); padding: 4px;
+        }
+        .food-suggest .s-item {
+            padding: 7px 10px; cursor: pointer; font-size: .84rem;
+            display: flex; justify-content: space-between; align-items: center; gap: 8px;
+            border-radius: 7px; transition: background .12s;
+        }
+        .food-suggest .s-item:hover, .food-suggest .s-item.active { background: #f0f7ff; }
+        .food-suggest .s-item .s-info { color: #8aa3ba; font-size: .76rem; white-space: nowrap; }
+        .food-suggest .s-item .s-name { color: #1c3d5a; font-weight: 500; }
+        .food-suggest .s-empty {
+            padding: 8px 10px; font-size: .78rem; color: #8aa3ba; line-height: 1.5;
+        }
+
+        /* ---------- 随笔入口（跳转独立『随笔复盘』模块） ---------- */
+        .journal-entry {
+            margin-top: 16px; display: flex; align-items: center; gap: 12px;
+            padding: 12px 16px; border-radius: 12px; text-decoration: none;
+            border: 1.5px dashed #cfe0f0; background: linear-gradient(135deg, #f7fbff, #f2f8fd);
+            transition: border-color .2s, box-shadow .2s, background .2s;
+        }
+        .journal-entry:hover {
+            border-color: var(--primary-color); background: #fff;
+            box-shadow: 0 4px 14px rgba(30, 60, 90, 0.08);
+        }
+        .journal-entry .je-icon { font-size: 1.3rem; flex-shrink: 0; }
+        .journal-entry .je-main { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+        .journal-entry .je-main b { font-size: .88rem; color: #1c3d5a; }
+        .journal-entry .je-main span { font-size: .76rem; color: #8aa3ba; }
+        .journal-entry .je-arrow { color: #8aa3ba; font-size: 1rem; flex-shrink: 0; }
+
+        /* ---------- 实时计算预览 ---------- */
+        .preview-card {
+            margin-top: 16px; border-radius: 12px; padding: 14px 18px 16px;
+            background: linear-gradient(135deg, #f7fafc, #eef5fb);
+            border: 1px dashed #c8d8ea;
+        }
+        .preview-card .preview-title {
+            font-size: .82rem; font-weight: 700; color: #5a7d99;
+            margin-bottom: 10px; display: flex; align-items: center; gap: 6px;
+        }
+        .preview-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px 12px;
+        }
+        .preview-item {
+            text-align: center; background: rgba(255, 255, 255, 0.8);
+            border-radius: 10px; padding: 9px 8px; border: 1px solid #e8eef5;
+        }
+        .preview-item .pv-label { font-size: .74rem; color: #7a95ad; margin-bottom: 3px; }
+        .preview-item .pv-value {
+            font-size: 1.08rem; font-weight: 700; color: #1c3d5a;
+            font-variant-numeric: tabular-nums;
+        }
+        .preview-item .pv-value.positive { color: var(--success-color); }
+        .preview-item .pv-value.negative { color: var(--danger-color); }
+        .preview-item.pv-deficit-item {
+            background: linear-gradient(135deg, #fff8ec, #fff1d6);
+            border-color: #f3dfb8;
+        }
+        .preview-item.pv-deficit-item .pv-value.positive {
+            background: linear-gradient(135deg, #28a745, #20c997); color: #fff;
+            border-radius: 10px; padding: 4px 10px; display: inline-block;
+            box-shadow: 0 3px 10px rgba(40, 167, 69, 0.25);
+        }
+        .preview-item.pv-deficit-item .pv-value.negative {
+            background: linear-gradient(135deg, #dc3545, #f26b78); color: #fff;
+            border-radius: 10px; padding: 4px 10px; display: inline-block;
+            box-shadow: 0 3px 10px rgba(220, 53, 69, 0.25);
+        }
+
+        /* ---------- 操作按钮区 ---------- */
+        .form-actions {
+            display: flex; gap: 10px; margin-top: 16px; align-items: center; flex-wrap: wrap;
+        }
+        .form-actions .btn-save {
+            padding: 9px 26px; font-size: .92rem; border-radius: 10px;
+            background: linear-gradient(135deg, #28a745, #20c997);
+            box-shadow: 0 4px 12px rgba(40, 167, 69, 0.25);
+        }
+        .form-actions .btn-save:hover { box-shadow: 0 6px 16px rgba(40, 167, 69, 0.35); }
+        .form-actions .action-divider {
+            width: 1px; height: 22px; background: #e2e9f1; margin: 0 4px;
+        }
+        #save-status {
+            font-size: .82rem; font-weight: 600; margin-left: auto;
+            background: #f0f6fc; color: #0b5fa8; border-radius: 10px;
+            padding: 4px 12px; transition: all .2s;
+        }
+        #save-status:empty { padding: 0; background: transparent; }
+
+        /* ---------- 历史记录表格 ---------- */
+        .history-table-wrap { overflow-x: auto; border-radius: 10px; border: 1px solid #eef2f7; }
+        .history-table {
+            width: 100%; border-collapse: collapse; font-size: .84rem; min-width: 1180px;
+        }
+        .history-table thead th {
+            background: linear-gradient(180deg, #f5f9fd, #eef4fa);
+            text-align: left; padding: 10px 12px;
+            border-bottom: 2px solid #dfe9f3;
+            font-weight: 600; font-size: .78rem; color: #41617f; white-space: nowrap;
+            letter-spacing: .3px;
+        }
+        .history-table tbody td {
+            padding: 9px 12px; border-bottom: 1px solid #f0f3f7;
+            white-space: nowrap; color: #33475b; vertical-align: middle;
+        }
+        .history-table tbody tr:nth-child(even) { background: #fafcfe; }
+        .history-table tbody tr { transition: background .12s; }
+        .history-table tbody tr:hover { background: #f0f7ff; }
+        .history-table tbody tr:last-child td { border-bottom: none; }
+        .history-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+        .history-table .positive { color: var(--success-color); font-weight: 600; }
+        .history-table .negative { color: var(--danger-color); font-weight: 600; }
+        .history-table .food-cell {
+            max-width: 130px; overflow: hidden; text-overflow: ellipsis;
+        }
+        .history-table .action-btn {
+            cursor: pointer; padding: 4px 8px; border-radius: 7px; font-size: .82rem;
+            border: 1px solid #e2e9f1; background: #fff; transition: all .15s;
+        }
+        .history-table .action-btn:hover { background: #f0f6fc; border-color: #c6e2f7; }
+        .history-table .action-btn.danger:hover {
+            background: #fdecee; border-color: #f5c6cb; color: var(--danger-color);
+        }
+
+        /* ---------- 空状态 ---------- */
+        .empty-state {
+            text-align: center; padding: 44px 20px; color: #8aa3ba;
+            border: 2px dashed #e2e9f1; border-radius: 12px; background: #fbfdff;
+        }
+        .empty-state .empty-icon { font-size: 2.6rem; margin-bottom: 10px; }
+        .empty-state .empty-text { font-size: .92rem; }
+
+        /* ---------- 食物库管理弹窗 ---------- */
+        .food-mgr-search { display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+        .food-mgr-search input, .food-mgr-search select {
+            padding: 8px 12px; border: 1.5px solid #e2e9f1; border-radius: 9px;
+            font-size: .86rem; outline: none; background: #fff;
+            transition: border-color .2s, box-shadow .2s;
+        }
+        .food-mgr-search input:focus, .food-mgr-search select:focus {
+            border-color: var(--primary-color); box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.10);
+        }
+        .food-mgr-search input { flex: 1; min-width: 200px; }
+        .food-mgr-table {
+            width: 100%; border-collapse: collapse; font-size: .84rem;
+        }
+        .food-mgr-table thead th {
+            background: linear-gradient(180deg, #f5f9fd, #eef4fa);
+            text-align: left; padding: 9px 12px; border-bottom: 2px solid #dfe9f3;
+            font-weight: 600; font-size: .78rem; color: #41617f; white-space: nowrap;
+        }
+        .food-mgr-table tbody td {
+            padding: 8px 12px; border-bottom: 1px solid #f0f3f7; color: #33475b;
+        }
+        .food-mgr-table tbody tr:nth-child(even) { background: #fafcfe; }
+        .food-mgr-table tbody tr:hover { background: #f0f7ff; }
+        .food-mgr-table tbody tr:last-child td { border-bottom: none; }
+        .food-mgr-table .cat-tag {
+            display: inline-block; padding: 2px 9px; border-radius: 9px;
+            font-size: .74rem; font-weight: 600;
+        }
+        .cat-tag.cat-staple    { background: #e8f5e9; color: #2e7d32; }
+        .cat-tag.cat-protein   { background: #fce4ec; color: #c2185b; }
+        .cat-tag.cat-veggie    { background: #e8f5e9; color: #558b2f; }
+        .cat-tag.cat-fruit     { background: #fff3e0; color: #e65100; }
+        .cat-tag.cat-dairy     { background: #e3f2fd; color: #1565c0; }
+        .cat-tag.cat-snack     { background: #f3e5f5; color: #7b1fa2; }
+        .cat-tag.cat-drink     { background: #e0f7fa; color: #00838f; }
+        .cat-tag.cat-other     { background: #eceff1; color: #546e7a; }
+        .food-mgr-actions { display: flex; gap: 6px; }
+        .food-mgr-actions button {
+            cursor: pointer; padding: 4px 10px; border-radius: 7px; font-size: .8rem;
+            border: 1px solid #e2e9f1; background: #fff; transition: all .15s;
+        }
+        .food-mgr-actions button:hover { background: #f0f6fc; border-color: #c6e2f7; }
+        .food-mgr-actions button.del:hover { background: #fdecee; border-color: #f5c6cb; color: var(--danger-color); }
+        .food-mgr-count { font-size: .76rem; color: #8aa3ba; margin-top: 10px; text-align: right; }
+
+        /* ---------- 配置弹窗 ---------- */
+        .config-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 16px; }
+        .config-group { display: flex; flex-direction: column; gap: 5px; }
+        .config-group label { font-size: .82rem; color: #5a7d99; font-weight: 600; }
+        .config-group input, .config-group select {
+            padding: 8px 12px; border: 1.5px solid #e2e9f1; border-radius: 9px;
+            font-size: .9rem; outline: none; background: #fff;
+            transition: border-color .2s, box-shadow .2s;
+        }
+        .config-group input:focus, .config-group select:focus {
+            border-color: var(--primary-color); box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.10);
+        }
+        .config-tip { color: #8aa3ba; font-size: .78rem; display: flex; align-items: flex-end; padding-bottom: 8px; }
+
+        /* ---------- 数据趋势折线图面板 ---------- */
+        .trend-chart-wrap {
+            width: 100%; height: 360px; min-height: 280px;
+        }
+        .trend-empty {
+            text-align: center; padding: 40px 20px; color: #8aa3ba; font-size: .9rem;
+        }
+
+        /* ---------- 美食打卡点 ---------- */
+        .spot-toolbar {
+            display: flex; justify-content: space-between; align-items: center; gap: 12px;
+            flex-wrap: wrap; margin-bottom: 14px;
+        }
+        .spot-toolbar .spot-hint { font-size: .78rem; color: #8aa3ba; }
+        .spot-grid {
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 14px;
+        }
+        .spot-card {
+            border: 1px solid #e8edf3; border-radius: 14px; background: #fbfdff;
+            padding: 14px 16px 12px; display: flex; flex-direction: column; gap: 8px;
+            transition: border-color .2s, box-shadow .2s;
+        }
+        .spot-card:hover { border-color: #cfe0f0; box-shadow: 0 6px 18px rgba(30, 60, 90, 0.08); }
+        .spot-card .spot-head { display: flex; align-items: center; gap: 8px; }
+        .spot-card .spot-shop {
+            font-size: .95rem; font-weight: 700; color: #1c3d5a;
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0;
+        }
+        .spot-card .spot-cat {
+            display: inline-block; padding: 2px 9px; border-radius: 9px; flex-shrink: 0;
+            font-size: .72rem; font-weight: 600; background: #fff3e0; color: #e65100;
+        }
+        .spot-card .spot-addr { font-size: .76rem; color: #7a95ad; line-height: 1.45; }
+        .spot-card .spot-review {
+            font-size: .82rem; color: #33475b; line-height: 1.55; white-space: pre-wrap;
+            max-height: 4.7em; overflow: hidden;
+        }
+        .spot-card .spot-date { font-size: .72rem; color: #b3c2d2; }
+        .spot-thumbs { display: flex; gap: 6px; flex-wrap: wrap; }
+        .spot-thumbs img {
+            width: 64px; height: 64px; object-fit: cover; border-radius: 9px;
+            border: 1px solid #e2e9f1; cursor: zoom-in; background: #fff;
+            transition: transform .15s, box-shadow .15s;
+        }
+        .spot-thumbs img:hover { transform: scale(1.06); box-shadow: 0 4px 12px rgba(30, 60, 90, 0.18); }
+        .spot-card-actions { display: flex; gap: 6px; margin-top: 2px; }
+        .spot-card-actions button {
+            cursor: pointer; padding: 4px 10px; border-radius: 7px; font-size: .78rem;
+            border: 1px solid #e2e9f1; background: #fff; color: #41617f; transition: all .15s;
+        }
+        .spot-card-actions button:hover { background: #f0f6fc; border-color: #c6e2f7; }
+        .spot-card-actions button.del:hover { background: #fdecee; border-color: #f5c6cb; color: var(--danger-color); }
+
+        /* 打卡表单：照片上传与预览 */
+        .spot-form-full { grid-column: 1 / -1; }
+        .spot-file-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+        .spot-file-row input[type="file"] { font-size: .82rem; color: #5a7d99; }
+        .spot-file-tip { font-size: .74rem; color: #8aa3ba; }
+        .spot-preview-strip { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+        .spot-preview-item { position: relative; }
+        .spot-preview-item img, .spot-preview-item .spot-preview-ph {
+            width: 72px; height: 72px; object-fit: cover; border-radius: 10px;
+            border: 1px solid #e2e9f1; background: #f0f6fc; display: block;
+        }
+        .spot-preview-ph {
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.4rem; color: #8aa3ba;
+        }
+        .spot-preview-item .pv-remove {
+            position: absolute; top: -6px; right: -6px; width: 20px; height: 20px;
+            border-radius: 50%; border: none; cursor: pointer; line-height: 1;
+            background: var(--danger-color); color: #fff; font-size: .72rem;
+            box-shadow: 0 2px 6px rgba(220, 53, 69, 0.4);
+        }
+        .spot-preview-item .pv-tag {
+            position: absolute; left: 0; right: 0; bottom: 0; border-radius: 0 0 10px 10px;
+            background: rgba(28, 61, 90, 0.55); color: #fff; font-size: .62rem;
+            text-align: center; padding: 1px 0; white-space: nowrap; overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        /* 照片大图查看（轻量 lightbox，不阻塞页面其余操作） */
+        .spot-lightbox {
+            position: fixed; inset: 0; z-index: 3000; display: flex;
+            align-items: center; justify-content: center;
+            background: rgba(15, 30, 45, 0.78); cursor: zoom-out;
+        }
+        .spot-lightbox img {
+            max-width: 92vw; max-height: 88vh; border-radius: 12px;
+            box-shadow: 0 18px 60px rgba(0, 0, 0, 0.45); background: #fff;
+        }
+
+        /* ---------- 响应式 ---------- */
+        @media (max-width: 992px) {
+            .meal-row-3 { grid-template-columns: 1fr; }
+            .form-grid { grid-template-columns: repeat(2, 1fr); }
+        }
+        @media (max-width: 768px) {
+            .calorie-page { padding: 16px 12px 32px; }
+            .calorie-hero { flex-direction: column; align-items: flex-start; padding: 16px 18px; }
+            .calorie-hero .hero-date { flex-direction: row; gap: 8px; }
+            .calorie-overview { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+            .ov-item.ov-progress-card { flex-direction: column; align-items: flex-start; gap: 10px; }
+            .ov-progress-card .ov-progress { width: 100%; }
+            .form-panel, .history-panel { padding: 14px 16px 18px; }
+            .form-grid { grid-template-columns: 1fr; }
+            .panel-hint { display: none; }
+            .config-grid { grid-template-columns: 1fr; }
+            #save-status { margin-left: 0; width: 100%; text-align: center; }
+            .trend-chart-wrap { height: 300px; }
+        }
+        @media (max-width: 480px) {
+            .calorie-overview { grid-template-columns: repeat(2, 1fr); }
+            .ov-item { padding: 12px 12px 10px; }
+            .ov-item .ov-num { font-size: 1.2rem; }
+            .form-actions .btn-save { width: 100%; }
+        }
+    </style>
+</head>
+<body>
+    {% include 'nav.html' %}
+    <div class="calorie-page">
+
+        <!-- 页面头部 -->
+        <div class="calorie-hero">
+            <div class="hero-main">
+                <div class="hero-icon">🔥</div>
+                <div>
+                    <h1>热量缺口管理</h1>
+                    <p class="calorie-desc">记录每日体重与饮食，科学量化热量收支</p>
+                </div>
+            </div>
+            <div class="hero-date">
+                <span class="hero-date-num" id="hero-date">--</span>
+                <span class="hero-date-label">今日日期</span>
+            </div>
+            <!-- 美食打卡点入口：顶部导航区快捷按钮，滚动到页内打卡面板 -->
+            <a class="hero-spot-link" href="#food-spot-panel" onclick="scrollToFoodSpotPanel(event)" title="记录探店心得">📍 美食打卡点</a>
+        </div>
+
+        <!-- 统计看板 -->
+        <div class="calorie-overview" id="overview-container">
+            <div class="ov-item ov-progress-card">
+                <div class="ov-icon">🎯</div>
+                <div class="ov-progress-info">
+                    <div class="ov-num" id="ov-progress">0%</div>
+                    <div class="ov-label" id="ov-progress-label">目标完成进度（目标 100000 kcal）</div>
+                </div>
+                <div class="ov-progress">
+                    <div class="ov-progress-bar" id="ov-progress-bar" style="width:0%"></div>
+                </div>
+            </div>
+            <div class="ov-item t-gold">
+                <div class="ov-icon">⏳</div>
+                <div class="ov-num" id="ov-eta-date">--</div>
+                <div class="ov-label" id="ov-eta-label">预计目标达成日期</div>
+            </div>
+            <div class="ov-item t-blue">
+                <div class="ov-icon">🔥</div>
+                <div class="ov-num" id="ov-total-deficit">0</div>
+                <div class="ov-label">总热量缺口 (kcal)</div>
+            </div>
+            <div class="ov-item t-purple">
+                <div class="ov-icon">📈</div>
+                <div class="ov-num" id="ov-cumulative">0</div>
+                <div class="ov-label">累积缺口 (kcal)</div>
+            </div>
+            <div class="ov-item t-teal">
+                <div class="ov-icon">📅</div>
+                <div class="ov-num" id="ov-count">0</div>
+                <div class="ov-label">记录天数</div>
+            </div>
+            <div class="ov-item t-orange">
+                <div class="ov-icon">⚖️</div>
+                <div class="ov-num" id="ov-avg-deficit">0</div>
+                <div class="ov-label">平均缺口 (kcal)</div>
+            </div>
+            <div class="ov-item t-pink">
+                <div class="ov-icon">🍽️</div>
+                <div class="ov-num" id="ov-avg-intake">0</div>
+                <div class="ov-label">平均摄入 (kcal)</div>
+            </div>
+            <div class="ov-item t-indigo">
+                <div class="ov-icon">👣</div>
+                <div class="ov-num" id="ov-avg-steps">0</div>
+                <div class="ov-label">平均步数</div>
+            </div>
+            <div class="ov-item t-green">
+                <div class="ov-icon">🏃</div>
+                <div class="ov-num" id="ov-avg-exercise">0</div>
+                <div class="ov-label">平均运动 (kcal)</div>
+            </div>
+            <div class="ov-item t-red">
+                <div class="ov-icon">💪</div>
+                <div class="ov-num" id="ov-fat-loss">0</div>
+                <div class="ov-label">消耗脂肪 (斤)</div>
+            </div>
+        </div>
+
+        <!-- 数据趋势折线图 -->
+        <div class="history-panel" id="trend-panel">
+            <div class="panel-header static">
+                <div class="panel-title">
+                    <span class="panel-icon" style="background:linear-gradient(135deg,#eaf4fd,#d6ecfd);">📈</span>
+                    数据趋势
+                    <span class="panel-hint">早/晚体重走势与总热量缺口累计值 · 拖动下方滑块查看不同时间段</span>
+                </div>
+            </div>
+            <div id="trend-chart-container">
+                <div class="trend-chart-wrap" id="trend-chart"></div>
+            </div>
+        </div>
+
+        <!-- 记录表单 -->
+        <div class="form-panel">
+            <div class="panel-header" onclick="toggleForm()">
+                <div class="panel-title">
+                    <span class="panel-icon">📝</span>
+                    每日记录
+                    <span class="arrow open" id="form-arrow">▾</span>
+                </div>
+                <span class="panel-hint">填写体重、步数与三餐食物，自动计算热量缺口</span>
+            </div>
+            <div id="form-body">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>📆 日期</label>
+                        <input type="date" id="record-date">
+                    </div>
+                    <div class="form-group">
+                        <label>🌅 早上称重 (kg)</label>
+                        <input type="number" id="morning-weight" step="0.1" placeholder="如 75.0">
+                    </div>
+                    <div class="form-group">
+                        <label>🌙 晚上称重 (kg)</label>
+                        <input type="number" id="evening-weight" step="0.1" placeholder="如 74.5">
+                    </div>
+                    <div class="form-group">
+                        <label>👣 当日步数</label>
+                        <input type="number" id="daily-steps" placeholder="如 8000">
+                    </div>
+                </div>
+
+                <!-- 三餐 -->
+                <div class="meal-row-3">
+                    <div class="meal-section" data-meal="breakfast">
+                        <div class="meal-title">🌅 早餐 <span class="meal-total" id="breakfast-total">0 kcal</span></div>
+                        <div class="meal-foods" id="breakfast-foods"></div>
+                        <div class="meal-add-row">
+                            <div class="food-input">
+                                <input type="text" class="meal-food-search" data-meal="breakfast" placeholder="搜索食物名称..." autocomplete="off">
+                                <div class="food-suggest" data-suggest="breakfast"></div>
+                            </div>
+                            <input type="number" class="qty-input meal-food-qty" data-meal="breakfast" step="0.1" min="0.1" value="1" placeholder="数量" title="数量（支持小数，如 0.8）">
+                            <input type="number" class="cal-input meal-food-cal" data-meal="breakfast" step="0.1" placeholder="热量" title="单位热量（kcal/单位），总热量 = 单位热量 × 数量">
+                            <button class="m-btn m-btn-sm m-btn-primary m-btn-outline" onclick="commitMealFood('breakfast')" style="white-space:nowrap;">+ 添加</button>
+                        </div>
+                    </div>
+
+                    <div class="meal-section" data-meal="lunch">
+                        <div class="meal-title">☀️ 午餐 <span class="meal-total" id="lunch-total">0 kcal</span></div>
+                        <div class="meal-foods" id="lunch-foods"></div>
+                        <div class="meal-add-row">
+                            <div class="food-input">
+                                <input type="text" class="meal-food-search" data-meal="lunch" placeholder="搜索食物名称..." autocomplete="off">
+                                <div class="food-suggest" data-suggest="lunch"></div>
+                            </div>
+                            <input type="number" class="qty-input meal-food-qty" data-meal="lunch" step="0.1" min="0.1" value="1" placeholder="数量" title="数量（支持小数，如 0.8）">
+                            <input type="number" class="cal-input meal-food-cal" data-meal="lunch" step="0.1" placeholder="热量" title="单位热量（kcal/单位），总热量 = 单位热量 × 数量">
+                            <button class="m-btn m-btn-sm m-btn-primary m-btn-outline" onclick="commitMealFood('lunch')" style="white-space:nowrap;">+ 添加</button>
+                        </div>
+                    </div>
+
+                    <div class="meal-section" data-meal="dinner">
+                        <div class="meal-title">🌙 晚餐 <span class="meal-total" id="dinner-total">0 kcal</span></div>
+                        <div class="meal-foods" id="dinner-foods"></div>
+                        <div class="meal-add-row">
+                            <div class="food-input">
+                                <input type="text" class="meal-food-search" data-meal="dinner" placeholder="搜索食物名称..." autocomplete="off">
+                                <div class="food-suggest" data-suggest="dinner"></div>
+                            </div>
+                            <input type="number" class="qty-input meal-food-qty" data-meal="dinner" step="0.1" min="0.1" value="1" placeholder="数量" title="数量（支持小数，如 0.8）">
+                            <input type="number" class="cal-input meal-food-cal" data-meal="dinner" step="0.1" placeholder="热量" title="单位热量（kcal/单位），总热量 = 单位热量 × 数量">
+                            <button class="m-btn m-btn-sm m-btn-primary m-btn-outline" onclick="commitMealFood('dinner')" style="white-space:nowrap;">+ 添加</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 随笔入口：跳转独立『随笔复盘』模块，自动关联当前表单日期 -->
+                <a class="journal-entry" id="journal-entry-link" href="/journal" target="_blank">
+                    <span class="je-icon">✍️</span>
+                    <span class="je-main">
+                        <b>想写点减肥心得？去随手记</b>
+                        <span>随时随地记录减肥感悟、心情变化与心理历程，自动关联当前记录日期的热量数据</span>
+                    </span>
+                    <span class="je-arrow">→</span>
+                </a>
+
+                <!-- 日记入口：跳转『日记本』并锚定当前表单日期（与随笔入口同款卡） -->
+                <a class="journal-entry" id="diary-entry-link" href="/diary" target="_blank">
+                    <span class="je-icon">📔</span>
+                    <span class="je-main">
+                        <b>想把这一天记进日记？去日记本</b>
+                        <span>按天书写、可设隐私；打开即定位当前记录日期，保存时自动关联当日热量记录</span>
+                    </span>
+                    <span class="je-arrow">→</span>
+                </a>
+
+                <!-- 计算预览 -->
+                <div class="preview-card">
+                    <div class="preview-title">📊 实时计算预览</div>
+                    <div class="preview-grid">
+                        <div class="preview-item">
+                            <div class="pv-label">基础代谢 (BMR)</div>
+                            <div class="pv-value" id="pv-bmr">-- kcal</div>
+                        </div>
+                        <div class="preview-item">
+                            <div class="pv-label">三餐总摄入</div>
+                            <div class="pv-value" id="pv-intake">-- kcal</div>
+                        </div>
+                        <div class="preview-item">
+                            <div class="pv-label">摄入缺口</div>
+                            <div class="pv-value" id="pv-intake-deficit">-- kcal</div>
+                        </div>
+                        <div class="preview-item">
+                            <div class="pv-label">运动消耗</div>
+                            <div class="pv-value" id="pv-exercise">-- kcal</div>
+                        </div>
+                        <div class="preview-item pv-deficit-item">
+                            <div class="pv-label">🔥 热量缺口</div>
+                            <div class="pv-value" id="pv-deficit">-- kcal</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-actions">
+                    <button class="m-btn m-btn-primary btn-save" onclick="saveRecord()">✅ 保存记录</button>
+                    <button class="m-btn m-btn-outline m-btn-secondary" onclick="resetForm()">🔄 重置</button>
+                    <span class="action-divider"></span>
+                    <button class="m-btn m-btn-sm m-btn-info m-btn-outline" onclick="openFoodManager()">📖 食物库管理</button>
+                    <button class="m-btn m-btn-sm m-btn-secondary m-btn-outline" onclick="openConfig()">⚙️ 参数配置</button>
+                    <span id="save-status"></span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 历史记录 -->
+        <div class="history-panel">
+            <div class="panel-header static">
+                <div class="panel-title">
+                    <span class="panel-icon">📅</span>
+                    历史记录
+                    <span class="record-count" id="history-count">0 条</span>
+                </div>
+            </div>
+            <div id="history-container">
+                <div class="empty-state">
+                    <div class="empty-icon">📊</div>
+                    <div class="empty-text">暂无记录，开始记录你的第一条数据吧</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 美食打卡点（探店记录 + 照片） -->
+        <div class="history-panel" id="food-spot-panel">
+            <div class="panel-header static">
+                <div class="panel-title">
+                    <span class="panel-icon" style="background:linear-gradient(135deg,#ffe9d6,#ffd9c4);">📍</span>
+                    美食打卡点
+                    <span class="record-count" id="spot-count">0 家</span>
+                </div>
+            </div>
+            <div class="spot-toolbar">
+                <span class="spot-hint">记下探过的店：店铺、地址、种类、心得，还能附上美食特写 / 店面环境 / 地图截图照片</span>
+                <button class="m-btn m-btn-sm m-btn-primary" onclick="openFoodSpotForm()" style="white-space:nowrap;">+ 新增打卡</button>
+            </div>
+            <div id="spot-container">
+                <div class="empty-state">
+                    <div class="empty-icon">🍜</div>
+                    <div class="empty-text">还没有打卡记录，去吃到好吃的就记一家吧</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/calorie.js') }}"></script>
+</body>
+</html>

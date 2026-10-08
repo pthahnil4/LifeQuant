@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>随笔与复盘 - LifeQuant</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="{{ url_for('static', filename='js/mdialog.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/echarts.min.js') }}"></script>
+</head>
+<body>
+    {% include 'nav.html' %}
+
+    <div class="journal-page">
+        <!-- ============ 页面标题区 ============ -->
+        <header class="journal-hero">
+            <div class="journal-hero-main">
+                <span class="journal-hero-icon">✍️</span>
+                <div>
+                    <h1>随笔与复盘</h1>
+                    <p class="journal-hero-desc">记录所思所想 · 沉淀经验教训 · 今天记了就算在场 🌱</p>
+                </div>
+            </div>
+            <div class="journal-tabs" id="journal-tabs">
+                <button class="journal-tab active" data-tab="timeline">📜 时间线</button>
+                <button class="journal-tab" data-tab="wisdom">💡 经验库</button>
+                <button class="journal-tab" data-tab="stats">📊 统计</button>
+                <span class="journal-tab-indicator" id="journal-tab-indicator"></span>
+            </div>
+        </header>
+
+        <!-- ============ 时间线视图 ============ -->
+        <div class="journal-pane" id="pane-timeline">
+            <!-- 数据概览卡 -->
+            <div class="journal-overview" id="journal-overview"></div>
+
+            <!-- 随手记卡片 -->
+            <div class="journal-composer" id="journal-composer">
+                <div class="journal-link-banner" id="journal-link-banner" style="display:none;">
+                    <span>🔗 补记关联：<b id="journal-link-title"></b></span>
+                    <button class="journal-link-cancel" id="journal-link-cancel">✕ 取消</button>
+                </div>
+                <textarea id="journal-input" class="journal-input" rows="2"
+                          placeholder="此刻的想法、心得、经验…写下来再说 ✍️"></textarea>
+                <!-- 复盘四格引导区（复盘模式展开） -->
+                <div class="journal-review-grid" id="journal-review-grid">
+                    <div class="jrg-item">
+                        <label>🎯 复盘对象</label>
+                        <input type="text" id="jrg-subject" placeholder="哪笔交易 / 哪个策略 / 哪件事">
+                    </div>
+                    <div class="jrg-item">
+                        <label>🧭 当时怎么做的</label>
+                        <input type="text" id="jrg-decision" placeholder="当时为什么这么想…">
+                    </div>
+                    <div class="jrg-item">
+                        <label>📈 实际结果</label>
+                        <input type="text" id="jrg-outcome" placeholder="客观结果，数据诚实">
+                    </div>
+                    <div class="jrg-item">
+                        <label>💡 下次怎么办</label>
+                        <input type="text" id="jrg-lesson" placeholder="提炼出的教训 / 改进点">
+                    </div>
+                </div>
+                <div class="journal-composer-bar">
+                    <div class="journal-composer-tags" id="journal-composer-tags"></div>
+                    <div class="journal-composer-actions">
+                        <label class="journal-mode-switch" title="打开后按四格引导结构化复盘">
+                            <input type="checkbox" id="journal-review-toggle">
+                            <span>复盘模式</span>
+                        </label>
+                        <span class="journal-shortcut-hint">Ctrl + Enter</span>
+                        <button class="m-btn m-btn-primary journal-submit-btn" id="journal-submit">记录</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 工具栏：类型 / 时间 / 搜索 / 导出 -->
+            <div class="journal-toolbar">
+                <div class="journal-type-tabs" id="journal-type-tabs">
+                    <button class="jtt active" data-type="all">全部</button>
+                    <button class="jtt" data-type="note">随笔</button>
+                    <button class="jtt" data-type="review">复盘</button>
+                </div>
+                <select id="journal-days-filter" class="journal-days-select">
+                    <option value="0">全部时间</option>
+                    <option value="7">近 7 天</option>
+                    <option value="30">近 30 天</option>
+                    <option value="month">本月</option>
+                </select>
+                <div class="journal-search-wrap">
+                    <input type="text" id="journal-search" class="journal-search" placeholder="🔍 搜索正文与复盘内容…">
+                </div>
+                <button class="m-btn m-btn-secondary m-btn-sm journal-export-btn" id="journal-export">⬇ 导出</button>
+            </div>
+
+            <!-- 主体：标签栏 + 时间线 -->
+            <div class="journal-main">
+                <aside class="journal-sidebar" id="journal-sidebar"></aside>
+                <section class="journal-timeline" id="journal-timeline"></section>
+            </div>
+        </div>
+
+        <!-- ============ 经验库视图 ============ -->
+        <div class="journal-pane" id="pane-wisdom" style="display:none;">
+            <div class="journal-wisdom-grid" id="journal-wisdom-grid"></div>
+        </div>
+
+        <!-- ============ 统计视图 ============ -->
+        <div class="journal-pane" id="pane-stats" style="display:none;">
+            <div class="journal-stats-cards" id="journal-stats-cards"></div>
+            <div class="journal-stats-charts">
+                <div class="journal-chart-card">
+                    <div class="jcc-title">🏷️ 标签分布</div>
+                    <div id="journal-tag-chart" class="journal-chart-box"></div>
+                </div>
+                <div class="journal-chart-card">
+                    <div class="jcc-title">🗓️ 近 15 周记录日历</div>
+                    <div id="journal-calendar" class="journal-calendar-box"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/journal.js') }}"></script>
+</body>
+</html>

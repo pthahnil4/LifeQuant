@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>市值Top50币种导览 - LifeQuant</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        .tc-page { max-width: 1280px; margin: 30px auto; padding: 0 20px 60px; }
+        .tc-page h1 { margin-bottom: 6px; }
+        .tc-desc { color: var(--text-muted); margin-bottom: 14px; font-size: .92rem; line-height: 1.7; }
+        .tc-meta { font-size: .8rem; color: var(--text-muted); margin-bottom: 14px; display: flex; gap: 14px; flex-wrap: wrap; align-items: center; }
+        .tc-stale-badge { background: #f39c12; color: #fff; border-radius: 6px; padding: 2px 8px; font-size: .74rem; }
+        .tc-toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }
+        .tc-search { flex: 1; min-width: 180px; max-width: 320px; padding: 7px 12px; border: 1px solid var(--border-color); border-radius: 8px; font-size: .88rem; }
+        .tc-stat { font-size: .82rem; color: var(--text-muted); }
+        .tc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+        .tc-card {
+            background: var(--card-bg); border: 1px solid var(--border-color);
+            border-radius: 12px; padding: 14px 16px; font-size: .84rem; line-height: 1.6;
+            display: flex; flex-direction: column; gap: 8px;
+        }
+        .tc-card-head { display: flex; align-items: center; gap: 10px; }
+        .tc-rank {
+            min-width: 2.4em; text-align: center; font-weight: 700; font-size: .82rem;
+            background: linear-gradient(135deg, #667eea, #764ba2); color: #fff;
+            border-radius: 8px; padding: 3px 7px;
+        }
+        .tc-rank.r1 { background: linear-gradient(135deg, #f6d365, #fda085); color: #7a4a00; }
+        .tc-sym { font-weight: 700; font-size: 1.02rem; }
+        .tc-inst { font-size: .72rem; color: var(--text-muted); }
+        .tc-price { margin-left: auto; text-align: right; font-weight: 700; font-size: .95rem; }
+        .tc-chg { font-size: .78rem; font-weight: 700; display: block; }
+        .tc-chg.up { color: #e74c3c; }
+        .tc-chg.down { color: #27ae60; }
+        .tc-nums { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px 10px; font-size: .76rem; }
+        .tc-nums b { display: block; font-size: .82rem; }
+        .tc-nums span { color: var(--text-muted); }
+        .tc-about { color: #555; font-size: .8rem; border-top: 1px dashed var(--border-color); padding-top: 8px; }
+        .tc-src { font-size: .7rem; color: var(--text-muted); }
+        .tc-noliquid { color: #e67e22; }
+        .tc-empty { text-align: center; color: var(--text-muted); padding: 40px 0; }
+        .tc-disclaimer { margin-top: 22px; font-size: .76rem; color: var(--text-muted); background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 10px; padding: 12px 16px; line-height: 1.7; }
+        @media (max-width: 640px) {
+            .tc-grid { grid-template-columns: 1fr; }
+            .tc-toolbar { flex-direction: column; align-items: stretch; }
+            .tc-search { max-width: none; }
+        }
+        @media print {
+            .main-nav, .tc-toolbar { display: none !important; }
+            .tc-card { break-inside: avoid; box-shadow: none; }
+            .tc-grid { grid-template-columns: 1fr 1fr; }
+            body { background: #fff; }
+        }
+    </style>
+</head>
+<body>
+    {% include 'nav.html' %}
+    <div class="tc-page">
+        <h1>🪙 市值Top50币种导览</h1>
+        <p class="tc-desc">
+            固定监控池（全球市值前 50 且 OKX 有 USDT 线性永续合约的热门币）逐币介绍：实时行情 + 定位简介，
+            按流通市值从高到低排列。行情每 120 秒缓存一次，可手动强制刷新；池子本身在
+            <a href="/task">⏰ 交易配置</a> 页通过「🔄 更新市值列表」维护。
+        </p>
+        <div class="tc-meta">
+            <span id="tc-meta-text">正在加载行情…</span>
+            <span id="tc-stale-slot"></span>
+        </div>
+
+        <div class="tc-toolbar">
+            <button class="m-btn m-btn-primary m-btn-sm" id="tc-refresh-btn" onclick="loadTopCoins(true)">🔄 刷新实时行情</button>
+            <input class="tc-search" id="tc-search-input" placeholder="🔍 输入币种代码/名称过滤，如 BTC、波卡" oninput="renderTopCoins()">
+            <a href="/monitor-guide" class="m-btn m-btn-secondary m-btn-sm">📚 监控台操作手册</a>
+            <button class="m-btn m-btn-secondary m-btn-sm" onclick="window.print()">🖨️ 打印 / 导出 PDF</button>
+            <span class="tc-stat" id="tc-count"></span>
+        </div>
+
+        <div class="tc-grid" id="tc-grid">
+            <div class="tc-empty">加载中…</div>
+        </div>
+
+        <div class="tc-disclaimer">
+            📌 数据口径：行情与市值排名来自 <b>CoinGecko</b> 实时接口，合约代码来自 <b>OKX</b> 公共接口；流动性 % = 24H成交额 ÷ 流通市值（活跃程度代理指标）。
+            币种简介为编写时的人工整理，仅帮助快速认识标的主营方向，<b>不构成任何投资建议</b>；新入池币种可能暂无简介，以官方文档为准。
+        </div>
+    </div>
+
+    <script>
+    // 币种简介（人工整理，按合约代码索引；未收录的币自动用兜底文案）
+    const COIN_ABOUT = {
+        BTC: '比特币，全球首个加密货币。PoW 共识、总量恒定 2100 万枚，被视为"数字黄金"与加密市场风向标。',
+        ETH: '以太坊，最大的智能合约平台。合并后转 PoS，DeFi / NFT / Layer2 生态的主战场。',
+        BNB: '币安平台币。手续费折扣、Launchpad 与 BNB Chain 燃料代币，交易所币市值之最。',
+        XRP: '瑞波生态币，主打跨境支付与机构结算，到账快、手续费低。',
+        SOL: 'Solana，PoH+PoS 高吞吐公链，链上 DEX、meme 与 DePIN 生态活跃。',
+        TRX: '波场，高吞吐公链，USDT 流转最常用的链上网络之一，链上转账量庞大。',
+        ZEC: 'Zcash，采用 zk-SNARK 零知识证明的隐私币，支持屏蔽/透明双态交易。',
+        HYPE: 'Hyperliquid 原生币，为链上永续合约 DEX 自建的高性能公链，手续费收入叙事强势。',
+        DOGE: '狗狗币，meme 币鼻祖。PoW Scrypt 算法、无总量上限，社区文化属性强。',
+        LINK: 'Chainlink，最大的预言机网络，为链上合约供给喂价与外部数据，基础设施地位稳固。',
+        ADA: 'Cardano，学术派 PoS 公链，研发节奏偏慢但强调可验证正确性。',
+        XLM: '恒星币，跨境支付公链，与多家锚定机构合作提供低成本法币通道。',
+        BCH: '比特币现金，比特币早期分叉链，扩大区块尺寸，定位链上小额支付。',
+        UNI: 'Uniswap 治理代币，链上最大 AMM 交易所，集中流动性 v3 模式开创者。',
+        LTC: '莱特币，"数字白银"，PoW 支付币，确认快、手续费低，历史最悠久的山寨币之一。',
+        NEAR: 'NEAR Protocol，分片高性能公链，近年主打 AI 与链上账户抽象（Chain Signatures）。',
+        AVAX: 'Avalanche，三链架构高 TPS 公链，机构 RWA 与子网生态发力。',
+        HBAR: 'Hedera，哈希图共识的企业级公链，由多家产业联盟成员共同治理。',
+        SHIB: '柴犬币，以太坊系 meme 币，生态自建 L2 链 Shibarium。',
+        SUI: 'Sui，Move 语言 L1，前 Meta 工程师团队打造，并行执行高性能叙事。',
+        CRO: 'Crypto.com 平台币，用于交易所折扣、质押权益与其 Cronos 链燃料。',
+        TAO: 'Bittensor，去中心化 AI 网络，模型训练与推理在链上竞争并发放代币激励。',
+        OKB: '欧易 OKX 平台币，头部交易所平台币，用于 OKX 生态各类权益场景。',
+        ASTER: 'Aster，链上永续合约 DEX 的平台币，由 PHALA 与 Aevo 合并而来，积分空投起家。',
+        AAVE: 'Aave，最大的超额抵押借贷协议，闪电贷模式开创者，多链部署。',
+        WLFI: 'World Liberty Financial，公开带有特朗普家族背景的 DeFi 借贷项目，话题度与集中度争议并存。',
+        PUMP: 'pump.fun，Solana 上 meme 币发行与交易平台的功能币，手续费回购销毁模型。',
+        DOT: '波卡，中继链+平行链共享安全架构，跨链基础设施，链上治理活跃。',
+        ONDO: 'Ondo Finance，RWA（真实世界资产）代币化龙头，主打美债与基金链上化。',
+        ENA: 'Ethena，合成美元协议，发行抵押型稳定资产 USDe，做资金费率中性套利。',
+        MORPHO: 'Morpho，以太坊上的借贷利率优化协议，在 Aave 之上做点对点撮合。',
+        PEPE: 'Pepe 蛙 meme 币，以太坊头部 meme，纯社区与情绪驱动。',
+        ICP: 'Internet Computer，目标是全栈应用上链的"互联网计算机"，燃料与治理双代币体系。',
+        WLD: 'World（原 Worldcoin），基于虹膜验证的链上人格/身份证明网络，附赠支付链。',
+        SKY: 'Sky（原 MakerDAO），DAI/USDS 稳定币发行协议，MKR 治理币升级而来。',
+        ETC: '以太坊经典，保留原始 ETH 链 PoW 共识的分叉链，社区信条是"代码即法律"。',
+        ARB: 'Arbitrum，以太坊头部 Optimistic Rollup L2，TVL 与生态长期领先。',
+        POL: 'Polygon（原 MATIC），以太坊扩展套件：侧链、zk Rollup 与 Agglayer 路线图。',
+        PI: 'Pi Network，手机挖矿起家的社区币，主网上线后生态仍在建设期。',
+        QNT: 'Quant，企业跨链互操作中间件（OVER LedgerLink），偏机构与政府合作路线。',
+        ATOM: 'Cosmos Hub，IBC 跨链通信协议的枢纽链，"应用链"生态鼻祖。',
+        ALGO: 'Algorand，纯 PoS 秒终局学术派公链，近年转向储蓄与真实资产结算。',
+        JUP: 'Jupiter，Solana 最大 DEX 聚合器，路由全网最优价并发币 launchpad。',
+        DASH: '达世币，双层节点（矿机+主节点）PoW 支付币，支持即时到账与私密交易。',
+        RENDER: 'Render，分布式 GPU 渲染网络，将闲置算力租给 3D/AI 渲染需求方。',
+        FIL: 'Filecoin，IPFS 生态的去中心化存储市场，按存储证明共识挖矿。',
+        GRAM: 'Telegram 官方生态代币（TON 系），面向应用内支付与创作者经济场景。'
+    };
+
+    let _tcRows = [];   // 最近一次接口回包
+
+    function tcFmtUsd(v) {
+        if (v === null || v === undefined || isNaN(v)) return '--';
+        const abs = Math.abs(v);
+        if (abs >= 1e12) return (v / 1e12).toFixed(2) + ' 万亿';
+        if (abs >= 1e8) return (v / 1e8).toFixed(2) + ' 亿';
+        if (abs >= 1e4) return (v / 1e4).toFixed(1) + ' 万';
+        return v.toFixed(0);
+    }
+    function tcFmtPrice(v) {
+        if (v === null || v === undefined || isNaN(v)) return '--';
+        if (v >= 1000) return v.toLocaleString('en-US', { maximumFractionDigits: 1 });
+        if (v >= 1) return v.toFixed(2);
+        if (v >= 0.01) return v.toFixed(4);
+        return v.toPrecision(3);
+    }
+    function tcEsc(s) {
+        return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
+    function renderTopCoins() {
+        const grid = document.getElementById('tc-grid');
+        const kw = (document.getElementById('tc-search-input').value || '').trim().toUpperCase();
+        const rows = kw ? _tcRows.filter(c =>
+            (c.symbol || '').toUpperCase().includes(kw) ||
+            (COIN_ABOUT[c.symbol] || '').toUpperCase().includes(kw)) : _tcRows;
+        document.getElementById('tc-count').textContent =
+            kw ? ('匹配 ' + rows.length + ' / ' + _tcRows.length + ' 个') : ('共 ' + _tcRows.length + ' 个币种');
+        if (!rows.length) {
+            grid.innerHTML = '<div class="tc-empty">' + (kw ? '没有匹配的币种：' + tcEsc(kw) : '暂无数据') + '</div>';
+            return;
+        }
+        grid.innerHTML = rows.map(function (c, i) {
+            const chg = c.chg_24h_pct;
+            const chgCls = (chg === null || chg === undefined) ? '' : (chg >= 0 ? 'up' : 'down');
+            const chgTxt = (chg === null || chg === undefined) ? '--'
+                : (chg >= 0 ? '▲ +' : '▼ ') + chg.toFixed(2) + '%';
+            const rank = c.market_cap_rank;
+            const about = COIN_ABOUT[c.symbol] ||
+                '暂未收录简介：该币为市值榜入池的 OKX USDT 线性永续标的，详情见项目官网与 CoinGecko 页面。';
+            const liq = c.liquidity_pct;
+            const liqHtml = (liq === null || liq === undefined)
+                ? '<span class="tc-noliquid">未入榜</span>' : liq.toFixed(1) + '%';
+            return '<div class="tc-card">' +
+                '<div class="tc-card-head">' +
+                    '<span class="tc-rank' + (i === 0 ? ' r1' : '') + '">#' + (rank || '--') + '</span>' +
+                    '<div><div class="tc-sym">' + tcEsc(c.symbol) + '</div>' +
+                    '<div class="tc-inst">' + tcEsc(c.inst_id) + '</div></div>' +
+                    '<div class="tc-price">' + tcFmtPrice(c.price_usd) +
+                    '<span class="tc-chg ' + chgCls + '">' + chgTxt + '</span></div>' +
+                '</div>' +
+                '<div class="tc-nums">' +
+                    '<div><span>流通市值</span><b>' + tcFmtUsd(c.market_cap_usd) + ' $</b></div>' +
+                    '<div><span>24H成交额</span><b>' + tcFmtUsd(c.volume_24h_usd) + ' $</b></div>' +
+                    '<div><span>流动性</span><b>' + liqHtml + '</b></div>' +
+                '</div>' +
+                '<div class="tc-about">' + tcEsc(about) + '</div>' +
+                '<div class="tc-src">数据来源：' + tcEsc(c.source || '—') + ' / OKX</div>' +
+            '</div>';
+        }).join('');
+    }
+
+    function loadTopCoins(force) {
+        const btn = document.getElementById('tc-refresh-btn');
+        if (btn) { btn.disabled = true; btn.textContent = '⏳ 拉取中…'; }
+        fetch('/api/strategy/fixed-coins/market-detail' + (force ? '?force=1' : ''))
+            .then(r => r.json()).then(res => {
+                if (res.code !== 200 || !res.data) {
+                    document.getElementById('tc-grid').innerHTML =
+                        '<div class="tc-empty">加载失败：' + tcEsc(res.message || '未知错误') + '</div>';
+                    document.getElementById('tc-meta-text').textContent = '行情接口未返回数据';
+                    return;
+                }
+                _tcRows = res.data.coins || [];
+                const ts = Number(res.data.fetched_at);
+                document.getElementById('tc-meta-text').textContent =
+                    '行情快照时间：' + (isFinite(ts) ? new Date(ts * 1000).toLocaleString('zh-CN') : '--') +
+                    ' | 池内 ' + _tcRows.length + ' 个币种 | 市值降序';
+                document.getElementById('tc-stale-slot').innerHTML =
+                    res.data.stale ? '<span class="tc-stale-badge">⚠ 外网暂不可达，展示缓存快照</span>' : '';
+                renderTopCoins();
+            })
+            .catch(e => {
+                document.getElementById('tc-grid').innerHTML =
+                    '<div class="tc-empty">请求异常：' + tcEsc(e) + '</div>';
+            })
+            .finally(() => {
+                if (btn) { btn.disabled = false; btn.textContent = '🔄 刷新实时行情'; }
+            });
+    }
+    loadTopCoins(false);
+    </script>
+</body>
+</html>

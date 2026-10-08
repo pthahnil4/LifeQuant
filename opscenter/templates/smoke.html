@@ -1,0 +1,206 @@
+{% extends "base.html" %}
+{% set active_page = "smoke" %}
+{% block title %}冒烟运行器 · OpsCenter{% endblock %}
+{% block crumb_group %}运维工具箱{% endblock %}
+{% block crumb_page %}冒烟运行器{% endblock %}
+
+{% macro diskbadge(exists) -%}
+<span class="badge badge--{{ 'success' if exists else 'neutral' }}"><span class="badge__dot"></span>{{ '在档' if exists else '缺失' }}</span>
+{%- endmacro %}
+
+{% block content %}
+<div class="page-head fade-in">
+  <div class="page-head__top">
+    <div>
+      <h1 class="page-head__title">冒烟运行器</h1>
+      <p class="page-head__desc">
+        运维工具箱 · 只读索引 <span class="text-mono">{{ s.index_path }}</span> 并核对磁盘落盘
+        · 盘点于 {{ s.checked_at }}
+      </p>
+    </div>
+    <div class="page-head__actions">
+      <a class="btn btn--ghost" href="/tools/diag">🔧 诊断脚本</a>
+      <a class="btn btn--ghost" href="/tools/config">⚙️ 配置总览</a>
+      <a class="btn btn--primary" href="/">← 返回总览</a>
+    </div>
+  </div>
+</div>
+
+<div class="banner banner--info fade-in">
+  🛡️ 交易系统的 <b>_smoke_*.py</b> 多含写库 / 发信 / 调真实 OKX（下表按
+  <span class="secdot secdot--success"></span>纯离线 ·
+  <span class="secdot secdot--info"></span>写库+还原 ·
+  <span class="secdot secdot--warning"></span>写库+租约 ·
+  <span class="secdot secdot--danger"></span>连真实 API 分级）——本页<b>只列清单不代跑</b>，
+  需运行时请照底部指引在交易系统终端手动执行。唯一可一键运行的是运维站<b>自身</b>的渲染自检冒烟。
+</div>
+
+<!-- KPI -->
+<div class="grid grid--cols-12">
+  <div class="col-3"><div class="tile tile--hover fade-in"><div class="tile__glow"></div>
+    <div class="tile__top"><span class="tile__label">索引登记</span><span class="tile__icon tile__icon--info">📇</span></div>
+    <div class="tile__value">{{ s.totals.indexed }}<small>条</small></div>
+    <div class="tile__foot">{{ 'SMOKE_TESTS.md 已解析' if s.index_present else '⚠ 索引文件缺失' }}</div>
+  </div></div>
+  <div class="col-3"><div class="tile tile--hover fade-in" style="animation-delay:.05s"><div class="tile__glow"></div>
+    <div class="tile__top"><span class="tile__label">磁盘在档</span><span class="tile__icon tile__icon--success">💾</span></div>
+    <div class="tile__value">{{ s.totals.on_disk }}<small>个</small></div>
+    <div class="tile__foot">扫描根目录 / crypto / crypto/task</div>
+  </div></div>
+  <div class="col-3"><div class="tile tile--hover fade-in" style="animation-delay:.1s"><div class="tile__glow"></div>
+    <div class="tile__top"><span class="tile__label">未登记漂移</span><span class="tile__icon tile__icon--{{ 'warning' if s.totals.unindexed else 'success' }}">🧭</span></div>
+    <div class="tile__value">{{ s.totals.unindexed }}<small>个</small></div>
+    <div class="tile__foot">磁盘有、索引无（应补写 SMOKE_TESTS.md）</div>
+  </div></div>
+  <div class="col-3"><div class="tile tile--hover fade-in" style="animation-delay:.15s"><div class="tile__glow"></div>
+    <div class="tile__top"><span class="tile__label">可一键运行</span><span class="tile__icon tile__icon--info">▶️</span></div>
+    <div class="tile__value">{{ s.totals.runnable }}<small>/ {{ s.self_smokes | length }}</small></div>
+    <div class="tile__foot">仅运维站自身自检冒烟</div>
+  </div></div>
+</div>
+
+<!-- 运维站自检：可一键运行 -->
+<div class="grid grid--cols-12 mt-5">
+  <div class="col-12">
+    <div class="card fade-in">
+      <div class="card__head"><div><div class="card__title">▶️ 运维站自检冒烟</div>
+        <div class="card__subtitle">不 import crypto、只用 Flask test_client 打本地渲染，无交易副作用；点「运行」在本页看结果</div></div>
+        <span class="badge badge--info"><span class="badge__dot"></span>可安全一键运行</span></div>
+      <div class="card__body">
+        <div class="table-wrap">
+          <table class="table">
+            <thead><tr><th>自检脚本</th><th>说明</th><th>落盘</th><th class="num">大小</th><th>操作</th></tr></thead>
+            <tbody>
+              {% for sm in s.self_smokes %}
+              <tr>
+                <td><div class="table__strong">{{ sm.name }}</div></td>
+                <td class="text-mute">{{ sm.label }}</td>
+                <td>{{ diskbadge(sm.exists) }}</td>
+                <td class="num">{{ '%.1f KB' % (sm.size / 1024) if sm.exists else '—' }}</td>
+                <td>
+                  <button class="btn btn--sm btn--primary smoke-run" data-key="{{ sm.key }}"
+                          {% if not sm.exists %}disabled{% endif %}>▶ 运行</button>
+                </td>
+              </tr>
+              <tr class="smoke-out-row" data-key="{{ sm.key }}" hidden>
+                <td colspan="5"><pre class="pre-out" id="out-{{ sm.key }}"></pre></td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 分级索引 -->
+{% for tier in s.tiers %}
+<div class="card fade-in mt-5">
+  <div class="card__head"><div><div class="card__title">
+      <span class="secdot secdot--{{ tier.level }}"></span>{{ tier.emoji }} {{ tier.label }}冒烟</div>
+    <div class="card__subtitle">{{ tier.rows | length }} 个 · 运维站不代跑，请在交易系统终端手动运行</div></div>
+    <span class="badge badge--{{ tier.level }}"><span class="badge__dot"></span>{{ tier.rows | length }}</span></div>
+  <div class="card__body">
+    {% if tier.rows %}
+    <div class="table-wrap">
+      <table class="table">
+        <thead><tr><th>脚本</th><th>覆盖模块</th><th>何时重跑</th><th>落盘</th><th class="num">大小</th></tr></thead>
+        <tbody>
+          {% for r in tier.rows %}
+          <tr>
+            <td><div class="table__mono text-mute">{{ r.relpath }}</div>
+              {% if r.note %}<div class="fs-xs text-mute" style="margin-top:2px">{{ r.note }}</div>{% endif %}</td>
+            <td>{{ r.coverage }}</td>
+            <td class="text-mute fs-xs">{{ r.rerun }}</td>
+            <td>{{ diskbadge(r.exists) }}</td>
+            <td class="num">{{ '%.1f KB' % (r.size / 1024) if r.exists else '—' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty"><span class="empty__icon">📭</span>该分级暂无登记脚本</div>
+    {% endif %}
+  </div>
+</div>
+{% endfor %}
+
+<!-- 未登记漂移 -->
+{% if s.unindexed %}
+<div class="card fade-in mt-5">
+  <div class="card__head"><div><div class="card__title">🧭 磁盘存在但索引未登记</div>
+    <div class="card__subtitle">新增 _smoke_*.py 后须按约定补写 SMOKE_TESTS.md（覆盖模块 + 何时重跑 + 分级）</div></div>
+    <span class="badge badge--warning"><span class="badge__dot"></span>{{ s.unindexed | length }}</span></div>
+  <div class="card__body">
+    <div class="table-wrap"><table class="table">
+      <thead><tr><th>脚本</th><th class="num">大小</th><th>最近修改</th></tr></thead>
+      <tbody>{% for u in s.unindexed %}
+        <tr><td class="table__mono text-mute">{{ u.relpath }}</td>
+          <td class="num">{{ '%.1f KB' % (u.size / 1024) }}</td>
+          <td class="table__mono">{{ u.mtime }}</td></tr>
+      {% endfor %}</tbody>
+    </table></div>
+  </div>
+</div>
+{% endif %}
+
+<!-- 手动运行指引 -->
+<div class="grid grid--cols-12 mt-5">
+  <div class="col-12">
+    <div class="card fade-in">
+      <div class="card__head"><div><div class="card__title">🧭 手动运行指引</div>
+        <div class="card__subtitle">交易系统冒烟/诊断脚本请在项目根终端执行；连库的须先设 CRYPTO_DB_URL</div></div></div>
+      <div class="card__body">
+        <pre class="pre-out"># 纯离线冒烟（随时可跑）
+python crypto/task/_smoke_dual_position.py
+
+# 写库类：需数据库环境变量，且避开生产巡检高峰
+$env:CRYPTO_DB_URL='...'; python crypto/_smoke_trader_state.py
+
+# 带后台副作用的（如 discipline_http）：务必关后台线程再跑
+$env:CRYPTO_NO_BACKGROUND='1'; python crypto/_smoke_discipline_http.py
+
+# 连真实 OKX 的（🌐 分级）：实盘时段慎跑
+python crypto/_smoke_pos_history.py</pre>
+        <p class="text-mute fs-xs" style="margin-top:var(--sp-3)">
+          完整分级、覆盖模块与"何时重跑"口径以 <span class="text-mono">{{ s.index_path }}</span> 为准；本页只读展示，不代为执行。
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  document.querySelectorAll('.smoke-run').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var key = btn.getAttribute('data-key');
+      var out = document.getElementById('out-' + key);
+      var row = out.closest('.smoke-out-row');
+      row.hidden = false;
+      out.className = 'pre-out';
+      out.textContent = '⏳ 运行中（' + key.toUpperCase() + '）…';
+      btn.disabled = true;
+      fetch('/tools/smoke/run/' + encodeURIComponent(key), { method: 'POST' })
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+          var d = j.data || {};
+          out.textContent = (d.ok ? '✅ 通过' : '❌ 失败') +
+            '  ·  exit=' + (d.returncode === null ? d.kind : d.returncode) +
+            '  ·  ' + (d.elapsed_ms || 0) + 'ms\n\n' + (d.tail || '(无输出)');
+          out.className = 'pre-out ' + (d.ok ? 'pre-out--ok' : 'pre-out--fail');
+        })
+        .catch(function (e) {
+          out.className = 'pre-out pre-out--fail';
+          out.textContent = '❌ 请求失败：' + e;
+        })
+        .finally(function () { btn.disabled = false; });
+    });
+  });
+})();
+</script>
+{% endblock %}

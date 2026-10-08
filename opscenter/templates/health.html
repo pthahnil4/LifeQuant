@@ -1,0 +1,241 @@
+{% extends "base.html" %}
+{% set active_page = "health" %}
+{% block title %}系统健康检查 · OpsCenter{% endblock %}
+{% block crumb_group %}系统健康{% endblock %}
+{% block crumb_page %}健康检查{% endblock %}
+
+{# 采集层 services 顺序稳定：0 进程 / 1 RSS / 2 系统内存 / 3 磁盘 / 4 采样 / 5 负载 #}
+{% set s_rss = h.services[1] %}
+{% set s_mem = h.services[2] %}
+{% set s_disk = h.services[3] %}
+{% set alive = h.process.alive %}
+{% set ring_color = 'var(--success)' if h.score >= 80 else ('var(--warning)' if h.score >= 60 else 'var(--danger)') %}
+{% set ring_circ = (2 * 3.141592653589793 * 56) | round(1) %}
+{% set ring_offset = (ring_circ * (1 - h.score / 100.0)) | round(1) %}
+
+{% block content %}
+<div class="page-head fade-in">
+  <div class="page-head__top">
+    <div>
+      <h1 class="page-head__title">系统健康检查</h1>
+      <p class="page-head__desc">
+        {% if h.stale %}
+          数据源 <span class="text-mono">memory_history.jsonl</span> 暂无可读心跳
+        {% else %}
+          只读采集交易系统落盘产物 · 最近采样 {{ h.checked_at }}
+          {%- if h.lag_sec is not none %}（{{ h.lag_sec }} 秒前）{% endif %}
+        {% endif %}
+      </p>
+    </div>
+    <div class="page-head__actions">
+      <span class="kv">🛰️ 采样间隔 {{ h.interval or '—' }}s</span>
+      <a class="btn btn--primary" href="/">← 返回总览</a>
+    </div>
+  </div>
+</div>
+
+{% if h.stale %}
+<div class="banner banner--info fade-in">ℹ️ 未读到内存心跳。请确认数据源路径：<span class="text-mono">{{ log_dir }}</span></div>
+{% elif not alive %}
+<div class="banner banner--danger fade-in">⚠️ 交易进程心跳已超时（最近采样 {{ h.checked_at }}），可能已退出；或运维站与交易系统不在同一台主机。</div>
+{% endif %}
+
+<!-- KPI 磁贴 -->
+<div class="grid grid--cols-12">
+  <div class="col-3">
+    <div class="tile tile--hover fade-in">
+      <div class="tile__glow"></div>
+      <div class="tile__top"><span class="tile__label">综合健康评分</span>
+        <span class="tile__icon tile__icon--{% if h.score>=80 %}success{% elif h.score>=60 %}warning{% else %}danger{% endif %}">🛡️</span></div>
+      <div class="tile__value">{{ h.score }}<small>/100</small></div>
+      <div class="tile__foot"><span class="badge badge--{% if h.score>=80 %}success{% elif h.score>=60 %}warning{% else %}danger{% endif %}">
+        <span class="badge__dot"></span>{% if h.score>=80 %}优秀{% elif h.score>=60 %}需关注{% else %}异常{% endif %}</span>
+        <span class="text-mute">五维加权</span></div>
+    </div>
+  </div>
+
+  <div class="col-3">
+    <div class="tile tile--hover fade-in" style="animation-delay:.05s">
+      <div class="tile__glow"></div>
+      <div class="tile__top"><span class="tile__label">交易进程</span>
+        <span class="tile__icon tile__icon--{% if alive %}success{% else %}danger{% endif %}">🐍</span></div>
+      <div class="tile__value" style="font-size:var(--fs-2xl)">{% if alive %}存活{% else %}离线{% endif %}</div>
+      <div class="tile__foot">
+        {% if h.process.pid %}<span class="text-mono">PID {{ h.process.pid }}</span>{% endif %}
+        {%- if h.lag_sec is not none %} · 心跳 {{ h.lag_sec }}s{% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-3">
+    <div class="tile tile--hover fade-in" style="animation-delay:.1s">
+      <div class="tile__glow"></div>
+      <div class="tile__top"><span class="tile__label">内存水位</span>
+        <span class="tile__icon tile__icon--{{ s_rss.level }}">🧠</span></div>
+      <div class="tile__value">{% if h.rss_mb is not none %}{{ h.rss_mb }}{% else %}—{% endif %}<small>MB RSS</small></div>
+      <div class="tile__foot">
+        <span class="badge badge--{{ s_mem.level }}"><span class="badge__dot"></span>系统 {{ h.mem_usage_pct if h.mem_usage_pct is not none else '—' }}%</span>
+        <span class="text-mute">危险 {{ 800 }}MB</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-3">
+    <div class="tile tile--hover fade-in" style="animation-delay:.15s">
+      <div class="tile__glow"></div>
+      <div class="tile__top"><span class="tile__label">磁盘剩余</span>
+        <span class="tile__icon tile__icon--{{ s_disk.level }}">🗄️</span></div>
+      <div class="tile__value">{% if h.disk.free_gb is not none %}{{ h.disk.free_gb }}{% else %}—{% endif %}<small>GB</small></div>
+      <div class="tile__foot">
+        {% if h.disk.usage_pct is not none %}<span>已用 {{ h.disk.usage_pct }}% · 剩 {{ h.disk.free_pct }}%</span>{% else %}<span class="text-mute">无法读取</span>{% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 内存趋势 + 评分构成 -->
+<div class="grid grid--cols-12 mt-5">
+  <div class="col-8">
+    <div class="card fade-in">
+      <div class="card__head">
+        <div><div class="card__title">📈 进程内存 RSS 趋势</div>
+          <div class="card__subtitle">数据源 <span class="text-mono">memory_history.jsonl</span> · app 心跳 · 采样 {{ h.memory_series|length }} 点</div></div>
+        <span class="badge badge--{{ s_rss.level }}"><span class="badge__dot"></span>{{ s_rss.stat }}</span>
+      </div>
+      <div class="card__body">
+        {% if chart.available %}
+        <div class="chart">
+          <svg viewBox="{{ chart.viewbox }}" preserveAspectRatio="none" style="height:200px">
+            <defs>
+              <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="var(--brand-400)" stop-opacity=".38"/>
+                <stop offset="100%" stop-color="var(--brand-400)" stop-opacity="0"/>
+              </linearGradient>
+            </defs>
+            <line class="chart__grid" x1="0" y1="16" x2="800" y2="16"/>
+            <line class="chart__grid" x1="0" y1="{{ chart.baseline }}" x2="800" y2="{{ chart.baseline }}"/>
+            {% if chart.threshold_y is not none %}
+            <line class="chart__thresh" x1="0" y1="{{ chart.threshold_y }}" x2="800" y2="{{ chart.threshold_y }}"/>
+            <text class="chart__axis" x="6" y="{{ chart.threshold_y - 5 }}">{{ chart.threshold_label }}</text>
+            {% endif %}
+            <path class="chart__area" d="{{ chart.area_path }}"/>
+            <polyline class="chart__line draw-line" points="{{ chart.line_points }}"/>
+            <circle class="chart__dot" cx="{{ chart.last_x }}" cy="{{ chart.last_y }}" r="4"/>
+          </svg>
+        </div>
+        <div class="chart-legend mt-4">
+          <span class="chart-legend__item"><span class="chart-legend__line" style="background:var(--brand-400)"></span>RSS</span>
+          <span class="chart-legend__item"><span class="chart-legend__line" style="background:var(--danger)"></span>危险线</span>
+          <span class="chart-legend__item text-mute">区间 {{ chart.min }} ~ {{ chart.max }} MB · 当前 {{ h.rss_mb if h.rss_mb is not none else '—' }} MB</span>
+        </div>
+        {% else %}
+        <div class="empty"><span class="empty__icon">📉</span>内存趋势数据不足（需 ≥2 个采样点）</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-4">
+    <div class="card fade-in" style="animation-delay:.05s">
+      <div class="card__head"><div><div class="card__title">🛡️ 评分构成</div><div class="card__subtitle">各维度满分 100，按权重合成</div></div></div>
+      <div class="card__body">
+        <div class="score-wrap" style="flex-direction:column;gap:var(--sp-5)">
+          <div class="score-ring">
+            <svg width="132" height="132" viewBox="0 0 132 132">
+              <circle cx="66" cy="66" r="56" fill="none" stroke="var(--surface-3)" stroke-width="12"/>
+              <circle cx="66" cy="66" r="56" fill="none" stroke="{{ ring_color }}" stroke-width="12" stroke-linecap="round"
+                      stroke-dasharray="{{ ring_circ }}" stroke-dashoffset="{{ ring_offset }}"/>
+            </svg>
+            <div class="score-ring__val"><div><div class="score-ring__num">{{ h.score }}</div><div class="score-ring__cap">综合</div></div></div>
+          </div>
+          <div class="score-legend" style="width:100%">
+            {% for p in h.score_parts %}
+            <div class="score-legend__item">
+              <span class="score-legend__label"><span class="score-legend__swatch" style="background:var(--{{ p.level }})"></span>{{ p.label }}</span>
+              <b>{{ p.score }}</b>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 服务健康明细 + 主机与采样 -->
+<div class="grid grid--cols-12 mt-5">
+  <div class="col-7">
+    <div class="card fade-in">
+      <div class="card__head"><div><div class="card__title">🩺 可观测项明细</div><div class="card__subtitle">口径透明 · 全部来自只读产物或 stdlib 现算</div></div>
+        <span class="badge badge--{{ 'success' if alive else 'danger' }}"><span class="badge__dot"></span>{{ '进程存活' if alive else '进程离线' }}</span></div>
+      <div class="card__body">
+        {% for s in h.services %}
+        <div class="list-row">
+          <div class="list-row__icon" style="background:var(--{{ s.level }}-soft);color:var(--{{ s.level }})">{{ s.icon }}</div>
+          <div class="list-row__main">
+            <div class="list-row__title">{{ s.name }}</div>
+            <div class="list-row__sub">{{ s.meta }}</div>
+            <div class="progress" style="height:4px;margin-top:8px"><div class="progress__bar progress__bar--{{ s.level }}" style="width:{{ s.pct }}%"></div></div>
+          </div>
+          <div class="list-row__aside"><span class="badge badge--{{ s.level }}"><span class="badge__dot"></span>{{ s.stat }}</span></div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-5">
+    <div class="card fade-in" style="animation-delay:.05s">
+      <div class="card__head"><div><div class="card__title">🖥️ 主机与采样</div><div class="card__subtitle">运维站本机 vs 交易心跳</div></div></div>
+      <div class="card__body">
+        <div class="list-row" style="border:none;padding-top:0">
+          <div class="list-row__main"><div class="list-row__title">磁盘（运维站本机 · stdlib 现算）</div>
+            <div class="list-row__sub">{{ h.disk.usage_pct if h.disk.usage_pct is not none else '—' }}% 用 · 剩 {{ h.disk.free_gb if h.disk.free_gb is not none else '—' }} GB</div></div>
+          <div class="list-row__aside"><span class="badge badge--{{ s_disk.level }}">{{ '本机' }}</span></div>
+        </div>
+        <div class="list-row" style="border:none">
+          <div class="list-row__main"><div class="list-row__title">磁盘（交易心跳携带）</div>
+            <div class="list-row__sub">memory_history 最近 embedded 记录</div></div>
+          <div class="list-row__aside"><span class="badge badge--neutral">{{ h.hb_disk_pct if h.hb_disk_pct is not none else '—' }}%</span></div>
+        </div>
+        <div class="list-row" style="border:none">
+          <div class="list-row__main"><div class="list-row__title">系统负载 1min / CPU</div>
+            <div class="list-row__sub">{{ '%.2f' % h.load_1min if h.load_1min is not none else '—' }} · {{ h.cpu_count }} 核</div></div>
+          <div class="list-row__aside"><span class="badge badge--{{ h.services[5].level }}"><span class="badge__dot"></span>{{ '正常' if h.services[5].level=='success' else 'N/A' }}</span></div>
+        </div>
+        <div class="list-row" style="border:none">
+          <div class="list-row__main"><div class="list-row__title">数据源目录</div>
+            <div class="list-row__sub text-mono" style="word-break:break-all">{{ log_dir }}</div></div>
+        </div>
+        <div class="banner banner--info" style="margin:var(--sp-3) 0 0">🔒 本页只读，不写交易文件、不发邮件、不下单。</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 近期异常 -->
+<div class="grid grid--cols-12 mt-5">
+  <div class="col-12">
+    <div class="card fade-in">
+      <div class="card__head"><div><div class="card__title">🚨 近期异常</div><div class="card__subtitle">来自采样记录 issues 字段（去重、新→旧）</div></div>
+        {% if h.issues %}<span class="badge badge--warning">{{ h.issues|length }} 条</span>{% endif %}</div>
+      <div class="card__body">
+        {% if h.issues %}
+        <div class="table-wrap">
+          <table class="table">
+            <thead><tr><th style="width:180px">时间</th><th>异常描述</th></tr></thead>
+            <tbody>
+              {% for a in h.issues %}
+              <tr><td class="table__mono">{{ a.ts }}</td><td class="table__strong">{{ a.text }}</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="empty"><span class="empty__icon">✅</span>近期无异常记录</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

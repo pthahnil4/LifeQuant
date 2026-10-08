@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>K线训练系统</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        .kline-hero {
+            text-align: center;
+            padding: 40px 20px 20px;
+        }
+        .kline-hero h1 {
+            font-size: 2rem;
+            color: #1a237e;
+            margin-bottom: 8px;
+        }
+        .kline-hero p {
+            color: #666;
+            font-size: 1rem;
+        }
+
+        .category-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: 20px;
+            padding: 20px;
+            max-width: 1100px;
+            margin: 0 auto;
+        }
+
+        .category-card {
+            background: #fff;
+            border-radius: 12px;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+            padding: 28px 24px;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            text-decoration: none;
+            color: inherit;
+            border: 2px solid transparent;
+        }
+        .category-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.14);
+        }
+        .category-card.available {
+            border-color: #e3f2fd;
+        }
+        .category-card.available:hover {
+            border-color: #1565c0;
+        }
+        .category-card.disabled {
+            opacity: 0.55;
+            cursor: not-allowed;
+            border-color: #f5f5f5;
+        }
+
+        .card-icon {
+            font-size: 3rem;
+            line-height: 1;
+        }
+        .card-title {
+            font-size: 1.4rem;
+            font-weight: 700;
+            color: #222;
+        }
+        .card-desc {
+            color: #555;
+            font-size: 0.92rem;
+            line-height: 1.5;
+        }
+        .card-badge {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+        }
+        .badge-live {
+            background: #e8f5e9;
+            color: #2e7d32;
+        }
+        .badge-soon {
+            background: #f5f5f5;
+            color: #999;
+        }
+
+        /* 盲选训练（跨品类模式入口） */
+        .blind-card {
+            grid-column: 1 / -1;
+            background: linear-gradient(135deg, #1a237e 0%, #3949ab 100%);
+            flex-direction: row;
+            align-items: center;
+            gap: 20px;
+        }
+        .blind-card .card-icon { font-size: 2.6rem; }
+        .blind-card .card-title,
+        .blind-card .card-desc { color: #fff; }
+        .blind-card .card-desc strong { color: #ffe082; }
+        .blind-card .card-body { flex: 1; display: flex; flex-direction: column; gap: 8px; }
+        .blind-card:hover { border-color: #ffe082; }
+        .blind-card .badge-live { background: rgba(255,255,255,0.22); color: #fff; }
+
+        .symbol-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 4px;
+        }
+        .symbol-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 5px 12px;
+            background: #e3f2fd;
+            color: #1565c0;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            text-decoration: none;
+            transition: background 0.15s;
+        }
+        .symbol-chip:hover {
+            background: #bbdefb;
+        }
+        .symbol-list.scrollable {
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .section-label {
+            font-size: 0.8rem;
+            color: #999;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-top: 4px;
+        }
+    </style>
+</head>
+<body>
+    {% include 'nav.html' %}
+{% include 'kline_account_bar.html' %}
+
+    <div class="dashboard">
+        <div class="kline-hero">
+            <h1>K线训练系统</h1>
+            <p>多周期K线图表 · 技术指标分析 · 历史数据回放</p>
+        </div>
+
+        <div class="category-grid">
+            <!-- 盲选训练（跨品类挑战） -->
+            <a class="category-card available blind-card" href="/kline/blind">
+                <div class="card-icon">🎲</div>
+                <div class="card-body">
+                    <div class="card-title">盲选训练</div>
+                    <div class="card-desc">
+                        系统随机分配一个<strong>隐藏品种</strong>（加密币 / 期货 / 股票），遮罩全部身份信息，
+                        凭K线走势预判多空，训练结束后揭晓答案。考验你的纯技术盘感！
+                    </div>
+                    <span class="card-badge badge-live">● 跨品类挑战</span>
+                </div>
+            </a>
+
+            <!-- 加密币 -->
+            <div class="category-card available">
+                <div class="card-icon">🪙</div>
+                <div class="card-title">加密币</div>
+                <div class="card-desc">
+                    支持 NEAR/USDT 等加密货币的多周期K线图表，
+                    包含 MACD、RSI、ADX、ATR、BOLL、SAR 等技术指标分析。
+                </div>
+                <span class="card-badge badge-live">● 已上线</span>
+                <div class="section-label">可用品种</div>
+                <div class="symbol-list" id="crypto-symbols">
+                    <!-- 动态加载 -->
+                    <a class="symbol-chip" href="/kline/crypto/NEAR">📊 NEAR/USDT</a>
+                </div>
+            </div>
+
+            <!-- 期货 -->
+            <div class="category-card available">
+                <div class="card-icon">📈</div>
+                <div class="card-title">期货</div>
+                <div class="card-desc">
+                    国内期货品种K线训练，支持螺纹钢、碳酸锂、玻璃等品种，
+                    与期货监控系统数据联动（日线/周线/分钟线，可做空）。
+                </div>
+                <span class="card-badge badge-live">● 已上线</span>
+                <div class="section-label">可用品种</div>
+                <div class="symbol-list scrollable" id="futures-symbols">
+                    <span style="color:#999;font-size:0.85rem">加载中…</span>
+                </div>
+            </div>
+
+            <!-- 股票 -->
+            <div class="category-card available">
+                <div class="card-icon">📉</div>
+                <div class="card-title">股票</div>
+                <div class="card-desc">
+                    A股K线训练，支持贵州茅台、宁德时代等蓝筹股，
+                    与股票监控系统数据联动（仅支持做多）。
+                </div>
+                <span class="card-badge badge-live">● 已上线</span>
+                <div class="section-label">可用品种</div>
+                <div class="symbol-list scrollable" id="stock-symbols">
+                    <span style="color:#999;font-size:0.85rem">加载中…</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    // 按品类动态加载可用品种（统一走 /kline/api/symbols/<category>）
+    async function loadCategorySymbols(cat, containerId) {
+        const container = document.getElementById(containerId);
+        if (!container) return;
+        try {
+            const resp = await fetch(`/kline/api/symbols/${cat}`);
+            const json = await resp.json();
+            if (json.code === 200 && Array.isArray(json.data) && json.data.length > 0) {
+                container.innerHTML = json.data.map(s =>
+                    `<a class="symbol-chip" href="/kline/train/${cat}/${s.code}">📊 ${s.name}</a>`
+                ).join('');
+            } else {
+                container.innerHTML = '<span style="color:#999;font-size:0.85rem">暂无可用品种</span>';
+            }
+        } catch (e) {
+            console.warn(`加载 ${cat} 品种列表失败:`, e);
+            container.innerHTML = '<span style="color:#c62828;font-size:0.85rem">品种加载失败</span>';
+        }
+    }
+    loadCategorySymbols('crypto', 'crypto-symbols');
+    loadCategorySymbols('futures', 'futures-symbols');
+    loadCategorySymbols('stock', 'stock-symbols');
+    </script>
+</body>
+</html>

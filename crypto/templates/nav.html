@@ -1,0 +1,53 @@
+{#- 全站公共导航（数据驱动）-#}
+{#- 由 navigation_routes 的 context processor 注入 nav_default_config / nav_active_id；
+    无 JS 时按默认配置渲染纯链接保证可达，有 JS 时 navigation.js 用权威配置重绘并接管
+    折叠、拖拽、抽屉与跨设备同步。GET 不写库，自定义只在显式保存/拖拽/恢复时落库。 -#}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/navigation.css') }}">
+{#- 首屏防闪引导脚本：必须在 <nav> 之前执行，以便浏览器首次绘制前就给 <html> 打上
+    nav-booting 标记，隐藏服务端「默认平铺兜底」，避免「一排式 → 分类展开」变脸。
+    无 JS 时本脚本不执行、标记不加，兜底链接照常显示，可达性不受影响。 -#}
+<script>
+(function () {
+    var root = document.documentElement;
+    root.classList.add('nav-booting');
+    // 失败保护：即使 navigation.js 异常/被拦截，也确保 2.5s 内揭示导航，绝不永久隐藏
+    setTimeout(function () { root.classList.remove('nav-booting'); }, 2500);
+})();
+</script>
+<nav class="main-nav">
+    <div class="nav-inner">
+        <span class="nav-brand" title="LifeQuant · 生活量化">LifeQuant</span>
+        <div class="nav-links" id="navLinks">
+            {#- 无 JS 兜底：把所有可见链接（含分类内子项）按 order 平铺，保证页面可达 -#}
+            {% for node in nav_default_config['items'] | sort(attribute='order') if node.type == 'link' and node.visible %}
+            <a href="{{ node.url }}" class="nav-link {% if nav_active_id == node.id %}active{% endif %}"
+               {% if node.builtin_key == 'analysis' %}data-nav-role="analysis"{% endif %}
+               data-nav-id="{{ node.id }}">{{ node.name }}</a>
+            {% endfor %}
+        </div>
+        <div class="nav-more" id="navMore" hidden>
+            <button type="button" class="nav-more-btn" id="navMoreBtn">更多 <span class="nav-more-caret">▼</span></button>
+            <div class="nav-more-menu" id="navMoreMenu"></div>
+        </div>
+        <div class="nav-actions">
+            <button type="button" class="nav-tool-btn" id="navEditToggle" title="进入拖拽整理模式">
+                <span class="nav-edit-label">整理导航</span><span class="nav-save-dot"></span>
+            </button>
+            <button type="button" class="nav-tool-btn" id="navConfigBtn" title="打开导航配置管理"
+                    onclick="window.CryptoNav && CryptoNav.openEditor()">⚙ 配置</button>
+            <button type="button" class="nav-tool-btn nav-menu-btn" id="navMenuBtn" aria-label="打开菜单">☰ 菜单</button>
+        </div>
+    </div>
+    <div class="nav-drawer" id="navDrawer" aria-hidden="true"></div>
+</nav>
+<div class="nav-overlay" id="navOverlay"></div>
+
+<script id="nav-bootstrap" type="application/json">
+{{ {'defaultConfig': nav_default_config, 'activeId': nav_active_id, 'path': nav_request_path} | tojson }}
+</script>
+{#- 先 navigation.js 建立 Store，再挂全站的分析纪律快捷弹窗与倒计时提醒；
+    discipline.js 通过 CryptoNav 暴露的导航事件与 data-nav-role 锚点跟随排序/显隐。 -#}
+<script src="{{ url_for('static', filename='js/navigation.js') }}"></script>
+<script src="{{ url_for('static', filename='js/navigation_editor.js') }}"></script>
+<script src="{{ url_for('static', filename='js/analysis_quick.js') }}"></script>
+<script src="{{ url_for('static', filename='js/discipline.js') }}"></script>

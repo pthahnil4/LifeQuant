@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+{#-
+  合并模块降级提示页（futureStockTrade 合并迁移 Phase 6）
+  =====================================================
+  期货 / 股票 / K 线训练三个蓝图在 crypto/app.py 里注册失败或被
+  FST_ENABLE_*=0 关闭时，访问其前缀不再返回裸 404，而是本页。
+
+  为什么值得单独一页：这三个模块的行情源依赖外部条件（akshare 走国内网络、
+  K 线训练要 SQLite 与登录态），在生产机器上「暂时不可用」是常态而非异常。
+  用户从导航点进来只看到 404，会误判成整站坏了，或者根本不知道还有个开关。
+  页面把三件事说清楚：状态、原因、怎么恢复。
+
+  样式沿用宿主 style.css 的 CSS 变量与卡片体系，不引入模块自有配色。
+-#}
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ meta.title.split('（')[0] }}暂不可用 - LifeQuant</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        .fst-unavailable { max-width: 760px; margin: 40px auto; padding: 0 20px 60px; }
+        .fst-card {
+            background: var(--card-bg); border: 1px solid var(--border-color);
+            border-radius: 12px; padding: 26px 28px;
+        }
+        .fst-badge {
+            display: inline-flex; align-items: center; gap: 6px;
+            font-size: .8rem; padding: 4px 10px; border-radius: 999px;
+            background: rgba(240, 173, 78, .14); color: #e0a458;
+            border: 1px solid rgba(240, 173, 78, .35); margin-bottom: 12px;
+        }
+        .fst-card h1 { margin: 0 0 6px; font-size: 1.35rem; }
+        .fst-sub { color: var(--text-muted); font-size: .9rem; line-height: 1.7; margin: 0 0 18px; }
+        .fst-row {
+            display: flex; gap: 10px; padding: 10px 0; font-size: .88rem;
+            border-top: 1px dashed var(--border-color);
+        }
+        .fst-row .k { flex: 0 0 92px; color: var(--text-muted); }
+        .fst-row .v { flex: 1; word-break: break-all; }
+        .fst-row .v code {
+            background: rgba(255, 255, 255, .06); padding: 1px 6px;
+            border-radius: 4px; font-size: .84rem;
+        }
+        .fst-steps { margin: 16px 0 0; padding-left: 20px; font-size: .87rem; line-height: 1.85; }
+        .fst-actions { margin-top: 22px; display: flex; gap: 10px; flex-wrap: wrap; }
+        .fst-actions a {
+            display: inline-block; padding: 8px 16px; border-radius: 8px;
+            font-size: .88rem; text-decoration: none;
+            background: var(--primary-color); color: #fff;
+        }
+        .fst-actions a.ghost {
+            background: transparent; color: var(--text-muted);
+            border: 1px solid var(--border-color);
+        }
+        .fst-error {
+            margin-top: 14px; padding: 10px 12px; border-radius: 8px;
+            background: rgba(248, 81, 73, .1); border: 1px solid rgba(248, 81, 73, .3);
+            color: #f0b6b2; font-size: .82rem; word-break: break-all;
+        }
+    </style>
+</head>
+<body class="{% block body_class %}{% endblock %}">
+    {% include 'nav.html' %}
+
+    <main class="fst-unavailable">
+        <div class="fst-card">
+            <span class="fst-badge">
+                {% if meta.status == 'disabled' %}已按配置关闭{% else %}暂时无法加载{% endif %}
+            </span>
+            <h1>{{ meta.title.split('（')[0] }}</h1>
+            <p class="fst-sub">
+                这个模块与 LifeQuant 策略监控台共用同一个服务与端口，但行情来源相互独立。
+                当前它没有挂载成功，<strong>主功能（加密货币监控、API 控制台、实盘交易）
+                完全不受影响</strong>。
+            </p>
+
+            <div class="fst-row">
+                <span class="k">状态</span>
+                <span class="v">
+                    {% if meta.status == 'disabled' %}
+                        由环境变量 <code>{{ meta.env }}=0</code> 显式关闭
+                    {% else %}
+                        蓝图注册失败（依赖缺失或运行时异常）
+                    {% endif %}
+                </span>
+            </div>
+            <div class="fst-row">
+                <span class="k">访问路径</span>
+                <span class="v"><code>{{ meta.prefix }}</code></span>
+            </div>
+            {% if sub %}
+            <div class="fst-row">
+                <span class="k">请求子路径</span>
+                <span class="v"><code>{{ sub }}</code></span>
+            </div>
+            {% endif %}
+
+            {% if meta.status == 'disabled' %}
+            <ol class="fst-steps">
+                <li>本模块被刻意关闭，通常是这台机器不具备其外部条件
+                    （期货/股票需要 akshare 的国内网络出口）。</li>
+                <li>想启用：去掉启动环境里的 <code>{{ meta.env }}=0</code>
+                    或改为 <code>{{ meta.env }}=1</code>，然后重启服务。</li>
+            </ol>
+            {% else %}
+            <ol class="fst-steps">
+                <li>确认依赖已装进运行所用虚拟环境：
+                    <code>pip install -r requirements.txt</code>。</li>
+                <li>确认数据目录可读写（配置与台账在
+                    <code>data/</code>，可用 <code>CRYPTO_DATA_DIR</code> 指定）。</li>
+                <li>行情源需要外网可达；akshare 接口在国内网络下才稳定。</li>
+                <li>临时想屏蔽本模块：<code>{{ meta.env }}=0</code>，
+                    这样启动日志不再重复报同一个错。</li>
+            </ol>
+            {% if meta.error %}
+            <div class="fst-error">注册异常信息：{{ meta.error }}</div>
+            {% endif %}
+            {% endif %}
+
+            <div class="fst-actions">
+                <a href="/">返回 LifeQuant 监控台</a>
+                <a class="ghost" href="/system-status">查看系统状态</a>
+            </div>
+        </div>
+    </main>
+</body>
+</html>

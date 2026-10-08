@@ -1,0 +1,96 @@
+/* =============================================================================
+   盘感 Wiki 管理台专属样式（批次12 · /instinct/wiki）
+   全部选择器以 .iwk- 前缀隔离，不与 style.css / 各页面自有样式冲突。
+   深色主题与项目现有页面（journal/instinct）观感一致。
+   ============================================================================= */
+
+/* 本页采用深色主题：统一整页背景与基准文字色（导航栏有独立白底不受影响） */
+body { background: #0d1117; color: #e6edf3; }
+
+.iwk-wrap { max-width: 1240px; margin: 0 auto; padding: 18px 16px 60px; }
+
+/* ---------- 头部 ---------- */
+.iwk-hero { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 6px; }
+.iwk-hero h1 { margin: 0; font-size: 22px; color: #e6edf3; }
+.iwk-hero .iwk-sub { color: #a9b4c2; font-size: 13px; width: 100%; }
+.iwk-hero-link { font-size: 12px; color: #58a6ff; text-decoration: none; }
+.iwk-badge { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 12px; }
+.iwk-badge-ok { background: rgba(46,160,67,.18); color: #3fb950; border: 1px solid #238636; }
+.iwk-badge-off { background: rgba(218,54,51,.15); color: #f85149; border: 1px solid #da3633; }
+
+/* ---------- 标签页 ---------- */
+.iwk-tabs { display: flex; gap: 6px; margin: 14px 0 16px; flex-wrap: wrap; }
+.iwk-tab { background: #161b22; border: 1px solid #30363d; color: #a9b4c2;
+           border-radius: 8px; padding: 8px 16px; font-size: 14px; cursor: pointer; }
+.iwk-tab.active { background: #1f6feb; border-color: #1f6feb; color: #fff; }
+.iwk-pane { display: none; }
+.iwk-pane.active { display: block; }
+
+/* ---------- 卡片 ---------- */
+.iwk-card { background: #161b22; border: 1px solid #30363d; border-radius: 10px;
+            padding: 16px; margin-bottom: 16px; }
+.iwk-card h2 { margin: 0 0 10px; font-size: 16px; color: #e6edf3; }
+.iwk-muted { color: #a9b4c2; font-size: 12px; }
+.iwk-hint { font-size: 12px; color: #d29922; line-height: 1.6; }
+
+/* ---------- 工具条 / 表单 ---------- */
+.iwk-toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+.iwk-select, .iwk-input { background: #0d1117; color: #e6edf3; border: 1px solid #30363d;
+                          border-radius: 6px; padding: 6px 10px; font-size: 13px; }
+.iwk-input { width: 90px; }
+.iwk-btn { background: #21262d; color: #e6edf3; border: 1px solid #30363d; border-radius: 6px;
+           padding: 6px 12px; font-size: 13px; cursor: pointer; }
+.iwk-btn:hover { border-color: #a9b4c2; }
+.iwk-btn:disabled { opacity: .5; cursor: not-allowed; }
+.iwk-btn-primary { background: #1f6feb; border-color: #1f6feb; }
+.iwk-btn-ok { background: #238636; border-color: #238636; }
+.iwk-btn-danger { background: #da3633; border-color: #da3633; }
+.iwk-seg { display: inline-flex; border: 1px solid #30363d; border-radius: 6px; overflow: hidden; }
+.iwk-seg button { background: #0d1117; color: #a9b4c2; border: 0; padding: 6px 12px; font-size: 13px; cursor: pointer; }
+.iwk-seg button.on { background: #1f6feb; color: #fff; }
+
+/* ---------- 表格 ---------- */
+.iwk-tb { width: 100%; border-collapse: collapse; font-size: 13px; color: #e6edf3; }
+.iwk-tb th, .iwk-tb td { border-bottom: 1px solid #21262d; padding: 7px 8px;
+                         text-align: left; vertical-align: top; }
+.iwk-tb th { color: #a9b4c2; font-weight: 600; white-space: nowrap; }
+.iwk-tb tr:hover td { background: rgba(177,186,196,.04); }
+
+/* ---------- 规则卡 ---------- */
+.iwk-tag { font-size: 11px; padding: 1px 8px; border-radius: 10px; border: 1px solid #30363d; color: #a9b4c2; }
+.iwk-tag-active { color: #3fb950; border-color: #238636; }
+.iwk-tag-candidate { color: #d29922; border-color: #9e6a03; }
+.iwk-tag-retired { color: #f85149; border-color: #da3633; }
+.iwk-rule-st { font-size: 13px; color: #c9d1d9; line-height: 1.6; }
+.iwk-rule-cond { font-family: Consolas, monospace; font-size: 11px; color: #a9b4c2; margin-top: 4px; word-break: break-all; }
+.iwk-evidence { margin-top: 4px; font-size: 11px; color: #a9b4c2; }
+.iwk-evidence summary { cursor: pointer; color: #58a6ff; }
+
+/* ---------- 审计面板 ---------- */
+.iwk-hit-1 { color: #3fb950; font-weight: 700; }
+.iwk-hit-0 { color: #f85149; font-weight: 700; }
+.iwk-hit-na { color: #a9b4c2; }
+.iwk-fb-on { border-color: #1f6feb; color: #58a6ff; }
+.iwk-reason { max-width: 360px; font-size: 12px; color: #c9d1d9; line-height: 1.5; }
+
+/* ---------- 仪表盘 ---------- */
+.iwk-stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 14px; }
+.iwk-stat-box { border: 1px solid #30363d; border-radius: 8px; padding: 12px; background: #0d1117; }
+.iwk-stat-box .t { color: #a9b4c2; font-size: 12px; margin-bottom: 6px; }
+.iwk-stat-box .n { font-size: 24px; font-weight: 700; color: #e6edf3; }
+.iwk-stat-box .s { font-size: 11px; color: #a9b4c2; margin-top: 4px; }
+.iwk-chart { width: 100%; height: 360px; }
+.iwk-chart-note { font-size: 12px; color: #a9b4c2; margin-top: 6px; }
+
+/* ---------- 检索测试 ---------- */
+.iwk-form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 12px; }
+.iwk-form-grid label { display: block; font-size: 11px; color: #a9b4c2; margin-bottom: 3px; }
+.iwk-form-grid .iwk-input, .iwk-form-grid .iwk-select { width: 100%; box-sizing: border-box; }
+.iwk-bd { font-family: Consolas, monospace; font-size: 11px; white-space: nowrap; }
+.iwk-bd .bar { display: inline-block; height: 9px; border-radius: 2px; background: #1f6feb;
+               vertical-align: middle; margin-right: 4px; }
+.iwk-bd-far { color: #f0883e; }
+.iwk-query-echo { background: #0d1117; border: 1px solid #30363d; border-radius: 6px;
+                  padding: 8px 10px; font-family: Consolas, monospace; font-size: 12px;
+                  color: #c9d1d9; margin-bottom: 10px; word-break: break-all; }
+.iwk-leak-note { border-left: 3px solid #9e6a03; padding-left: 10px; margin-bottom: 10px; }

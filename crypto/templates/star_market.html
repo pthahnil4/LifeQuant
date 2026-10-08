@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>星标币种行情 - LifeQuant</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        /* 星标行情页面专用样式 */
+        .star-market-page {}
+        .star-market-page .page-wrapper {
+            width: 100%;
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 24px 20px;
+            box-sizing: border-box;
+        }
+        .star-market-page .page-title {
+            font-size: 1.5rem;
+            margin: 0 0 6px 0;
+            color: var(--text-main);
+        }
+        .star-market-page .page-subtitle {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            margin: 0 0 20px 0;
+        }
+
+        /* 工具栏 */
+        .star-toolbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 10px;
+            background: white;
+            padding: 14px 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            margin-bottom: 16px;
+        }
+        .star-toolbar-left {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .star-toolbar-right {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .star-toolbar .info-text {
+            font-size: 0.82rem;
+            color: #888;
+        }
+        .star-toolbar .info-text strong {
+            color: var(--primary-color);
+        }
+
+        /* 刷新状态 */
+        .refresh-status {
+            font-size: 0.8rem;
+            padding: 4px 12px;
+            border-radius: 4px;
+            display: inline-block;
+        }
+        .refresh-status.refreshing {
+            background: #fff8e1;
+            color: #f57f17;
+        }
+        .refresh-status.success {
+            background: #e8f5e9;
+            color: #2e7d32;
+        }
+        .refresh-status.error {
+            background: #ffebee;
+            color: #c62828;
+        }
+
+        /* 趋势方向刷新按钮组 */
+        .trend-btn-group {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .trend-btn-group .trend-label {
+            font-size: 0.78rem;
+            color: #888;
+            margin-right: 4px;
+            font-weight: 600;
+        }
+        .btn-trend {
+            padding: 5px 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 0.78rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            background: #f8f9fa;
+            color: #555;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        .btn-trend:hover {
+            background: #eef2f7;
+            border-color: #bbb;
+        }
+        .btn-trend:disabled {
+            background: #eee;
+            color: #ccc;
+            cursor: not-allowed;
+        }
+        .btn-trend-15m {
+            border-color: #e67e22;
+            color: #e67e22;
+            background: #fef9f4;
+        }
+        .btn-trend-15m:hover {
+            background: #fdf0e4;
+        }
+        .btn-trend-1h {
+            border-color: #8e44ad;
+            color: #8e44ad;
+            background: #faf5fd;
+        }
+        .btn-trend-1h:hover {
+            background: #f3eaf9;
+        }
+
+        /* 定时器控件 */
+        .timer-controls {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .timer-controls .timer-label {
+            font-size: 0.78rem;
+            color: #888;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        .timer-controls select {
+            padding: 4px 8px;
+            border: 1px solid #d0d5dd;
+            border-radius: 6px;
+            font-size: 0.78rem;
+            color: #333;
+            background: #fff;
+            cursor: pointer;
+        }
+        .timer-controls select:hover {
+            border-color: var(--primary-color);
+        }
+        .btn-timer-toggle {
+            padding: 5px 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 0.78rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        .btn-timer-toggle.active {
+            background: #27ae60;
+            color: white;
+            border-color: #27ae60;
+        }
+        .btn-timer-toggle.inactive {
+            background: #f8f9fa;
+            color: #888;
+            border-color: #ddd;
+        }
+        .timer-badge {
+            display: none;
+            font-size: 0.72rem;
+            color: #27ae60;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        .timer-badge.active {
+            display: inline;
+        }
+
+        /* 导出按钮组 */
+        .btn-export {
+            padding: 7px 16px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 0.82rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            background: #f8f9fa;
+            color: #555;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        .btn-export:hover {
+            background: #eef2f7;
+            border-color: #bbb;
+        }
+        .btn-export-csv {
+            border-color: #27ae60;
+            color: #27ae60;
+            background: #f0faf4;
+        }
+        .btn-export-csv:hover {
+            background: #d5f0df;
+        }
+        .btn-export-xlsx {
+            border-color: #217346;
+            color: #217346;
+            background: #f0f8f3;
+        }
+        .btn-export-xlsx:hover {
+            background: #d5ede0;
+        }
+        .btn-star-refresh {
+            padding: 7px 18px;
+            border: none;
+            border-radius: 6px;
+            background: var(--primary-color);
+            color: white;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+            white-space: nowrap;
+        }
+        .btn-star-refresh:hover {
+            background: #0056b3;
+        }
+        .btn-star-refresh:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        /* 筛选面板（紧凑） */
+        .star-filter-panel {
+            background: white;
+            padding: 12px 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            margin-bottom: 16px;
+        }
+        .star-filter-row {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            flex-wrap: wrap;
+        }
+        .star-filter-group {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .star-filter-group label {
+            font-size: 0.8rem;
+            color: #666;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        .star-filter-group select {
+            padding: 5px 24px 5px 10px;
+            border: 1px solid #d0d5dd;
+            border-radius: 6px;
+            background: #fff;
+            color: #333;
+            font-size: 0.82rem;
+            cursor: pointer;
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23888' d='M3 4.5l3 3 3-3'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 6px center;
+        }
+        .star-filter-group select:hover {
+            border-color: var(--primary-color);
+        }
+        .star-filter-actions {
+            margin-left: auto;
+            display: flex;
+            gap: 6px;
+        }
+
+        /* 表格 override - 适应更多列 */
+        #star-table-container {
+            max-height: 700px;
+            overflow-y: auto;
+            border: 1px solid #eee;
+            border-radius: 6px;
+            background: #fff;
+        }
+        #star-table-container table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.82rem;
+        }
+        #star-table-container thead {
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }
+        #star-table-container th {
+            background: #f5f6f8;
+            padding: 10px 10px;
+            text-align: center;
+            font-weight: 600;
+            color: #555;
+            border-bottom: 2px solid #ddd;
+            white-space: nowrap;
+            cursor: pointer;
+            user-select: none;
+            position: relative;
+            padding-right: 18px;
+            transition: background 0.15s;
+        }
+        #star-table-container th:hover {
+            background: #e8ecf1;
+        }
+        #star-table-container th[data-col-index]::after {
+            content: '';
+            position: absolute;
+            right: 4px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 0.7rem;
+            color: #bbb;
+        }
+        #star-table-container th.sort-asc::after {
+            content: '▲';
+            color: var(--primary-color);
+        }
+        #star-table-container th.sort-desc::after {
+            content: '▼';
+            color: var(--primary-color);
+        }
+        #star-table-container td {
+            padding: 8px 10px;
+            text-align: center;
+            border-bottom: 1px solid #f0f0f0;
+            white-space: nowrap;
+        }
+        #star-table-container tr:hover td {
+            background: #f8faff;
+        }
+
+        /* 现价高亮 */
+        #star-table-container td .price-value {
+            font-weight: 700;
+            color: var(--primary-color);
+            font-size: 1rem !important;
+        }
+
+        /* 空状态提示 */
+        .star-empty {
+            text-align: center;
+            padding: 60px 20px;
+            color: #bbb;
+            font-size: 0.95rem;
+        }
+        .star-empty .empty-icon {
+            font-size: 3rem;
+            margin-bottom: 12px;
+        }
+        .star-empty .empty-hint {
+            font-size: 0.82rem;
+            color: #ccc;
+            margin-top: 8px;
+        }
+
+        /* 内联编辑样式 */
+        .editable-field {
+            cursor: pointer;
+            padding: 2px 6px;
+            border-radius: 3px;
+            transition: background 0.15s;
+            display: inline-block;
+            min-width: 30px;
+            min-height: 20px;
+        }
+        .editable-field:hover {
+            background: #fff3cd;
+            outline: 1px dashed #f0a500;
+        }
+        .editable-field.editing {
+            background: #fffde7;
+            outline: 2px solid #f0a500;
+        }
+        .editable-input {
+            width: 120px;
+            padding: 4px 8px;
+            border: 2px solid #f0a500;
+            border-radius: 4px;
+            font-size: 0.82rem;
+            background: #fffde7;
+            outline: none;
+        }
+        .editable-input:focus {
+            border-color: #e68900;
+            box-shadow: 0 0 4px rgba(230,137,0,0.3);
+        }
+        .btn-save-field {
+            padding: 3px 10px;
+            border: none;
+            border-radius: 4px;
+            background: #2e7d32;
+            color: white;
+            font-size: 0.75rem;
+            cursor: pointer;
+            margin-left: 4px;
+            font-weight: 600;
+            transition: background 0.15s;
+            vertical-align: middle;
+        }
+        .btn-save-field:hover {
+            background: #1b5e20;
+        }
+        .btn-save-field:disabled {
+            background: #a5d6a7;
+            cursor: not-allowed;
+        }
+        .btn-cancel-field {
+            padding: 3px 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            background: #f5f5f5;
+            color: #666;
+            font-size: 0.75rem;
+            cursor: pointer;
+            margin-left: 4px;
+            font-weight: 600;
+            transition: background 0.15s;
+            vertical-align: middle;
+        }
+        .btn-cancel-field:hover {
+            background: #e0e0e0;
+        }
+        .save-feedback {
+            font-size: 0.7rem;
+            margin-left: 4px;
+            vertical-align: middle;
+            display: inline-block;
+            min-width: 40px;
+        }
+        .save-feedback.success {
+            color: #2e7d32;
+        }
+        .save-feedback.error {
+            color: #c62828;
+        }
+
+        /* 可编辑列单元格 */
+        .td-editable {
+            min-width: 100px;
+            max-width: 200px;
+        }
+
+        /* 响应式 */
+        @media (max-width: 768px) {
+            .star-market-page .page-wrapper {
+                padding: 16px 10px;
+            }
+            .star-toolbar {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            .star-toolbar-left,
+            .star-toolbar-right {
+                justify-content: center;
+            }
+            .star-filter-row {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            .star-filter-actions {
+                margin-left: 0;
+                justify-content: center;
+            }
+        }
+
+        /* 拖拽排序样式 */
+        .drag-handle {
+            cursor: grab;
+            color: #ccc;
+            font-size: 1rem;
+            user-select: none;
+            padding: 0 4px;
+            transition: color 0.15s;
+        }
+        .drag-handle:hover {
+            color: #888;
+        }
+        .drag-handle:active {
+            cursor: grabbing;
+        }
+        #star-table-container tr.dragging {
+            opacity: 0.4;
+        }
+        #star-table-container tr.drag-over {
+            border-bottom: 2px solid var(--primary-color);
+        }
+        #star-table-container tr.drag-over-top {
+            border-top: 2px solid var(--primary-color);
+        }
+        #star-table-container tr[draggable="true"] {
+            cursor: default;
+        }
+        #star-table-container tr[draggable="true"]:hover {
+            background: #f0f7ff;
+        }
+        .order-save-feedback {
+            font-size: 0.72rem;
+            color: #27ae60;
+            margin-left: 6px;
+            display: none;
+        }
+        .order-save-feedback.show {
+            display: inline;
+        }
+    </style>
+</head>
+<body>
+    {% include 'nav.html' %}
+    <div class="star-market-page">
+        <div class="page-wrapper">
+            <h1 class="page-title">⭐ 星标币种行情</h1>
+            <p class="page-subtitle">基于 OKX API 实时行情 + CSV 策略数据管理</p>
+
+            <!-- 工具栏 -->
+            <div class="star-toolbar">
+                <div class="star-toolbar-left">
+                    <span class="info-text">共 <strong id="star-total-count">0</strong> 个币种</span>
+                    <span class="info-text">| 上次更新: <strong id="star-last-update">--</strong></span>
+                    <span class="refresh-status" id="star-refresh-status"></span>
+                    <span class="order-save-feedback" id="star-order-feedback"></span>
+
+                    <!-- 趋势方向刷新按钮组 -->
+                    <div class="trend-btn-group">
+                        <span class="trend-label">趋势:</span>
+                        <button id="star-trend-15m" class="m-btn m-btn-warning m-btn-xs m-btn-outline" title="刷新15分钟趋势方向">⏱ 15分钟</button>
+                        <button id="star-trend-1h" class="m-btn m-btn-info m-btn-xs m-btn-outline" title="刷新60分钟趋势方向">⏱ 60分钟</button>
+                    </div>
+                </div>
+                <div class="star-toolbar-right">
+                    <!-- 定时刷新控件 -->
+                    <div class="timer-controls">
+                        <span class="timer-label" id="star-timer-label">⏰</span>
+                        <select id="star-timer-bar" title="定时刷新的趋势周期">
+                            <option value="15m" selected>15分钟</option>
+                            <option value="1H">60分钟</option>
+                        </select>
+                        <select id="star-timer-interval">
+                            <option value="1">1 分钟</option>
+                            <option value="3">3 分钟</option>
+                            <option value="5" selected>5 分钟</option>
+                            <option value="10">10 分钟</option>
+                            <option value="15">15 分钟</option>
+                            <option value="30">30 分钟</option>
+                        </select>
+                        <button id="star-timer-toggle" class="m-btn m-btn-success m-btn-sm m-btn-outline inactive">▶ 开启</button>
+                    </div>
+                    <button id="star-export-csv" class="m-btn m-btn-success m-btn-sm m-btn-outline">📄 导出 CSV</button>
+                    <button id="star-export-xlsx" class="m-btn m-btn-dark m-btn-sm m-btn-outline">📊 导出 Excel</button>
+                    <button id="star-sync-btn" class="m-btn m-btn-secondary m-btn-sm m-btn-outline" title="与监控台的星标列表同步">🔄 同步星标</button>
+                    <button id="star-refresh-btn" class="m-btn m-btn-primary m-btn-sm">🔄 刷新行情</button>
+                </div>
+            </div>
+
+            <!-- 进度条（仿主监控页样式） -->
+            <div id="star-progress" class="progress-area">
+                <div class="progress-bar-outer">
+                    <div id="star-progress-bar" class="progress-bar-inner" style="width:0%">0%</div>
+                </div>
+                <div id="star-progress-msg" class="progress-text">等待开始...</div>
+            </div>
+
+            <!-- 筛选面板 -->
+            <div class="star-filter-panel">
+                <div class="star-filter-row">
+                    <div class="star-filter-group">
+                        <label>周期趋势:</label>
+                        <select id="star-filter-trend">
+                            <option value="">全部</option>
+                            <option value="15分钟_上涨">15分钟 上涨</option>
+                            <option value="15分钟_下跌">15分钟 下跌</option>
+                            <option value="60分钟_上涨">60分钟 上涨</option>
+                            <option value="60分钟_下跌">60分钟 下跌</option>
+                            <option value="4小时_上涨">4小时 上涨</option>
+                            <option value="4小时_下跌">4小时 下跌</option>
+                            <option value="日线_上涨">日线 上涨</option>
+                            <option value="日线_下跌">日线 下跌</option>
+                        </select>
+                    </div>
+                    <div class="star-filter-group">
+                        <label>方向(1H):</label>
+                        <select id="star-filter-direction">
+                            <option value="">全部</option>
+                            <option value="做多">做多</option>
+                            <option value="做空">做空</option>
+                        </select>
+                    </div>
+                    <div class="star-filter-actions">
+                        <button id="star-filter-btn" class="m-btn m-btn-primary m-btn-sm">🔍 筛选</button>
+                        <button id="star-filter-clear-btn" class="m-btn m-btn-secondary m-btn-sm m-btn-ghost">清除数据</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 表格 -->
+            <div id="star-table-loading" style="display:none;text-align:center;padding:30px;color:#999;">
+                ⏳ 正在加载星标行情数据...
+            </div>
+
+            <div id="star-table-container" style="display:none;">
+                <table id="star-data-table">
+                    <thead>
+                        <tr>
+                            <th style="width:30px;cursor:default;" title="拖拽排序">⠿</th>
+                            {% for col in [
+                                ('名称', 0), ('代码', 1), ('现价', 2),
+                                ('15分钟', 3), ('60分钟', 4), ('4小时', 5), ('日线', 6),
+                                ('交易时间', 7), ('方向(1H)', 8), ('交易价格', 9),
+                                ('策略盈亏', 10), ('持仓时间', 11), ('预测涨跌', 12), ('建议操作', 13)
+                            ] %}
+                            <th data-col-index="{{ col[1] }}">{{ col[0] }}</th>
+                            {% endfor %}
+                        </tr>
+                    </thead>
+                    <tbody id="star-table-body">
+                        <!-- JS 动态渲染 -->
+                    </tbody>
+                </table>
+            </div>
+
+            <div id="star-table-empty" class="star-empty" style="display:block;">
+                <div class="empty-icon">📭</div>
+                <div>暂无星标币种数据</div>
+                <div class="empty-hint">请确认 star币种行情.csv 文件存在且包含有效数据</div>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/mdialog.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/star_market.js') }}"></script>
+</body>
+</html>

@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% set active_page = "logs" %}
+{% block title %}日志聚合中心 · OpsCenter{% endblock %}
+{% block crumb_group %}日志与调度{% endblock %}
+{% block crumb_page %}日志聚合中心{% endblock %}
+
+{% macro logline(r) %}
+<div class="logline logline--{{ r.level }}">
+  <span class="logline__ts">{{ r.ts or '—' }}</span>
+  <span class="logline__lvl">{{ 'ERR' if r.level=='error' else ('WARN' if r.level=='warn' else 'INFO') }}</span>
+  <span class="logline__src">{{ r.src_name }}</span>
+  <span class="logline__coin">{{ r.coin or '' }}</span>
+  <span class="logline__msg">{{ r.msg }}</span>
+</div>
+{% endmacro %}
+
+{% block content %}
+<div class="page-head fade-in">
+  <div class="page-head__top">
+    <div>
+      <h1 class="page-head__title">日志聚合中心</h1>
+      <p class="page-head__desc">
+        只读聚合 <span class="text-mono">task_scheduler.log</span> + <span class="text-mono">trade_operations.log</span>
+        · 级别/关键词/币种检索 + tail 增量向更早翻页 · 生成于 {{ ov.generated_at }}
+      </p>
+    </div>
+    <div class="page-head__actions">
+      <a class="btn btn--ghost" href="/memory">🧠 内存治理</a>
+      <a class="btn btn--primary" href="/">← 返回总览</a>
+    </div>
+  </div>
+</div>
+
+<div class="grid grid--cols-12">
+  <!-- 主：日志查看器 -->
+  <div class="col-8">
+    <div class="card fade-in" id="logApp">
+      <div class="card__head">
+        <div><div class="card__title">📜 实时日志</div>
+          <div class="card__subtitle">级别由内容关键字判定（异常栈续行并入所属记录）</div></div>
+        <span class="badge badge--neutral">共 {{ ov.total }} 条</span>
+      </div>
+      <div class="card__body">
+        <div class="log-toolbar">
+          <span class="chip chip--error{% if ov.level_counts.error %} {% endif %}" data-level="error">ERROR <b class="chip__n">{{ ov.level_counts.error }}</b></span>
+          <span class="chip chip--warn" data-level="warn">WARN <b class="chip__n">{{ ov.level_counts.warn }}</b></span>
+          <span class="chip chip--info" data-level="info">INFO <b class="chip__n">{{ ov.level_counts.info }}</b></span>
+          <span class="field">🔍<input id="logQ" type="text" placeholder="关键词…"></span>
+          <span class="field">🪙<input id="logCoin" type="text" placeholder="币种如 NEAR" style="min-width:110px"></span>
+          <span class="field">📂
+            <select id="logSource">
+              <option value="">全部来源</option>
+              {% for s in ov.sources %}<option value="{{ s.key }}">{{ s.name }}</option>{% endfor %}
+            </select>
+          </span>
+          <label class="switch"><input type="checkbox" id="logTail"> 跟随最新(5s)</label>
+        </div>
+
+        <div class="log-scroll mt-4">
+          <div class="log-list" id="logList">
+            {% for r in initial.records %}{{ logline(r) }}{% endfor %}
+            {% if not initial.records %}<div class="empty"><span class="empty__icon">🔍</span>无匹配日志</div>{% endif %}
+          </div>
+        </div>
+
+        <div class="loadbar">
+          <span class="text-mute fs-xs" id="logStatus">匹配 {{ initial.matched }} 条 · 已载入 {{ initial.records|length }} 条</span>
+          <button class="btn btn--sm btn--ghost" id="logMore" {% if not initial.has_more %}style="display:none"{% endif %}>↑ 载入更早</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 侧：数据源概况 -->
+  <div class="col-4">
+    <div class="stack">
+      <div class="card fade-in" style="animation-delay:.05s">
+        <div class="card__head"><div><div class="card__title">🗂️ 数据源</div><div class="card__subtitle">只读 · 尾部扫描上限 {{ 6000 }} 行</div></div></div>
+        <div class="card__body">
+          {% for s in ov.sources %}
+          <div class="srcline">
+            <div>
+              <div class="table__strong"><span class="srcline__dot{% if not s.exists %} srcline__dot--off{% endif %}"></span>{{ s.name }}</div>
+              <div class="text-mute text-mono" style="word-break:break-all">{{ s.path }}</div>
+            </div>
+            <div style="text-align:right">
+              {% if s.exists %}
+                <div class="kv">{{ s.records }} 行 · {{ s.size_txt }}</div>
+                <div class="text-mute fs-xs">E{{ s.levels.error }} / W{{ s.levels.warn }} / I{{ s.levels.info }}</div>
+              {% else %}<span class="badge badge--neutral">缺失</span>{% endif %}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="card fade-in" style="animation-delay:.1s">
+        <div class="card__head"><div><div class="card__title">🧭 级别口径</div><div class="card__subtitle">透明可查</div></div></div>
+        <div class="card__body">
+          <div class="list-row"><div class="list-row__icon" style="background:var(--danger-soft);color:var(--danger)">E</div>
+            <div class="list-row__main"><div class="list-row__title">ERROR</div><div class="list-row__sub">失败 / 异常 / 错误 / 拒绝 / 无法 / ERROR / Traceback / insufficient</div></div></div>
+          <div class="list-row"><div class="list-row__icon" style="background:var(--warning-soft);color:var(--warning)">W</div>
+            <div class="list-row__main"><div class="list-row__title">WARN</div><div class="list-row__sub">超时 / 重试 / 预警 / 告警 / WARNING / OOM / 风险</div></div></div>
+          <div class="list-row"><div class="list-row__icon" style="background:var(--neutral-soft);color:var(--neutral)">I</div>
+            <div class="list-row__main"><div class="list-row__title">INFO</div><div class="list-row__sub">开仓 / 平仓 / 撤单 / 挂单 / 成交 / 心跳 / 巡检…正常流水</div></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

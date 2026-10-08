@@ -1,0 +1,1043 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ symbol }} 详情 - 策略回测分析</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="{{ url_for('static', filename='js/echarts.min.js') }}"></script>
+    <style>
+    /* ===== 详情页顶部导航面包屑 ===== */
+    .detail-nav { display: flex; align-items: center; gap: 8px; }
+    .nav-sep { color: #c2ccd6; }
+    .nav-cur { font-size: 0.9rem; color: var(--text-muted); font-weight: 600; }
+
+    /* ===== 交易记录表：区间策略（boll / keltner_boll）专属的挂单推导链列 =====
+       默认隐藏，仅当表格带 .show-range 时显示；趋势策略（single/dual）保持隐藏 ===== */
+    .data-table .rng-col { display: none; }
+    .data-table.show-range .rng-col { display: table-cell; }
+    .data-table .rng-col { color: #4a5568; background: #f7f9fc; }
+
+    /* ===== 当前持仓状态卡片（视觉分区：核心持仓 / 待成交挂单 / 技术指标）===== */
+    .position-card { background: #fff; border: 1px solid var(--border-color); border-radius: 14px;
+        box-shadow: 0 4px 18px rgba(20,30,60,.08); overflow: hidden; }
+
+    /* 行通用：弹性换行 */
+    .pc-row { display: flex; align-items: center; flex-wrap: wrap; gap: 14px 22px; padding: 14px 22px; }
+    /* 分区小标题（占满整行，弱化次要、强化层次） */
+    .pc-tagline { flex: 0 0 100%; display: inline-flex; align-items: center; gap: 6px;
+        font-size: .72rem; font-weight: 700; letter-spacing: .02em; color: #94a0b0; }
+
+    /* 第一行：核心决策区（浅色渐变 + 底部分隔） */
+    .pc-main { background: linear-gradient(180deg,#fbfcfe,#f4f7fb); border-bottom: 1px solid #eceff3; }
+    .pc-main .pc-tagline { color: #7d8aa0; }
+
+    /* 方向徽章（保留多空语义，提升为渐变对比） */
+    .pc-dir { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-radius: 12px; min-width: 132px; }
+    .pc-dir-tag { font-size: 1.28rem; font-weight: 900; letter-spacing: .02em; }
+    .pc-dir-state { font-size: .72rem; font-weight: 600; padding: 2px 9px; border-radius: 999px; background: rgba(255,255,255,.72); color: #556; }
+    .pc-dir.is-long { background: linear-gradient(135deg, rgba(40,167,69,.20), rgba(40,167,69,.06)); }
+    .pc-dir.is-long .pc-dir-tag { color: #1e7e34; }
+    .pc-dir.is-short { background: linear-gradient(135deg, rgba(220,53,69,.20), rgba(220,53,69,.06)); }
+    .pc-dir.is-short .pc-dir-tag { color: #c82333; }
+    .pc-dir.is-flat { background: linear-gradient(135deg, #eef1f5, #e6eaf0); }
+    .pc-dir.is-flat .pc-dir-tag { color: #8a94a0; }
+
+    /* 盈亏大字（核心，最突出） */
+    .pc-pnl { display: flex; flex-direction: column; align-items: flex-start; min-width: 92px; }
+    .pc-pnl-label { font-size: .72rem; color: var(--text-muted); }
+    .pc-pnl-num { font-size: 1.95rem; font-weight: 900; line-height: 1.04; }
+    .pc-pnl.pnl-up .pc-pnl-num { color: #1e7e34; }
+    .pc-pnl.pnl-down .pc-pnl-num { color: #c82333; }
+    .pc-pnl.pnl-none .pc-pnl-num { color: #aab2bd; }
+
+    /* 常规指标单元 */
+    .pc-metric { display: flex; flex-direction: column; gap: 3px; }
+    .pc-label { font-size: .72rem; font-weight: 600; color: var(--text-muted); }
+    .pc-value { font-size: 1.02rem; font-weight: 800; color: var(--text-main); }
+    .pc-metrics { display: flex; align-items: center; flex-wrap: wrap; gap: 14px 24px; margin-left: auto; }
+
+    /* 第二行：待成交挂单价（醒目蓝调渐变带） */
+    .pc-order { background: linear-gradient(135deg,#e9f0ff,#f4f8ff); border-bottom: 1px solid #dbe6fb; gap: 16px 30px; }
+    .pc-order .pc-tagline { color: #5b6b82; }
+    .pc-order-price { display: inline-flex; align-items: center; gap: 8px; font-size: 1.35rem; font-weight: 900; color: #2b50c8; }
+    .pc-order-pill { font-size: .72rem; font-weight: 800; padding: 2px 10px; border-radius: 999px; background: rgba(43,80,200,.13); color: #2b50c8; }
+    .pc-order-empty { font-size: 1.02rem; font-weight: 700; color: #98a2b0; }
+    .pc-order-chain { font-size: .84rem; font-weight: 600; color: #5b6b82; }
+
+    /* 第三行：技术指标（适当弱化） */
+    .pc-market { background: #fafbfc; gap: 14px 26px; }
+    .pc-market .pc-metric { min-width: 72px; }
+    .pc-market .pc-value { font-size: .98rem; font-weight: 700; color: #3d4a5c; }
+    .pc-market .pc-label { color: #9aa4b2; }
+
+    @media (max-width: 640px) {
+        .pc-row { padding: 13px 15px; gap: 12px 16px; }
+        .pc-metrics { margin-left: 0; width: 100%; justify-content: space-between; gap: 12px 16px; }
+        .pc-pnl-num { font-size: 1.6rem; }
+        .pc-order-price { font-size: 1.2rem; }
+    }
+    </style>
+</head>
+<body>
+    {% include 'nav.html' %}
+
+    <div class="page-wrapper">
+        <div class="detail-page">
+            <!-- 返回与标题 -->
+            <div class="detail-topbar">
+                <div class="detail-nav">
+                    <a href="/" class="back-link" title="返回监控台行情分栏，可切换其它币种进入策略详情">📊 行情分栏</a>
+                    <span class="nav-sep">/</span>
+                    <span class="nav-cur">策略详情</span>
+                </div>
+                <h1 class="detail-title"><span id="detail-symbol-name">{{ symbol }}</span> <span class="detail-subtitle" id="detail-subtitle">策略详情 &amp; 回测分析</span></h1>
+                <a href="/multi-period/{{ symbol }}" id="multi-period-link" class="back-link multi-link">🔍 多周期总览 →</a>
+            </div>
+
+            <!-- 币种选择器 -->
+            <div id="detail-symbol-selector" class="bar-selector">
+                <span class="bar-label">💰 币种:</span>
+                <select id="detail-symbol-select" class="dual-period-select"></select>
+            </div>
+
+            <!-- 策略选择器 -->
+            <div id="detail-strategy-selector" class="bar-selector strategy-selector">
+                <span class="bar-label">📋 策略:</span>
+                <button class="m-btn m-btn-primary m-btn-xs m-btn-outline m-btn-pill" data-strategy="single">单周期Pro3</button>
+                <button class="m-btn m-btn-primary m-btn-xs m-btn-outline m-btn-pill active" data-strategy="dual">双周期Pro3</button>
+                <button class="m-btn m-btn-primary m-btn-xs m-btn-outline m-btn-pill" data-strategy="boll">BOLL限价</button>
+                <button class="m-btn m-btn-primary m-btn-xs m-btn-outline m-btn-pill" data-strategy="keltner_boll" title="Keltner×BOLL 区间策略：ATR外扩BOLL边界 + 可切换长周期趋势方向过滤（B仓位默认引擎）">Keltner×BOLL</button>
+            </div>
+
+            <!-- 单周期 / BOLL 周期选择器 -->
+            <div id="detail-bar-selector" class="bar-selector">
+                <span class="bar-label">📊 周期:</span>
+                <button class="m-btn m-btn-primary m-btn-xs m-btn-outline m-btn-pill" data-bar="3m">3m</button>
+                <button class="m-btn m-btn-primary m-btn-xs m-btn-outline m-btn-pill" data-bar="5m">5m</button>
+                <button class="m-btn m-btn-primary m-btn-xs m-btn-outline m-btn-pill" data-bar="15m">15m</button>
+                <button class="m-btn m-btn-primary m-btn-xs m-btn-outline m-btn-pill" data-bar="30m">30m</button>
+                <button class="m-btn m-btn-primary m-btn-xs m-btn-outline m-btn-pill active" data-bar="1H">1H</button>
+                <button class="m-btn m-btn-primary m-btn-xs m-btn-outline m-btn-pill" data-bar="2H">2H</button>
+                <button class="m-btn m-btn-primary m-btn-xs m-btn-outline m-btn-pill" data-bar="4H">4H</button>
+                <button class="m-btn m-btn-primary m-btn-xs m-btn-outline m-btn-pill" data-bar="6H">6H</button>
+                <button class="m-btn m-btn-primary m-btn-xs m-btn-outline m-btn-pill" data-bar="12H">12H</button>
+                <button class="m-btn m-btn-primary m-btn-xs m-btn-outline m-btn-pill" data-bar="1D">1D</button>
+                <button class="m-btn m-btn-primary m-btn-xs m-btn-outline m-btn-pill" data-bar="1W">1W</button>
+            </div>
+
+            <!-- 双周期策略：短周期 + 长周期选择器 -->
+            <div id="detail-dual-selector" class="bar-selector dual-period-selector" style="display:none;">
+                <span class="bar-label">📊 短周期:</span>
+                <select id="dual-short-bar" class="dual-period-select">
+                    <option value="5m">5m</option>
+                    <option value="15m" selected>15m</option>
+                    <option value="1H">1H</option>
+                </select>
+                <span class="bar-label" style="margin-left:12px;">📊 长周期:</span>
+                <select id="dual-long-bar" class="dual-period-select">
+                    <option value="1H">1H</option>
+                    <option value="4H" selected>4H</option>
+                    <option value="1D">1D</option>
+                    <option value="1W">1W</option>
+                </select>
+            </div>
+
+            <!-- BOLL策略：短周期 + 长周期选择器 -->
+            <div id="detail-boll-selector" class="bar-selector dual-period-selector" style="display:none;">
+                <span class="bar-label">📊 短周期:</span>
+                <select id="boll-short-bar" class="dual-period-select">
+                    <option value="1m">1m</option>
+                    <option value="3m">3m</option>
+                    <option value="5m">5m</option>
+                    <option value="15m" selected>15m</option>
+                    <option value="1H">1H</option>
+                </select>
+                <span class="bar-label" style="margin-left:12px;">📊 长周期:</span>
+                <select id="boll-long-bar" class="dual-period-select">
+                    <option value="3m">3m</option>
+                    <option value="15m">15m</option>
+                    <option value="1H">1H</option>
+                    <option value="4H" selected>4H</option>
+                    <option value="1D">1D</option>
+                </select>
+            </div>
+
+            <!-- Keltner×BOLL策略：短周期 + 长周期选择器 -->
+            <div id="detail-kb-selector" class="bar-selector dual-period-selector" style="display:none;">
+                <span class="bar-label">📊 短周期:</span>
+                <select id="kb-short-bar" class="dual-period-select">
+                    <option value="1m">1m</option>
+                    <option value="3m">3m</option>
+                    <option value="5m">5m</option>
+                    <option value="15m" selected>15m</option>
+                    <option value="1H">1H</option>
+                </select>
+                <span class="bar-label" style="margin-left:12px;">📊 长周期:</span>
+                <select id="kb-long-bar" class="dual-period-select">
+                    <option value="3m">3m</option>
+                    <option value="15m">15m</option>
+                    <option value="30m">30m</option>
+                    <option value="1H">1H</option>
+                    <option value="4H" selected>4H</option>
+                    <option value="1D">1D</option>
+                </select>
+            </div>
+
+            <!-- Keltner×BOLL策略：长周期趋势方法 + ATR外扩参数（仅 keltner_boll 可见） -->
+            <div id="detail-kb-params" class="bar-selector dual-period-selector" style="display:none;">
+                <span class="bar-label">🧭 趋势方法:</span>
+                <select id="kb-trend-indicator" class="dual-period-select">
+                    <option value="keltner" selected>keltner（默认）</option>
+                </select>
+                <span class="bar-label" style="margin-left:12px;" title="开仓轨在BOLL边界外再向外扩 entry_atr_mult×ATR，越大越难开仓">📏 开仓外扩:</span>
+                <input id="kb-entry-atr" class="dual-period-select" type="number" min="0" step="0.1" value="0.7" style="width:72px;">
+                <span class="bar-label" style="margin-left:12px;" title="平仓轨在BOLL边界外再向外扩 exit_atr_mult×ATR，越大越晚平仓">📐 平仓外扩:</span>
+                <input id="kb-exit-atr" class="dual-period-select" type="number" min="0" step="0.1" value="0.3" style="width:72px;">
+                <span class="bar-label" style="margin-left:12px;" title="外扩所用 ATR（Average True Range，平均真实波幅）的计算周期">🔢 ATR周期:</span>
+                <input id="kb-atr-period" class="dual-period-select" type="number" min="1" step="1" value="14" style="width:64px;">
+            </div>
+
+            <!-- 趋势策略：短周期信号算法 + 开仓 / 平仓价格取值选择器（single/dual 可见，boll/keltner_boll 隐藏） -->
+            <div id="detail-price-selector" class="bar-selector dual-period-selector">
+                <span class="bar-label">⚙️ 信号算法:</span>
+                <select id="signal-algo" class="dual-period-select">
+                    <option value="diff" selected>灵敏模式 (平滑差)</option>
+                    <option value="hybrid">稳定模式 (状态机)</option>
+                </select>
+                <span class="bar-label" style="margin-left:12px;">💵 开仓价格:</span>
+                <select id="entry-price-type" class="dual-period-select">
+                    <option value="open">开盘价 (open)</option>
+                    <option value="close" selected>收盘价 (close)</option>
+                </select>
+                <span class="bar-label" style="margin-left:12px;">💵 平仓价格:</span>
+                <select id="exit-price-type" class="dual-period-select">
+                    <option value="close">收盘价 (close)</option>
+                    <option value="open" selected>开盘价 (open)</option>
+                </select>
+            </div>
+
+            <!-- 收益曲线图（ECharts，支持悬停与缩放） -->
+            <section class="detail-section" id="profit-chart-section" style="display:none;">
+                <h2 class="section-title">📉 收益曲线 <span id="profit-chart-hint" style="font-size:0.8rem;color:#999;font-weight:normal;">（剔除交易不计入 · 滚轮/拖动缩放查看不同时间段）</span></h2>
+                <div id="profit-chart" style="width:100%;height:400px;"></div>
+            </section>
+
+            <!-- 加载中 -->
+            <div id="detail-loading" class="loading">⏳ 正在加载策略数据...</div>
+
+            <!-- 错误提示 -->
+            <div id="detail-error" class="card-error" style="display:none; padding:20px;"></div>
+
+            <!-- ============ 主内容区（初始隐藏） ============ -->
+            <div id="detail-content" style="display:none;">
+
+                <!-- 当前持仓状态卡片（两行式：核心决策 + 市场技术指标） -->
+                <section class="detail-section">
+                    <h2 class="section-title">💼 当前持仓状态</h2>
+                    <div class="position-card" id="position-card"></div>
+                </section>
+
+                <!-- 历史交易记录 -->
+                <section class="detail-section">
+                    <h2 class="section-title">📜 历史交易记录 <span id="trade-count" style="font-size:0.8rem;color:#999;"></span></h2>
+                    <div class="table-wrapper">
+                        <table class="data-table" id="trade-table">
+                            <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th>方向</th>
+                                    <th>开仓时间</th>
+                                    <th>开仓价</th>
+                                    <th>平仓时间</th>
+                                    <th>平仓价</th>
+                                    <th class="rng-col" title="开仓时刻的原始 BOLL 轨道（多头=下轨/空头=上轨，外扩前）">BOLL轨道</th>
+                                    <th class="rng-col" title="开仓时刻的 ATR（Average True Range，平均真实波幅）值">ATR</th>
+                                    <th class="rng-col" title="实际限价挂单价 = 轨道 ±（外扩倍数×ATR），即本笔开仓价">挂单价</th>
+                                    <th>盈亏</th>
+                                    <th>最大盈利</th>
+                                    <th>最大亏损</th>
+                                    <th>入场ADX</th>
+                                    <th>持仓时长</th>
+                                    <th>状态</th>
+                                </tr>
+                            </thead>
+                            <tbody id="trade-tbody">
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- 策略回测结果 -->
+                <section class="detail-section">
+                    <h2 class="section-title">📈 策略回测结果</h2>
+                    <div class="backtest-grid" id="stats-grid">
+                    </div>
+                </section>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    (function() {
+        let SYMBOL = "{{ symbol }}";
+        const loadingEl = document.getElementById('detail-loading');
+        const errorEl = document.getElementById('detail-error');
+        const contentEl = document.getElementById('detail-content');
+
+        // ================================================================
+        // 状态变量
+        // ================================================================
+        let CURRENT_BAR = '1H';
+        let CURRENT_STRATEGY = 'dual';   // 默认双周期组合
+        let DUAL_SHORT_BAR = '15m';      // 默认双周期组合：15m-4H
+        let DUAL_LONG_BAR = '4H';
+        let BOLL_SHORT_BAR = '15m';
+        let BOLL_LONG_BAR = '4H';
+        // Keltner×BOLL（区间策略）回测参数
+        let KB_SHORT_BAR = '15m';
+        let KB_LONG_BAR = '4H';
+        let KB_TREND_INDICATOR = 'keltner';  // 长周期趋势方向方法（默认 keltner）
+        let KB_ENTRY_ATR = '0.7';            // 开仓轨 ATR 外扩倍数
+        let KB_EXIT_ATR = '0.3';             // 平仓轨 ATR 外扩倍数
+        let KB_ATR_PERIOD = '14';            // 外扩用 ATR 周期
+        let ENTRY_PRICE_TYPE = 'close';  // 开仓价格取值（默认收盘价）
+        let EXIT_PRICE_TYPE = 'open';    // 平仓价格取值（默认开盘价）
+        let SIGNAL_ALGO = 'diff';        // 短周期信号算法（默认平滑差灵敏模式）
+
+        // 双周期默认组合映射
+        const DUAL_DEFAULT_MAP = { '5m': '1H', '15m': '4H', '1H': '1D' };
+        const BOLL_DEFAULT_MAP = { '1m': '5m', '3m': '15m', '5m': '1H', '15m': '4H', '1H': '1D' };
+        const KB_DEFAULT_MAP = { '1m': '30m', '3m': '1H', '5m': '1H', '15m': '4H', '1H': '1D' };
+
+        // ================================================================
+        // 币种选择器
+        // ================================================================
+        function symbolLabel(instId) {
+            // BTC-USDT-SWAP -> BTC；非标准格式则原样展示
+            return String(instId || '').replace(/-USDT-SWAP$/, '');
+        }
+
+        function setupSymbolSelector() {
+            var sel = document.getElementById('detail-symbol-select');
+            if (!sel) return;
+            fetch('/api/strategy/config')
+                .then(function(r) { return r.json(); })
+                .then(function(res) {
+                    var data = (res.code === 200 && res.data) ? res.data : {};
+                    var fixed = data.fixed_coins || [];
+                    var floating = data.floating_coins || [];
+                    // 兼容旧接口：无分组字段时退化为单一 all_coins 列表
+                    if (!fixed.length && !floating.length) {
+                        fixed = data.all_coins || [];
+                    }
+                    // 确保当前币种一定在列表中（即使不在配置里），归入固定组
+                    if (SYMBOL && fixed.indexOf(SYMBOL) < 0 && floating.indexOf(SYMBOL) < 0) {
+                        fixed = [SYMBOL].concat(fixed);
+                    }
+
+                    function buildOptions(list) {
+                        return list.map(function(c) {
+                            var selected = (c === SYMBOL) ? ' selected' : '';
+                            return '<option value="' + c + '"' + selected + '>' + symbolLabel(c) + '</option>';
+                        }).join('');
+                    }
+
+                    var html = '';
+                    if (fixed.length) {
+                        html += '<optgroup label="固定币种（' + fixed.length + '）">' + buildOptions(fixed) + '</optgroup>';
+                    }
+                    if (floating.length) {
+                        html += '<optgroup label="浮动币种（' + floating.length + '）">' + buildOptions(floating) + '</optgroup>';
+                    }
+                    sel.innerHTML = html || buildOptions([SYMBOL]);
+                })
+                .catch(function() {
+                    // 拉取失败时至少保留当前币种
+                    sel.innerHTML = '<option value="' + SYMBOL + '" selected>' + symbolLabel(SYMBOL) + '</option>';
+                });
+
+            sel.addEventListener('change', function() {
+                var newSymbol = sel.value;
+                if (!newSymbol || newSymbol === SYMBOL) return;
+                SYMBOL = newSymbol;
+                // 同步更新页面标题、标签页标题、多周期链接与 URL
+                var nameEl = document.getElementById('detail-symbol-name');
+                if (nameEl) nameEl.textContent = SYMBOL;
+                document.title = SYMBOL + ' 详情 - 策略回测分析';
+                var mpLink = document.getElementById('multi-period-link');
+                if (mpLink) mpLink.setAttribute('href', '/multi-period/' + encodeURIComponent(SYMBOL));
+                try {
+                    window.history.replaceState(null, '', '/detail/' + encodeURIComponent(SYMBOL));
+                } catch (e) { /* 忽略不支持 history 的环境 */ }
+                loadDetail();
+            });
+        }
+
+        // ================================================================
+        // 策略选择器
+        // ================================================================
+        function setupStrategySelector() {
+            var container = document.getElementById('detail-strategy-selector');
+            if (!container) return;
+            container.querySelectorAll('button[data-strategy]').forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    var s = btn.dataset.strategy;
+                    if (s === CURRENT_STRATEGY) return;
+                    CURRENT_STRATEGY = s;
+                    container.querySelectorAll('button[data-strategy]').forEach(function(b) { b.classList.remove('active'); });
+                    btn.classList.add('active');
+                    togglePeriodSelectors();
+                    loadDetail();
+                });
+            });
+        }
+
+        // 根据当前策略切换周期选择器的显示/隐藏
+        function togglePeriodSelectors() {
+            var singleBar = document.getElementById('detail-bar-selector');
+            var dualSel = document.getElementById('detail-dual-selector');
+            var bollSel = document.getElementById('detail-boll-selector');
+            var kbSel = document.getElementById('detail-kb-selector');
+            var kbParams = document.getElementById('detail-kb-params');
+            var priceSel = document.getElementById('detail-price-selector');
+            singleBar.style.display = (CURRENT_STRATEGY === 'single') ? '' : 'none';
+            dualSel.style.display = (CURRENT_STRATEGY === 'dual') ? '' : 'none';
+            bollSel.style.display = (CURRENT_STRATEGY === 'boll') ? '' : 'none';
+            kbSel.style.display = (CURRENT_STRATEGY === 'keltner_boll') ? '' : 'none';
+            kbParams.style.display = (CURRENT_STRATEGY === 'keltner_boll') ? '' : 'none';
+            // 价格取值/信号算法选择器仅趋势策略（single/dual）可见，区间策略（boll/keltner_boll）隐藏
+            priceSel.style.display = (CURRENT_STRATEGY === 'boll' || CURRENT_STRATEGY === 'keltner_boll') ? 'none' : '';
+        }
+
+        // ================================================================
+        // 信号算法 + 开/平仓价格取值选择器
+        // ================================================================
+        function setupPriceSelectors() {
+            var algoSel = document.getElementById('signal-algo');
+            var entrySel = document.getElementById('entry-price-type');
+            var exitSel = document.getElementById('exit-price-type');
+            if (algoSel) {
+                algoSel.addEventListener('change', function() {
+                    SIGNAL_ALGO = algoSel.value;
+                    loadDetail();
+                });
+            }
+            if (entrySel) {
+                entrySel.addEventListener('change', function() {
+                    ENTRY_PRICE_TYPE = entrySel.value;
+                    loadDetail();
+                });
+            }
+            if (exitSel) {
+                exitSel.addEventListener('change', function() {
+                    EXIT_PRICE_TYPE = exitSel.value;
+                    loadDetail();
+                });
+            }
+        }
+
+        // ================================================================
+        // 单周期选择器
+        // ================================================================
+        function setupBarSelector() {
+            var container = document.getElementById('detail-bar-selector');
+            if (!container) return;
+            container.querySelectorAll('button[data-bar]').forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    var bar = btn.dataset.bar;
+                    if (bar === CURRENT_BAR) return;
+                    CURRENT_BAR = bar;
+                    container.querySelectorAll('button[data-bar]').forEach(function(b) { b.classList.remove('active'); });
+                    btn.classList.add('active');
+                    loadDetail();
+                });
+            });
+        }
+
+        // ================================================================
+        // 双周期选择器（短周期 + 长周期下拉）
+        // ================================================================
+        function setupDualSelectors() {
+            // 双周期
+            var shortSel = document.getElementById('dual-short-bar');
+            var longSel = document.getElementById('dual-long-bar');
+            if (shortSel) {
+                shortSel.addEventListener('change', function() {
+                    DUAL_SHORT_BAR = shortSel.value;
+                    // 自动联动长周期默认值
+                    if (DUAL_DEFAULT_MAP[DUAL_SHORT_BAR]) {
+                        DUAL_LONG_BAR = DUAL_DEFAULT_MAP[DUAL_SHORT_BAR];
+                        longSel.value = DUAL_LONG_BAR;
+                    }
+                    loadDetail();
+                });
+            }
+            if (longSel) {
+                longSel.addEventListener('change', function() {
+                    DUAL_LONG_BAR = longSel.value;
+                    loadDetail();
+                });
+            }
+            // BOLL
+            var bollShortSel = document.getElementById('boll-short-bar');
+            var bollLongSel = document.getElementById('boll-long-bar');
+            if (bollShortSel) {
+                bollShortSel.addEventListener('change', function() {
+                    BOLL_SHORT_BAR = bollShortSel.value;
+                    if (BOLL_DEFAULT_MAP[BOLL_SHORT_BAR]) {
+                        BOLL_LONG_BAR = BOLL_DEFAULT_MAP[BOLL_SHORT_BAR];
+                        bollLongSel.value = BOLL_LONG_BAR;
+                    }
+                    loadDetail();
+                });
+            }
+            if (bollLongSel) {
+                bollLongSel.addEventListener('change', function() {
+                    BOLL_LONG_BAR = bollLongSel.value;
+                    loadDetail();
+                });
+            }
+            // Keltner×BOLL 周期
+            var kbShortSel = document.getElementById('kb-short-bar');
+            var kbLongSel = document.getElementById('kb-long-bar');
+            if (kbShortSel) {
+                kbShortSel.addEventListener('change', function() {
+                    KB_SHORT_BAR = kbShortSel.value;
+                    if (KB_DEFAULT_MAP[KB_SHORT_BAR]) {
+                        KB_LONG_BAR = KB_DEFAULT_MAP[KB_SHORT_BAR];
+                        kbLongSel.value = KB_LONG_BAR;
+                    }
+                    loadDetail();
+                });
+            }
+            if (kbLongSel) {
+                kbLongSel.addEventListener('change', function() {
+                    KB_LONG_BAR = kbLongSel.value;
+                    loadDetail();
+                });
+            }
+        }
+
+        // ================================================================
+        // Keltner×BOLL 参数选择器（趋势方法下拉 + ATR外扩输入）
+        //   趋势方法列表从 /api/task/range-strategy-options 动态拉取，
+        //   避免与 keltner_boll 后端注册表漂移；拉取失败时保留默认 keltner 兜底。
+        // ================================================================
+        function setupKBParams() {
+            var tiSel = document.getElementById('kb-trend-indicator');
+            if (tiSel) {
+                fetch('/api/task/range-strategy-options')
+                    .then(function(r) { return r.json(); })
+                    .then(function(res) {
+                        var data = (res.code === 200 && res.data) ? res.data : {};
+                        var list = data.trend_indicators || [];
+                        var def = data.default_trend_indicator || 'keltner';
+                        if (list.length) {
+                            tiSel.innerHTML = list.map(function(v) {
+                                var sel = (v === def) ? ' selected' : '';
+                                var label = v + (v === def ? '（默认）' : '');
+                                return '<option value="' + v + '"' + sel + '>' + label + '</option>';
+                            }).join('');
+                            KB_TREND_INDICATOR = def;
+                        }
+                    })
+                    .catch(function() { /* 保留 HTML 内置的 keltner 兜底选项 */ });
+                tiSel.addEventListener('change', function() {
+                    KB_TREND_INDICATOR = tiSel.value;
+                    loadDetail();
+                });
+            }
+            // ATR 外扩输入：失焦时校验非负/正整数后再触发加载，避免每次按键都打后端
+            function bindNum(id, setter, validator, defaultVal) {
+                var el = document.getElementById(id);
+                if (!el) return;
+                el.addEventListener('change', function() {
+                    var raw = el.value;
+                    var ok = validator(raw);
+                    if (!ok) {
+                        el.value = defaultVal;
+                        raw = defaultVal;
+                    }
+                    setter(raw);
+                    loadDetail();
+                });
+            }
+            bindNum('kb-entry-atr', function(v) { KB_ENTRY_ATR = v; },
+                    function(v) { return v !== '' && parseFloat(v) >= 0; }, '0.7');
+            bindNum('kb-exit-atr', function(v) { KB_EXIT_ATR = v; },
+                    function(v) { return v !== '' && parseFloat(v) >= 0; }, '0.3');
+            bindNum('kb-atr-period', function(v) { KB_ATR_PERIOD = v; },
+                    function(v) { return v !== '' && parseInt(v, 10) >= 1; }, '14');
+        }
+
+        // ================================================================
+        // 工具函数 —— 含价格精度规则
+        // ================================================================
+        function fmtPrice(v) {
+            var n = parseFloat(v);
+            if (isNaN(n)) return v;
+            var abs = Math.abs(n);
+            if (abs < 10) return n.toFixed(3);
+            if (abs < 100) return n.toFixed(2);
+            if (abs < 1000) return n.toFixed(1);
+            return Math.round(n).toString();
+        }
+
+        function fmtMoney(v) {
+            var n = parseFloat(v);
+            if (isNaN(n)) return v;
+            return n.toFixed(2);
+        }
+
+        function fmtPct(v, forceSign) {
+            var n = parseFloat(v);
+            if (isNaN(n)) return v;
+            var s = n.toFixed(2) + '%';
+            return forceSign && n > 0 ? '+' + s : s;
+        }
+
+        function fmtRatio(v) {
+            var n = parseFloat(v);
+            if (isNaN(n)) return v;
+            if (n === Infinity) return '∞';
+            return n.toFixed(2);
+        }
+
+        function colorClass(val, threshold) {
+            threshold = threshold || 0;
+            if (val > threshold) return 'val-green';
+            if (val < threshold) return 'val-red';
+            return '';
+        }
+
+        function pctClass(val) {
+            return colorClass(parseFloat(val));
+        }
+
+        // ================================================================
+        // 渲染【当前持仓状态】卡片（分区式）
+        //   核心持仓：方向 / 是否持仓 / 开仓详情 + 醒目盈亏%
+        //   待成交挂单（仅区间策略）：理论挂单价 + 推导链，供核对实盘
+        //   技术指标：最新价格 + ADX / MACD / 长周期方向等（次要信息弱化展示）
+        // ================================================================
+        function metric(label, value, cls) {
+            return '<div class="pc-metric"><span class="pc-label">' + label + '</span>' +
+                   '<span class="pc-value ' + (cls || '') + '">' + value + '</span></div>';
+        }
+
+        function renderPositionCard(data) {
+            var m = data.market || {};
+            var cp = data.current_position || {};
+            var isBoll = !!m.is_boll;
+            var status = cp.status || '无持仓';
+            var holding = (status === '多头' || status === '空头');
+
+            // ---- 第一行：核心决策信息 ----
+            var dirText, dirCls;
+            if (status === '多头') { dirText = '做多'; dirCls = 'is-long'; }
+            else if (status === '空头') { dirText = '做空'; dirCls = 'is-short'; }
+            else { dirText = '空仓'; dirCls = 'is-flat'; }
+
+            var pnl = parseFloat(cp.profit_pct);
+            var pnlTxt = '--', pnlBox = 'pnl-none';
+            if (holding && !isNaN(pnl)) {
+                pnlTxt = (pnl >= 0 ? '+' : '') + pnl.toFixed(2) + '%';
+                pnlBox = pnl > 0 ? 'pnl-up' : (pnl < 0 ? 'pnl-down' : 'pnl-none');
+            }
+
+            var entryTxt = cp.entry_price ? '$' + fmtPrice(cp.entry_price) : '--';
+            var durTxt = cp.duration || '--';
+            var openTxt = cp.open_time || '--';
+
+            // ---- 第一行：核心决策信息（方向 + 盈亏 + 开仓详情）----
+            var row1 = '<div class="pc-row pc-main">' +
+                '<span class="pc-tagline">🎯 当前持仓状态</span>' +
+                '<div class="pc-dir ' + dirCls + '">' +
+                    '<span class="pc-dir-tag">' + dirText + '</span>' +
+                    '<span class="pc-dir-state">' + (holding ? '持仓中' : '未持仓') + '</span>' +
+                '</div>' +
+                '<div class="pc-pnl ' + pnlBox + '">' +
+                    '<span class="pc-pnl-label">持仓盈亏</span>' +
+                    '<span class="pc-pnl-num">' + pnlTxt + '</span>' +
+                '</div>' +
+                '<div class="pc-metrics">' +
+                    metric('开仓价', entryTxt, 'val-blue') +
+                    metric('持仓时长', durTxt) +
+                    metric('开仓时间', openTxt) +
+                '</div>' +
+            '</div>';
+
+            // ---- 第二行：当前待成交挂单价（仅区间策略 boll / keltner_boll，紧跟核心信息之后）----
+            // 未持仓时策略正挂着一张开仓限价单等触价成交；给出“理论挂单价”及其推导链
+            // （轨道 → 外扩倍数×ATR → 挂单价），供与实盘任务实际挂单数值人工核对。
+            var orderRow = '';
+            if (isBoll) {
+                var pp = cp.pending_order_price;
+                var pdir = cp.pending_order_dir || '';
+                var pband = cp.pending_order_band;
+                var patr = cp.pending_order_atr;
+                var pmult = (cp.pending_order_mult === null || cp.pending_order_mult === undefined) ? 0 : cp.pending_order_mult;
+                var hasOrder = !(pp === null || pp === undefined);
+                var priceHtml;
+                if (hasOrder) {
+                    priceHtml = '<span class="pc-order-price">$' + fmtPrice(pp) +
+                        (pdir ? ('<span class="pc-order-pill">' + pdir + '·待成交</span>') : '') + '</span>';
+                } else {
+                    priceHtml = '<span class="pc-order-empty">--（无待成交）</span>';
+                }
+                var chainHtml = '';
+                if (hasOrder && pband !== null && pband !== undefined) {
+                    var sign = (pdir === '空') ? '+' : '−';
+                    chainHtml = '<div class="pc-metric"><span class="pc-label">挂单推导链（轨道 ' + sign + ' 外扩×ATR）</span>' +
+                        '<span class="pc-order-chain">$' + fmtPrice(pband) + ' ' + sign + ' ' + fmtMoney(pmult) + '×ATR(' + fmtPrice(patr) + ') = $' + fmtPrice(pp) + '</span></div>';
+                }
+                orderRow = '<div class="pc-row pc-order">' +
+                    '<span class="pc-tagline">📌 当前挂单价 · 待成交（可核对实盘）</span>' +
+                    '<div class="pc-metric">' + priceHtml + '</div>' +
+                    chainHtml +
+                '</div>';
+            }
+
+            // ---- 第三行：市场与技术指标（次要信息，适当弱化）----
+            var ind = [];
+            ind.push(metric('最新价格', '$' + fmtPrice(m.price), 'val-blue'));
+            if (isBoll) {
+                var ld = m.long_direction || m.action_signal || '--';
+                ind.push(metric('长周期方向', ld, ld === '上涨' ? 'val-green' : (ld === '下跌' ? 'val-red' : 'val-yellow')));
+                ind.push(metric('ADX', fmtMoney(m.adx), m.adx > 25 ? 'val-green' : 'val-yellow'));
+                ind.push(metric('ATR', fmtMoney(m.atr)));
+            } else {
+                ind.push(metric('趋势方向', m.action_signal, m.action_signal === '上涨' ? 'val-green' : (m.action_signal === '下跌' ? 'val-red' : 'val-yellow')));
+                ind.push(metric('ADX', fmtMoney(m.adx), m.adx > 25 ? 'val-green' : 'val-yellow'));
+                ind.push(metric('MACD柱', fmtMoney(m.macd_histogram), pctClass(m.macd_histogram)));
+                ind.push(metric('DIF', fmtMoney(m.macd_dif), pctClass(m.macd_dif)));
+                ind.push(metric('平滑MACD', fmtMoney(m.smoothed_macd), pctClass(m.smoothed_macd)));
+                ind.push(metric('+DI / -DI', fmtMoney(m.plus_di) + ' / ' + fmtMoney(m.minus_di)));
+                ind.push(metric('ATR', fmtMoney(m.atr)));
+            }
+            var row2 = '<div class="pc-row pc-market">' +
+                '<span class="pc-tagline">📈 技术指标</span>' + ind.join('') + '</div>';
+
+            document.getElementById('position-card').innerHTML = row1 + orderRow + row2;
+        }
+
+        // ================================================================
+        // 渲染交易记录表
+        // ================================================================
+        function renderTradeRecords(trades) {
+            document.getElementById('trade-count').textContent = '(共 ' + trades.length + ' 笔)';
+            var tbody = document.getElementById('trade-tbody');
+            // 仅区间类策略（boll 限价 / keltner_boll）展示挂单推导链三列，趋势策略自动隐藏
+            var isRange = (CURRENT_STRATEGY === 'boll' || CURRENT_STRATEGY === 'keltner_boll');
+            var tbl = document.getElementById('trade-table');
+            if (tbl) { tbl.classList.toggle('show-range', isRange); }
+            if (trades.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="15" style="text-align:center;color:#bbb;padding:30px;">暂无交易记录</td></tr>';
+                return;
+            }
+            tbody.innerHTML = trades.map(function(t) {
+                var dirTag = t.direction === '多头' ? 'tag tag-long' : 'tag tag-short';
+                var excludedStyle = t.excluded ? ' style="opacity:0.45;background:rgba(255,193,7,0.08);"' : '';
+                var statusHtml = t.excluded ? '<span style="color:#f0ad4e;font-weight:600;font-size:0.85em;">⚠ 剔除</span>' : '';
+                // 挂单推导链三列：原始BOLL轨道 / 开仓ATR / 实际挂单价（无值显示 --）
+                var bandCell = (t.boll_band === null || t.boll_band === undefined) ? '--' : ('$' + fmtPrice(t.boll_band));
+                var atrCell = (t.atr_value === null || t.atr_value === undefined) ? '--' : fmtPrice(t.atr_value);
+                var orderCell = (t.order_price === null || t.order_price === undefined) ? '--' : ('$' + fmtPrice(t.order_price));
+                return '<tr' + excludedStyle + '>' +
+                    '<td>' + t.index + '</td>' +
+                    '<td><span class="' + dirTag + '">' + t.direction + '</span></td>' +
+                    '<td>' + t.open_time + '</td>' +
+                    '<td>$' + fmtPrice(t.open_price) + '</td>' +
+                    '<td>' + t.close_time + '</td>' +
+                    '<td>$' + fmtPrice(t.close_price) + '</td>' +
+                    '<td class="rng-col">' + bandCell + '</td>' +
+                    '<td class="rng-col">' + atrCell + '</td>' +
+                    '<td class="rng-col">' + orderCell + '</td>' +
+                    '<td class="' + pctClass(t.profit) + '">' + (t.profit >= 0 ? '+' : '') + fmtMoney(t.profit) + '%</td>' +
+                    '<td class="val-green">+' + fmtMoney(t.max_win) + '%</td>' +
+                    '<td class="val-red">' + fmtMoney(t.max_loss) + '%</td>' +
+                    '<td>' + fmtMoney(t.entry_adx) + '</td>' +
+                    '<td>' + t.duration + '</td>' +
+                    '<td>' + statusHtml + '</td>' +
+                    '</tr>';
+            }).join('');
+        }
+
+        // ================================================================
+        // 渲染策略统计
+        // ================================================================
+        function renderStats(data) {
+            var s = data.stats;
+            // 区间策略（boll/keltner_boll）共用同一构建器：无 pro3 的 hist/curr 权重，
+            // 故隐藏 ADX分析卡片，并展示长周期反转剔除的交易数
+            var isBoll = (CURRENT_STRATEGY === 'boll' || CURRENT_STRATEGY === 'keltner_boll');
+            var grid = document.getElementById('stats-grid');
+
+            var cards = [
+                {
+                    title: '收益概况',
+                    items: [
+                        { label: '测试周期', value: data.start_time + ' ~ ' + data.end_time },
+                        { label: '总天数', value: data.total_days + ' 天' },
+                        { label: '定投总收益', value: fmtPct(s.total_return_pct, true), cls: pctClass(s.total_return_pct) },
+                        { label: '复投总收益', value: fmtPct(s.contract_return_pct, true), cls: pctClass(s.contract_return_pct) },
+                        { label: '每日盈利', value: fmtPct(data.daily_profit, true), cls: pctClass(data.daily_profit) },
+                        { label: '每周盈利', value: fmtPct(data.weekly_profit, true), cls: pctClass(data.weekly_profit) }
+                    ]
+                },
+                {
+                    title: '交易统计',
+                    items: [
+                        { label: '总交易次数', value: s.total_trades },
+                        { label: '胜率', value: (s.win_rate * 100).toFixed(1) + '%', cls: s.win_rate >= 0.5 ? 'val-green' : 'val-red' },
+                        { label: '盈利交易', value: s.winning_trades + ' 次', cls: 'val-green' },
+                        { label: '亏损交易', value: s.losing_trades + ' 次', cls: 'val-red' },
+                        { label: '平均每笔盈利', value: fmtPct(s.avg_profit_pct, true), cls: 'val-green' },
+                        { label: '平均每笔亏损', value: fmtPct(s.avg_loss_pct, true), cls: 'val-red' }
+                    ]
+                },
+                {
+                    title: '风险指标',
+                    items: [
+                        { label: '最大回撤', value: fmtPct(s.max_drawdown_pct), cls: 'val-red' },
+                        { label: '卡玛比率', value: fmtRatio(s.calmar_ratio), cls: s.calmar_ratio >= 1 ? 'val-green' : 'val-yellow' },
+                        { label: '盈利因子', value: fmtRatio(s.profit_factor), cls: s.profit_factor >= 1.5 ? 'val-green' : 'val-yellow' },
+                        { label: '盈亏比', value: fmtRatio(s.profit_loss_ratio), cls: s.profit_loss_ratio >= 1.5 ? 'val-green' : 'val-yellow' },
+                        { label: '最大单笔盈利', value: fmtPct(s.max_single_profit_pct, true), cls: 'val-green' },
+                        { label: '最大单笔亏损', value: fmtPct(s.max_single_loss_pct, true), cls: 'val-red' }
+                    ]
+                },
+                {
+                    title: '持仓与ADX',
+                    items: [
+                        { label: '平均持仓时长', value: s.avg_total_dur_h.toFixed(1) + ' 小时' },
+                        { label: '盈利单平均时长', value: s.avg_win_dur_h.toFixed(1) + ' 小时', cls: 'val-green' },
+                        { label: '亏损单平均时长', value: s.avg_loss_dur_h.toFixed(1) + ' 小时', cls: 'val-red' },
+                        { label: '平均利润回撤', value: fmtPct(s.avg_retracement_pct, true), cls: 'val-yellow' },
+                        { label: '入场ADX均值', value: fmtMoney(s.adx_mean) },
+                        { label: '胜单ADX均值', value: fmtMoney(s.adx_win_mean), cls: 'val-green' }
+                    ]
+                }
+            ];
+
+            // ADX分析卡片 —— BOLL策略不显示权重
+            if (!isBoll) {
+                cards.push({
+                    title: 'ADX分析',
+                    items: [
+                        { label: '亏单ADX均值', value: fmtMoney(s.adx_loss_mean), cls: 'val-red' },
+                        { label: 'ADX-盈亏相关性', value: fmtMoney(s.adx_corr) },
+                        { label: '高ADX(≥25)胜率', value: (s.high_adx_win_rate * 100).toFixed(1) + '%', cls: s.high_adx_win_rate >= 0.5 ? 'val-green' : 'val-red' },
+                        { label: '低ADX(<25)胜率', value: (s.low_adx_win_rate * 100).toFixed(1) + '%', cls: s.low_adx_win_rate >= 0.5 ? 'val-green' : 'val-red' },
+                        { label: '平均历史权重', value: fmtMoney(s.avg_hist_weight) },
+                        { label: '平均当前权重', value: fmtMoney(s.avg_curr_weight) }
+                    ]
+                });
+            }
+
+            // 资金明细
+            var fundItems = [
+                { label: '初始资金', value: '$100.00' },
+                { label: '定投最终资金', value: '$' + fmtMoney(s.fix_money), cls: pctClass(s.fix_money - 100) },
+                { label: '复投最终资金', value: '$' + fmtMoney(s.contract_money), cls: pctClass(s.contract_money - 100) },
+                { label: '混合最终资金', value: '$' + fmtMoney(s.mix_money), cls: pctClass(s.mix_money - 100) },
+                { label: '盈利总和', value: fmtPct(s.total_profit_pct, true), cls: 'val-green' },
+                { label: '亏损总和', value: fmtPct(s.total_loss_pct, true), cls: 'val-red' }
+            ];
+            if (isBoll && s.excluded_trades > 0) {
+                fundItems.push({ label: '剔除交易数', value: s.excluded_trades + ' 笔', cls: 'val-yellow' });
+            }
+            cards.push({ title: '资金明细', items: fundItems });
+
+            grid.innerHTML = cards.map(function(card) {
+                var itemsHtml = card.items.map(function(item) {
+                    return '<div class="bt-metric">' +
+                        '<span class="bt-label">' + item.label + '</span>' +
+                        '<span class="bt-value' + (item.cls ? ' ' + item.cls : '') + '">' + item.value + '</span>' +
+                        '</div>';
+                }).join('');
+                return '<div class="backtest-card">' + itemsHtml + '</div>';
+            }).join('');
+        }
+
+        // ================================================================
+        // 渲染收益曲线图（ECharts：悬停显示数值 + 滚轮/滑块缩放）
+        // ================================================================
+        let profitChart = null;
+
+        function renderProfitChart(data) {
+            var section = document.getElementById('profit-chart-section');
+            var el = document.getElementById('profit-chart');
+            var trades = (data.trade_records || []).filter(function(t) { return !t.excluded; });
+            if (!trades.length) {
+                section.style.display = 'none';
+                return;
+            }
+            section.style.display = '';
+
+            // 逐笔累计：定投式累计收益% 与 复投式资金曲线（初始 $100）
+            var closeTimes = [], cumSeries = [], moneySeries = [];
+            var cum = 0, money = 100;
+            trades.forEach(function(t) {
+                var p = parseFloat(t.profit) || 0;
+                cum += p;
+                money *= (1 + p / 100);
+                closeTimes.push(t.close_time);
+                cumSeries.push(+cum.toFixed(2));
+                moneySeries.push(+money.toFixed(2));
+            });
+
+            if (!profitChart) {
+                profitChart = echarts.init(el);
+                window.addEventListener('resize', function() { profitChart && profitChart.resize(); });
+            }
+            profitChart.setOption({
+                backgroundColor: 'transparent',
+                tooltip: {
+                    trigger: 'axis',
+                    axisPointer: { type: 'cross', label: { backgroundColor: '#41617f' } },
+                    formatter: function(params) {
+                        var html = '<div style="font-weight:600;margin-bottom:4px;">第 ' + (params[0].dataIndex + 1) + ' 笔平仓 · ' + params[0].axisValue + '</div>';
+                        params.forEach(function(p) {
+                            var val = p.seriesName === '复投资金' ? '$' + p.value.toFixed(2) : (p.value >= 0 ? '+' : '') + p.value.toFixed(2) + '%';
+                            html += p.marker + ' ' + p.seriesName + '：<b>' + val + '</b><br>';
+                        });
+                        return html;
+                    }
+                },
+                legend: { data: ['累计收益%', '复投资金'], top: 4, icon: 'roundRect' },
+                grid: { left: 56, right: 62, top: 36, bottom: 58 },
+                xAxis: {
+                    type: 'category', data: closeTimes, boundaryGap: false,
+                    axisLabel: { fontSize: 10, color: '#8aa3ba', formatter: function(v) { return v.slice(5, 16); } },
+                    axisLine: { lineStyle: { color: '#dfe9f3' } }
+                },
+                yAxis: [
+                    {
+                        type: 'value', name: '收益%', position: 'left',
+                        axisLabel: { formatter: '{value}%', fontSize: 10, color: '#8aa3ba' },
+                        splitLine: { lineStyle: { type: 'dashed', color: '#eef2f7' } }
+                    },
+                    {
+                        type: 'value', name: '资金$', position: 'right',
+                        axisLabel: { formatter: '${value}', fontSize: 10, color: '#8aa3ba' },
+                        splitLine: { show: false }
+                    }
+                ],
+                dataZoom: [
+                    { type: 'inside', xAxisIndex: 0 },
+                    { type: 'slider', xAxisIndex: 0, height: 18, bottom: 8, borderColor: '#dfe9f3', fillerColor: 'rgba(11,95,168,0.12)' }
+                ],
+                series: [
+                    {
+                        name: '累计收益%', type: 'line', data: cumSeries, smooth: true, symbol: 'circle', symbolSize: 5,
+                        showSymbol: false, lineStyle: { width: 2.2, color: '#2f80ed' }, itemStyle: { color: '#2f80ed' },
+                        areaStyle: {
+                            color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                                { offset: 0, color: 'rgba(47,128,237,0.28)' },
+                                { offset: 1, color: 'rgba(47,128,237,0.02)' }
+                            ])
+                        },
+                        markLine: {
+                            silent: true, symbol: 'none',
+                            lineStyle: { color: '#b8c4d0', type: 'dashed' },
+                            label: { show: false },
+                            data: [{ yAxis: 0 }]
+                        }
+                    },
+                    {
+                        name: '复投资金', type: 'line', yAxisIndex: 1, data: moneySeries, smooth: true,
+                        showSymbol: false, lineStyle: { width: 1.8, color: '#27ae60', type: 'solid' }, itemStyle: { color: '#27ae60' },
+                        areaStyle: {
+                            color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                                { offset: 0, color: 'rgba(39,174,96,0.16)' },
+                                { offset: 1, color: 'rgba(39,174,96,0.01)' }
+                            ])
+                        }
+                    }
+                ]
+            }, true);
+            profitChart.resize();
+        }
+
+        // ================================================================
+        // 加载数据
+        // ================================================================
+        async function loadDetail() {
+            loadingEl.style.display = 'block';
+            contentEl.style.display = 'none';
+            errorEl.style.display = 'none';
+            document.getElementById('profit-chart-section').style.display = 'none';
+            document.getElementById('detail-subtitle').textContent = '策略详情 &amp; 回测分析';
+            try {
+                var barParam = CURRENT_BAR;
+                var longBarParam = '';
+                var priceParam = '';
+                var kbParam = '';
+                if (CURRENT_STRATEGY === 'dual') {
+                    barParam = DUAL_SHORT_BAR;
+                    longBarParam = '&long_bar=' + DUAL_LONG_BAR;
+                } else if (CURRENT_STRATEGY === 'boll') {
+                    barParam = BOLL_SHORT_BAR;
+                    longBarParam = '&long_bar=' + BOLL_LONG_BAR;
+                } else if (CURRENT_STRATEGY === 'keltner_boll') {
+                    barParam = KB_SHORT_BAR;
+                    longBarParam = '&long_bar=' + KB_LONG_BAR;
+                    kbParam = '&trend_indicator=' + encodeURIComponent(KB_TREND_INDICATOR) +
+                        '&entry_atr_mult=' + encodeURIComponent(KB_ENTRY_ATR) +
+                        '&exit_atr_mult=' + encodeURIComponent(KB_EXIT_ATR) +
+                        '&atr_period=' + encodeURIComponent(KB_ATR_PERIOD);
+                }
+                // 趋势策略（single/dual）附带信号算法与开/平仓价格取值参数；区间策略（boll/keltner_boll）不需要
+                if (CURRENT_STRATEGY !== 'boll' && CURRENT_STRATEGY !== 'keltner_boll') {
+                    priceParam = '&entry_price=' + ENTRY_PRICE_TYPE + '&exit_price=' + EXIT_PRICE_TYPE +
+                        '&signal_algo=' + SIGNAL_ALGO;
+                }
+                var url = '/api/strategy/detail/' + encodeURIComponent(SYMBOL) +
+                    '?bar=' + barParam +
+                    '&strategy=' + CURRENT_STRATEGY +
+                    longBarParam + priceParam + kbParam;
+                var response = await fetch(url);
+                var result = await response.json();
+
+                if (result.code === 200 && result.data) {
+                    var data = result.data;
+                    loadingEl.style.display = 'none';
+                    contentEl.style.display = 'block';
+
+                    var name = data.strategy_name || CURRENT_STRATEGY;
+                    document.getElementById('detail-subtitle').textContent =
+                        name + ' · ' + data.total_days + '天回测 · ' + data.stats.total_trades + '笔交易';
+
+                    renderPositionCard(data);
+                    renderProfitChart(data);
+                    renderTradeRecords(data.trade_records);
+                    renderStats(data);
+                } else {
+                    showError(result.message || '数据加载失败');
+                }
+            } catch (e) {
+                showError('网络请求失败: ' + e.message);
+            }
+        }
+
+        function showError(msg) {
+            loadingEl.style.display = 'none';
+            errorEl.style.display = 'block';
+            errorEl.textContent = '❌ ' + msg;
+        }
+
+        // 启动
+        setupSymbolSelector();
+        setupStrategySelector();
+        setupBarSelector();
+        setupDualSelectors();
+        setupPriceSelectors();
+        setupKBParams();
+        togglePeriodSelectors();
+        loadDetail();
+    })();
+    </script>
+</body>
+</html>

@@ -1,0 +1,216 @@
+{% extends "base.html" %}
+{% set active_page = "live" %}
+{% block title %}实盘监控 · OpsCenter{% endblock %}
+{% block crumb_group %}交易运行时{% endblock %}
+{% block crumb_page %}实盘监控{% endblock %}
+
+{% macro ep(name, label) -%}
+{% set e = v.endpoints.get(name) %}
+<span class="badge badge--{{ 'success' if (e and e.ok) else ('danger' if (e and e.kind == 'error') else 'neutral') }}" title="{{ (e and e.message) or '' }}">
+  <span class="badge__dot"></span>{{ label }}{% if e %} · {{ e.elapsed_ms }}ms{% endif %}
+</span>
+{%- endmacro %}
+
+{% macro pnl(x, txt) -%}
+<span class="{{ 'text-up' if (x or 0) > 0 else ('text-down' if (x or 0) < 0 else 'text-mute') }}">{{ txt }}</span>
+{%- endmacro %}
+
+{% set offline_level = 'danger' if v.kind == 'offline' else 'warning' %}
+
+{% block content %}
+<div class="page-head fade-in">
+  <div class="page-head__top">
+    <div>
+      <h1 class="page-head__title">实盘监控</h1>
+      <p class="page-head__desc">
+        运行态全景 · 只读聚合交易系统账户 / 持仓 / 未成交委托 · 采集于 {{ v.checked_at }}
+      </p>
+    </div>
+    <div class="page-head__actions">
+      <a class="btn btn--ghost" href="/schedule">⏰ 任务调度</a>
+      <a class="btn btn--ghost" href="/logs">📜 执行流水</a>
+      <a class="btn btn--primary" href="/">← 返回总览</a>
+    </div>
+  </div>
+</div>
+
+{% if not v.reachable %}
+<div class="banner banner--{{ offline_level }} fade-in">
+  {% if v.kind == 'auth' %}🔒 已连上交易系统，但被访问闸门拦下：{{ v.message }}。运维站需带正确口令（共享 <span class="text-mono">data/web_token.txt</span> 或设 <span class="text-mono">CRYPTO_WEB_TOKEN</span>）。
+  {% else %}⛔ 无法读取实盘数据：{{ v.message or '交易系统 Web 未启动或不可达' }}。请确认交易进程在跑、地址 <span class="text-mono">{{ trading_display }}</span> 正确。{% endif %}
+</div>
+{% elif v.partial %}
+<div class="banner banner--info fade-in">ℹ️ 已连上交易系统，但部分接口未取到数据（见下方各接口状态徽标），可能账号未配置或交易所读超时。</div>
+{% endif %}
+
+<!-- 接口状态条 -->
+<div class="card fade-in">
+  <div class="card__head"><div><div class="card__title">🛰️ 数据接口</div>
+    <div class="card__subtitle">端点 <span class="text-mono">{{ v.endpoint_base }}</span> · 全部只读 GET{% if v.token_configured %} · 已带访问口令{% else %} · 本机未配口令{% endif %}</div></div>
+    <div class="row gap-2 wrap">
+      {{ ep('account_info', '账户') }}{{ ep('positions', '持仓') }}{{ ep('open_orders', '委托') }}{{ ep('balance', '资金') }}
+    </div>
+  </div>
+</div>
+
+<!-- KPI 磁贴 -->
+<div class="grid grid--cols-12 mt-5">
+  <div class="col-3">
+    <div class="tile tile--hover fade-in">
+      <div class="tile__glow"></div>
+      <div class="tile__top"><span class="tile__label">账户总权益</span><span class="tile__icon tile__icon--info">💰</span></div>
+      <div class="tile__value">{{ v.summary.total_eq_txt }}<small>USD估</small></div>
+      <div class="tile__foot">{{ v.summary.margin_mode or '交易账户' }} · 计息币种 {{ v.summary.ccy_count }}</div>
+    </div>
+  </div>
+  <div class="col-3">
+    <div class="tile tile--hover fade-in" style="animation-delay:.05s">
+      <div class="tile__glow"></div>
+      <div class="tile__top"><span class="tile__label">持仓未实现盈亏</span>
+        <span class="tile__icon tile__icon--{{ 'success' if (v.summary.pos_upl or 0) > 0 else ('danger' if (v.summary.pos_upl or 0) < 0 else 'neutral') }}">📊</span></div>
+      <div class="tile__value">{% if v.summary.pos_upl is not none %}{{ pnl(v.summary.pos_upl, v.summary.pos_upl_txt) }}{% else %}—{% endif %}</div>
+      <div class="tile__foot">当前 {{ v.summary.pos_count }} 笔持仓</div>
+    </div>
+  </div>
+  <div class="col-3">
+    <div class="tile tile--hover fade-in" style="animation-delay:.1s">
+      <div class="tile__glow"></div>
+      <div class="tile__top"><span class="tile__label">持仓笔数</span><span class="tile__icon tile__icon--{{ 'warning' if v.summary.pos_count else 'neutral' }}">📈</span></div>
+      <div class="tile__value">{{ v.summary.pos_count }}<small>笔</small></div>
+      <div class="tile__foot">多空混合（USDT 永续）</div>
+    </div>
+  </div>
+  <div class="col-3">
+    <div class="tile tile--hover fade-in" style="animation-delay:.15s">
+      <div class="tile__glow"></div>
+      <div class="tile__top"><span class="tile__label">未成交委托</span><span class="tile__icon tile__icon--{{ 'info' if v.summary.open_order_count else 'neutral' }}">📋</span></div>
+      <div class="tile__value">{{ v.summary.open_order_count }}<small>单</small></div>
+      <div class="tile__foot">挂单中 state=live</div>
+    </div>
+  </div>
+</div>
+
+<!-- 持仓 -->
+<div class="card fade-in mt-5">
+  <div class="card__head"><div><div class="card__title">📈 当前持仓</div>
+    <div class="card__subtitle">GET /api/account/positions · 只读，不含任何平仓操作</div></div>
+    <span class="badge badge--neutral">{{ v.positions|length }} 笔</span></div>
+  <div class="card__body">
+    {% if v.positions %}
+    <div class="table-wrap">
+      <table class="table">
+        <thead><tr><th>合约</th><th>方向</th><th class="num">张数</th><th class="num">开仓均价</th><th class="num">标记价</th><th class="num">杠杆</th><th class="num">保证金</th><th class="num">未实现盈亏</th><th>开仓时间</th></tr></thead>
+        <tbody>
+          {% for p in v.positions %}
+          <tr>
+            <td class="table__strong">{{ p.instId }}</td>
+            <td><span class="kv">{{ p.posSide or '-' }}</span></td>
+            <td class="num table__mono">{{ p.size }}</td>
+            <td class="num table__mono">{{ p.avgPx }}</td>
+            <td class="num table__mono">{{ p.markPx }}</td>
+            <td class="num table__mono">{{ p.lever }}</td>
+            <td class="num table__mono">{{ p.margin }}</td>
+            <td class="num">{{ pnl(p.upl, p.upl_txt) }} <span class="text-mute fs-xs">{{ p.uplRatio }}</span></td>
+            <td class="table__mono text-mute">{{ p.cTime }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty"><span class="empty__icon">{{ '⛔' if not v.reachable else '🈳' }}</span>{{ '实盘数据不可达' if not v.reachable else '当前无持仓' }}</div>
+    {% endif %}
+  </div>
+</div>
+
+<div class="grid grid--cols-12 mt-5">
+  <!-- 未成交委托 -->
+  <div class="col-8">
+    <div class="card fade-in">
+      <div class="card__head"><div><div class="card__title">📋 未成交委托</div>
+        <div class="card__subtitle">GET /api/trade/open_orders · 只读</div></div>
+        <span class="badge badge--neutral">{{ v.open_orders|length }} 单</span></div>
+      <div class="card__body">
+        {% if v.open_orders %}
+        <div class="table-wrap">
+          <table class="table">
+            <thead><tr><th>合约</th><th>方向</th><th>类型</th><th class="num">价格</th><th class="num">数量</th><th class="num">已成交</th><th>下单时间</th></tr></thead>
+            <tbody>
+              {% for o in v.open_orders %}
+              <tr>
+                <td class="table__strong">{{ o.instId }}<div class="table__mono text-mute">{{ o.clOrdId or o.ordId }}</div></td>
+                <td><span class="kv">{{ o.side }}{% if o.posSide %}/{{ o.posSide }}{% endif %}</span></td>
+                <td class="table__mono">{{ o.ordType }}</td>
+                <td class="num table__mono">{{ o.px }}</td>
+                <td class="num table__mono">{{ o.sz }}</td>
+                <td class="num table__mono">{{ o.accFillSz }}</td>
+                <td class="table__mono text-mute">{{ o.cTime }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="empty"><span class="empty__icon">{{ '⛔' if not v.reachable else '🈳' }}</span>{{ '实盘数据不可达' if not v.reachable else '当前无未成交委托' }}</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- 资金余额 + 只读声明 -->
+  <div class="col-4">
+    <div class="card fade-in">
+      <div class="card__head"><div><div class="card__title">💰 资金余额</div>
+        <div class="card__subtitle">可用总额 {{ v.summary.avail_total_txt }}</div></div></div>
+      <div class="card__body">
+        {% if v.balances.rows %}
+        <div class="table-wrap">
+          <table class="table">
+            <thead><tr><th>币种</th><th class="num">可用</th><th class="num">冻结</th></tr></thead>
+            <tbody>
+              {% for b in v.balances.rows %}
+              <tr><td class="table__strong">{{ b.ccy }}</td><td class="num table__mono">{{ b.availBal }}</td><td class="num table__mono text-mute">{{ b.frozenBal }}</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="empty" style="padding:var(--sp-6) var(--sp-4)"><span class="empty__icon">{{ '⛔' if not v.reachable else '🈳' }}</span>{{ '不可达' if not v.reachable else '无余额数据' }}</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="card fade-in mt-5" style="animation-delay:.05s">
+      <div class="card__head"><div><div class="card__title">🔒 只读声明</div></div></div>
+      <div class="card__body">
+        <p class="text-mute fs-xs" style="line-height:1.8;margin:0">
+          • 本页所有数据均来自交易系统<b>只读 GET</b>，与交易页面同源；<br>
+          • <b>不提供</b>下单 / 撤单 / 平仓 / 启停调度等任何写操作；<br>
+          • 读经交易系统侧 OKX 限频，运维站另加 TTL 缓存以免放大请求；<br>
+          • 需要操作请前往交易系统原页面。
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% if v.account.details %}
+<div class="card fade-in mt-5">
+  <div class="card__head"><div><div class="card__title">🪙 账户逐币种权益</div>
+    <div class="card__subtitle">GET /api/account/info · 更新于 {{ v.account.u_time or '—' }}</div></div>
+    <span class="badge badge--neutral">{{ v.account.details|length }} 币种</span></div>
+  <div class="card__body">
+    <div class="table-wrap">
+      <table class="table">
+        <thead><tr><th>币种</th><th class="num">权益 eq</th><th class="num">折合 USD</th><th class="num">可用</th><th class="num">冻结</th></tr></thead>
+        <tbody>
+          {% for d in v.account.details %}
+          <tr><td class="table__strong">{{ d.ccy }}</td><td class="num table__mono">{{ d.eq }}</td><td class="num table__mono">{{ d.eqUsd }}</td><td class="num table__mono">{{ d.availBal }}</td><td class="num table__mono text-mute">{{ d.frozenBal }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

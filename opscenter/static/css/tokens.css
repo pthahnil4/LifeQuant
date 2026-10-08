@@ -1,0 +1,131 @@
+/* ==========================================================================
+   设计令牌 (Design Tokens) · 运维监控中心
+   --------------------------------------------------------------------------
+   全站视觉决策的唯一来源。任何组件只允许引用这里的变量，禁止硬编码色值/
+   间距/字号。改一处即改全站——这是"统一设计语言、摒弃零散感"的根基。
+   ========================================================================== */
+
+:root {
+  /* ---- 品牌强调色（单一主色，克制使用） ---- */
+  --brand-500: #2f81f7;
+  --brand-400: #58a6ff;
+  --brand-600: #1f6feb;
+  --brand-glow: rgba(47, 129, 247, .35);
+
+  /* ---- 语义状态色 ---- */
+  --success: #3fb950;
+  --success-soft: rgba(63, 185, 80, .14);
+  --warning: #d29922;
+  --warning-soft: rgba(210, 153, 34, .14);
+  --danger: #f85149;
+  --danger-soft: rgba(248, 81, 73, .14);
+  --info: #58a6ff;
+  --info-soft: rgba(88, 166, 255, .14);
+  --neutral: #8b98a5;
+  --neutral-soft: rgba(139, 152, 165, .14);
+
+  /* ---- 间距标度（4/8 基准，杜绝魔法数字） ---- */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+  --sp-10: 40px;
+  --sp-12: 48px;
+
+  /* ---- 字体 ---- */
+  --font-sans: "Inter", "Microsoft YaHei", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+  --fs-xs: 12px;
+  --fs-sm: 13px;
+  --fs-md: 14px;
+  --fs-lg: 16px;
+  --fs-xl: 20px;
+  --fs-2xl: 26px;
+  --fs-3xl: 34px;
+  --fw-regular: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+  --fw-bold: 700;
+  --lh-tight: 1.25;
+  --lh-normal: 1.55;
+
+  /* ---- 圆角 ---- */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+  --radius-pill: 999px;
+
+  /* ---- 阴影 / 层级 ---- */
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, .24);
+  --shadow-2: 0 4px 14px rgba(0, 0, 0, .28);
+  --shadow-3: 0 12px 34px rgba(0, 0, 0, .40);
+  --z-sidebar: 40;
+  --z-topbar: 30;
+  --z-dropdown: 60;
+  --z-toast: 80;
+
+  /* ---- 布局尺寸 ---- */
+  --sidebar-w: 248px;
+  --sidebar-w-collapsed: 68px;
+  --topbar-h: 60px;
+  --content-max: 1440px;
+
+  /* ---- 动效 ---- */
+  --ease: cubic-bezier(.4, 0, .2, 1);
+  --dur-fast: .14s;
+  --dur: .22s;
+}
+
+/* ==========================================================================
+   主题：深色（默认）—— 专业运维台基调
+   ========================================================================== */
+:root,
+[data-theme="dark"] {
+  --bg: #0b0f14;
+  --bg-grad-1: #0d1420;
+  --bg-grad-2: #0b0f14;
+  --surface: #131a23;
+  --surface-2: #18212c;
+  --surface-3: #1e2833;
+  --surface-hover: #1c2732;
+  --border: #232e3b;
+  --border-strong: #2e3c4c;
+  --text: #e6edf3;
+  --text-dim: #9aa7b4;
+  --text-mute: #6b7885;
+  --sidebar-bg: #0e141c;
+  --topbar-bg: rgba(13, 18, 25, .82);
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, .3), 0 8px 24px rgba(0, 0, 0, .18);
+  --grid-line: rgba(255, 255, 255, .04);
+}
+
+/* ==========================================================================
+   主题：浅色 —— 令牌驱动，一键切换
+   ========================================================================== */
+[data-theme="light"] {
+  --bg: #f4f6f9;
+  --bg-grad-1: #eef2f7;
+  --bg-grad-2: #f6f8fb;
+  --surface: #ffffff;
+  --surface-2: #f7f9fc;
+  --surface-3: #eef1f6;
+  --surface-hover: #f2f5f9;
+  --border: #e2e8f0;
+  --border-strong: #cdd6e0;
+  --text: #1a222c;
+  --text-dim: #566373;
+  --text-mute: #8492a1;
+  --sidebar-bg: #ffffff;
+  --topbar-bg: rgba(255, 255, 255, .82);
+  --shadow-card: 0 1px 2px rgba(16, 24, 40, .06), 0 8px 24px rgba(16, 24, 40, .06);
+  --grid-line: rgba(0, 0, 0, .04);
+  --success-soft: rgba(63, 185, 80, .12);
+  --warning-soft: rgba(210, 153, 34, .14);
+  --danger-soft: rgba(248, 81, 73, .12);
+  --info-soft: rgba(88, 166, 255, .14);
+  --neutral-soft: rgba(139, 152, 165, .14);
+}

@@ -1,0 +1,227 @@
+{% extends "base.html" %}
+{% set active_page = "alerts" %}
+{% block title %}告警中心 · OpsCenter{% endblock %}
+{% block crumb_group %}交易运行时{% endblock %}
+{% block crumb_page %}告警中心{% endblock %}
+
+{% macro badge(level, text) -%}
+<span class="badge badge--{{ level }}"><span class="badge__dot"></span>{{ text }}</span>
+{%- endmacro %}
+
+{% macro epbadge(name, label) -%}
+{% set st = a.endpoints.get(name) %}
+<span class="kv" title="{{ st.message if st else '' }}">{{ label }}
+  <span class="secdot secdot--{{ 'success' if st and st.ok else ('warning' if st and st.kind=='auth' else 'neutral') }}"></span>
+</span>
+{%- endmacro %}
+
+{% set eng = a.engine %}
+{% set lr = eng.last_run %}
+{% set run_txt = ('运行中' if eng.enabled else '已关闭') if a.reachable else '未知' %}
+{% set run_level = ('success' if eng.enabled else 'warning') if a.reachable else 'neutral' %}
+
+{% block content %}
+<div class="page-head fade-in">
+  <div class="page-head__top">
+    <div>
+      <h1 class="page-head__title">告警中心</h1>
+      <p class="page-head__desc">
+        统一告警流 · 交易侧行情/盈亏（只读 GET <span class="text-mono">alert_routes</span>）
+        + 系统侧内存/自愈（本地）· 采集于 {{ a.checked_at }}{% if a.reachable %}（{{ a.elapsed_ms }}ms）{% endif %}
+      </p>
+    </div>
+    <div class="page-head__actions">
+      {{ epbadge('alert_status', '状态') }}
+      {{ epbadge('alert_config', '规则') }}
+      {{ epbadge('alert_history', '历史') }}
+      <a class="btn btn--ghost" href="/live">📈 实盘监控</a>
+      <a class="btn btn--ghost" href="/memory">🧠 内存治理</a>
+      <a class="btn btn--primary" href="/">← 返回总览</a>
+    </div>
+  </div>
+</div>
+
+{% if not a.reachable %}
+<div class="banner banner--{{ 'warning' if a.kind == 'auth' else 'danger' }} fade-in">
+  {% if a.kind == 'auth' %}🔒 被访问闸门拦下：{{ a.message or '口令缺失或不符' }}。
+  {% else %}⛔ 交易 Web 不可达：{{ a.message or '未启动或端口不对' }}。
+  {% endif %}
+  交易侧（行情/盈亏）告警需交易系统在线读取；<b>下方系统侧告警来自本地文件，不受影响，照常显示</b>。
+</div>
+{% elif a.partial %}
+<div class="banner banner--warning fade-in">
+  ⚠️ 交易 Web 在线，但个别告警接口未取得（规则/历史其一失败），下方按可用部分展示。
+</div>
+{% endif %}
+
+<!-- KPI -->
+<div class="grid grid--cols-12">
+  <div class="col-3"><div class="tile tile--hover fade-in"><div class="tile__glow"></div>
+    <div class="tile__top"><span class="tile__label">监控引擎</span><span class="tile__icon tile__icon--{{ run_level }}">🚨</span></div>
+    <div class="tile__value" style="font-size:var(--fs-2xl)">{{ run_txt }}</div>
+    <div class="tile__foot">{% if a.reachable %}周期 {{ eng.interval_seconds or '—' }}s{% else %}不可达{% endif %}</div>
+  </div></div>
+  <div class="col-3"><div class="tile tile--hover fade-in" style="animation-delay:.05s"><div class="tile__glow"></div>
+    <div class="tile__top"><span class="tile__label">最近一轮</span><span class="tile__icon tile__icon--info">🔄</span></div>
+    <div class="tile__value">{{ lr.hit_count if lr.hit_count is not none else '—' }}<small>命中</small></div>
+    <div class="tile__foot">{% if lr.sent_count is not none %}发信 {{ lr.sent_count }}{% if lr.email_ok is not none %} · 邮件{{ '✅' if lr.email_ok else '❌' }}{% endif %}{% else %}—{% endif %}</div>
+  </div></div>
+  <div class="col-3"><div class="tile tile--hover fade-in" style="animation-delay:.1s"><div class="tile__glow"></div>
+    <div class="tile__top"><span class="tile__label">交易告警</span><span class="tile__icon tile__icon--{{ 'danger' if a.summary.critical else ('warning' if a.summary.warning else 'success') }}">📊</span></div>
+    <div class="tile__value">{{ a.summary.critical + a.summary.warning }}<small>条</small></div>
+    <div class="tile__foot">严重 {{ a.summary.critical }} · 预警 {{ a.summary.warning }} · 抑制 {{ a.summary.suppressed }}</div>
+  </div></div>
+  <div class="col-3"><div class="tile tile--hover fade-in" style="animation-delay:.15s"><div class="tile__glow"></div>
+    <div class="tile__top"><span class="tile__label">系统告警</span><span class="tile__icon tile__icon--{{ 'danger' if a.summary.sys_danger else 'info' }}">🧠</span></div>
+    <div class="tile__value">{{ a.summary.sys_count }}<small>条</small></div>
+    <div class="tile__foot">其中危险 {{ a.summary.sys_danger }} · 本地内存采样</div>
+  </div></div>
+</div>
+
+<!-- 引擎状态 + 规则 -->
+<div class="grid grid--cols-12 mt-5">
+  <div class="col-6">
+    <div class="card fade-in">
+      <div class="card__head"><div><div class="card__title">🚨 监控引擎状态</div>
+        <div class="card__subtitle">alert_monitor 调度 + 最近一轮检测摘要</div></div>
+        {{ badge(run_level, run_txt) }}</div>
+      <div class="card__body">
+        <div class="list-row"><div class="list-row__main"><div class="list-row__title">任务注册</div>
+          <div class="list-row__sub">APScheduler job_id=alert_monitor（内存态，仅运行进程可见）</div></div>
+          <div class="list-row__aside">{{ badge('success','活跃') if eng.job_active else (badge('neutral','未注册') if not a.reachable else badge('warning','未排队')) }}</div></div>
+        <div class="list-row"><div class="list-row__main"><div class="list-row__title">下次检测</div></div>
+          <div class="list-row__aside table__mono">{{ eng.job_next or '—' }}</div></div>
+        <div class="list-row"><div class="list-row__main"><div class="list-row__title">上一轮结束</div></div>
+          <div class="list-row__aside table__mono">{{ lr.finished_at or '—' }}{% if lr.duration_ms is not none %} · {{ lr.duration_ms }}ms{% endif %}</div></div>
+        {% if lr.error %}
+        <div class="banner banner--danger" style="margin:var(--sp-3) 0 0">本轮异常：{{ lr.error }}</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  <div class="col-6">
+    <div class="card fade-in" style="animation-delay:.05s">
+      <div class="card__head"><div><div class="card__title">📐 告警阈值规则</div>
+        <div class="card__subtitle">只读展示；改阈值请回交易系统「风险警报」页</div></div>
+        {{ badge('success' if a.rules.enabled else 'neutral', '启用' if a.rules.enabled else '关闭') }}</div>
+      <div class="card__body">
+        <div class="stat-grid" style="grid-template-columns:repeat(2,1fr)">
+          <div class="stat"><div class="stat__k">行情异动 · 预警</div>
+            <div class="stat__v">{{ a.rules.price.warning_pct if a.rules.price.warning_pct is not none else '—' }}<small>%</small></div></div>
+          <div class="stat"><div class="stat__k">行情异动 · 严重</div>
+            <div class="stat__v">{{ a.rules.price.critical_pct if a.rules.price.critical_pct is not none else '—' }}<small>%</small></div></div>
+          <div class="stat"><div class="stat__k">持仓盈亏 · 预警</div>
+            <div class="stat__v">{{ a.rules.pnl.warning_pct if a.rules.pnl.warning_pct is not none else '—' }}<small>%</small></div></div>
+          <div class="stat"><div class="stat__k">持仓盈亏 · 严重</div>
+            <div class="stat__v">{{ a.rules.pnl.critical_pct if a.rules.pnl.critical_pct is not none else '—' }}<small>%</small></div></div>
+        </div>
+        <p class="text-mute fs-xs" style="margin:var(--sp-3) 0 0;line-height:1.8">
+          行情窗口 {{ a.rules.price.window_minutes or '—' }} 分钟 · 监控币种
+          {{ ('%d 个' % a.rules.price.inst_count) if a.rules.price.inst_count else '跟随实盘配置' }}
+          · 盈亏账号 {{ a.rules.account or '默认' }}{% if not a.reachable %} ·（交易 Web 离线，规则缺省）{% endif %}
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 交易侧告警 -->
+<div class="card fade-in mt-5">
+  <div class="card__head"><div><div class="card__title">📊 交易侧告警（行情 / 盈亏）</div>
+    <div class="card__subtitle">来自 alert_log 历史（alert_monitor 引擎产出）· 最近 {{ a.trade_alerts | length }} 条</div></div>
+    <div class="row gap-2 wrap">
+      <span class="chip is-on alert-filter" data-ft="type" data-fv="">全部</span>
+      <span class="chip alert-filter" data-ft="type" data-fv="price">行情</span>
+      <span class="chip alert-filter" data-ft="type" data-fv="pnl">盈亏</span>
+      <span class="chip alert-filter" data-ft="level" data-fv="critical">仅严重</span>
+    </div>
+  </div>
+  <div class="card__body">
+    {% if a.trade_alerts %}
+    <div class="table-wrap"><table class="table" id="alertTradeTable">
+      <thead><tr><th>时间</th><th>类型</th><th>币种</th><th>级别</th><th class="num">实测 / 阈值</th><th>处置</th><th>说明</th></tr></thead>
+      <tbody>
+        {% for t in a.trade_alerts %}
+        <tr data-type="{{ t.type }}" data-level="{{ t.level }}">
+          <td class="table__mono">{{ t.ts }}</td>
+          <td>{{ '行情' if t.type == 'price' else ('盈亏' if t.type == 'pnl' else t.type) }}</td>
+          <td class="table__mono">{{ t.inst_id }}</td>
+          <td>{{ badge(t.level_cls, t.level_disp) }}</td>
+          <td class="num">
+            {% if t.value is not none %}<span class="{{ 'text-down' if (t.level != 'recover' and t.value < 0) else 'text-up' }}">{{ '%+.2f' % t.value }}%</span>{% else %}—{% endif %}
+            <span class="text-mute"> / {{ '%+.1f' % t.threshold if t.threshold is not none else '—' }}%</span></td>
+          <td>{{ badge('success' if t.sent else 'neutral', t.action) }}</td>
+          <td class="text-mute fs-xs">{{ t.message }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table></div>
+    {% else %}
+    <div class="empty"><span class="empty__icon">{{ '⛔' if not a.reachable else '✅' }}</span>
+      {{ '交易 Web 不可达，暂无交易侧告警' if not a.reachable else '近期无行情/盈亏告警（一切平稳）' }}</div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- 系统侧告警 -->
+<div class="card fade-in mt-5">
+  <div class="card__head"><div><div class="card__title">🧠 系统侧告警（内存 / 磁盘 / 自愈）</div>
+    <div class="card__subtitle">来自本地 memory_history.jsonl，交易 Web 离线也有效 · 最近 {{ a.sys_alerts | length }} 条</div></div></div>
+  <div class="card__body">
+    {% if a.sys_alerts %}
+      {% for s in a.sys_alerts %}
+      <div class="list-row">
+        <div class="list-row__icon" style="background:var(--{{ 'danger' if s.level=='danger' else 'warning' }}-soft)">
+          <span class="secdot secdot--{{ s.level }}"></span></div>
+        <div class="list-row__main"><div class="list-row__title">{{ s.text }}</div>
+          <div class="list-row__sub">{{ s.kind }} 类</div></div>
+        <div class="list-row__aside table__mono text-mute">{{ s.ts }}</div>
+      </div>
+      {% endfor %}
+    {% else %}
+    <div class="empty"><span class="empty__icon">✅</span>系统侧近期无阈值告警（内存 / 磁盘水位正常）</div>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card fade-in mt-5">
+  <div class="card__head"><div><div class="card__title">🔒 只读口径</div></div></div>
+  <div class="card__body">
+    <p class="text-mute fs-xs" style="line-height:1.9;margin:0">
+      • 交易侧仅 <b>GET</b> <span class="text-mono">/alert/api/{status,config,history}</span>，
+        页面无"保存配置 / 立即检测"按钮——那两类是 POST，会改调度、可能触发发信，运维站绝不触碰；<br>
+      • 告警的<b>产生与邮件发送由交易系统 alert_monitor 自行完成</b>，本页只是消费其落库结果；<br>
+      • 系统侧告警复用内存治理采集，纯读本地心跳文件；<br>
+      • 阈值与开关的修改、监控启停请回交易系统原页面操作。
+    </p>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var ft = '', fl = '';
+  document.querySelectorAll('.alert-filter').forEach(function (chip) {
+    chip.addEventListener('click', function () {
+      var kind = chip.getAttribute('data-ft'), val = chip.getAttribute('data-fv');
+      if (kind === 'type') { ft = (ft === val ? '' : val); }
+      else { fl = (fl === val ? '' : val); }
+      document.querySelectorAll('.alert-filter').forEach(function (c) {
+        var k = c.getAttribute('data-ft'), v = c.getAttribute('data-fv');
+        var on = (k === 'type' && ((v === '' && ft === '') || v === ft)) ||
+                 (k === 'level' && v === fl && fl !== '');
+        if (k === 'type' && v === '' && ft === '') on = true;
+        if (k === 'level' && fl === '') on = false;
+        c.classList.toggle('is-on', on);
+      });
+      document.querySelectorAll('#alertTradeTable tbody tr').forEach(function (tr) {
+        var okT = !ft || tr.getAttribute('data-type') === ft;
+        var okL = !fl || tr.getAttribute('data-level') === fl;
+        tr.hidden = !(okT && okL);
+      });
+    });
+  });
+})();
+</script>
+{% endblock %}

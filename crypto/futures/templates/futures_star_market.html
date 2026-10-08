@@ -1,0 +1,908 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>星标品种行情 — 期货 Pro3 策略监控台</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        .star-toolbar {
+            background: white;
+            padding: 14px 18px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.06);
+            margin-bottom: 16px;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 12px;
+        }
+        .star-toolbar .tb-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .star-toolbar .tb-sep {
+            width: 1px; height: 28px; background: #e0e0e0; margin: 0 4px;
+        }
+        .tb-label { font-size: 0.82rem; color: #555; font-weight: 600; }
+
+        .btn-trend {
+            padding: 6px 14px;
+            border: 1.5px solid #ddd;
+            border-radius: 6px;
+            font-size: 0.82rem;
+            cursor: pointer;
+            background: #f8f9fa;
+            color: #444;
+            font-weight: 600;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+        .btn-trend:hover:not(:disabled) { background: #e6f0ff; border-color: #4a90d9; color: #1a5bb5; }
+        .btn-trend:disabled { opacity: 0.55; cursor: not-allowed; }
+        .btn-trend.running { background: #fff3cd; border-color: #ffc107; color: #856404; }
+
+        /* 定时器控件 */
+        .timer-group select {
+            padding: 5px 8px; border: 1px solid #ccc; border-radius: 5px;
+            font-size: 0.8rem; background: white; color: #444; outline: none;
+            cursor: pointer;
+        }
+        .btn-timer-toggle {
+            padding: 6px 14px; border-radius: 6px; font-size: 0.82rem;
+            cursor: pointer; font-weight: 700; transition: all 0.2s;
+            border: 1.5px solid #28a745; color: #28a745; background: white;
+        }
+        .btn-timer-toggle:hover { background: #28a745; color: white; }
+        .btn-timer-toggle.active {
+            background: #dc3545; border-color: #dc3545; color: white;
+        }
+        .btn-timer-toggle.active:hover { background: #c82333; }
+        .timer-status {
+            font-size: 0.75rem; color: #888; margin-left: 2px; min-width: 60px;
+        }
+
+        /* 刷新状态 */
+        .refresh-status {
+            font-size: 0.78rem; color: #555; min-width: 180px;
+        }
+        .refresh-status.ok { color: #28a745; }
+        .refresh-status.err { color: #dc3545; }
+
+        /* 刷新行情按钮 */
+        .btn-refresh-all {
+            padding: 7px 18px;
+            border: 1.5px solid #4a90d9;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            cursor: pointer;
+            background: linear-gradient(135deg, #4a90d9, #357abd);
+            color: white;
+            font-weight: 700;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+        .btn-refresh-all:hover:not(:disabled) {
+            background: linear-gradient(135deg, #357abd, #2868a8);
+            box-shadow: 0 2px 6px rgba(74,144,217,0.35);
+        }
+        .btn-refresh-all:disabled { opacity: 0.55; cursor: not-allowed; }
+        .btn-refresh-all.running {
+            background: linear-gradient(135deg, #ffc107, #e0a800);
+            border-color: #ffc107; color: #333;
+        }
+
+        /* 进度条 */
+        .progress-bar-wrap {
+            background: #e9ecef;
+            border-radius: 6px;
+            height: 22px;
+            margin-bottom: 14px;
+            position: relative;
+            overflow: hidden;
+        }
+        .progress-bar-inner {
+            background: linear-gradient(90deg, #4a90d9, #28a745);
+            height: 100%;
+            border-radius: 6px;
+            transition: width 0.4s ease;
+        }
+        .progress-bar-text {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 0.75rem; font-weight: 700; color: #333;
+        }
+
+        /* 表格样式 */
+        .star-table-wrap {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.06);
+            overflow-x: auto;
+        }
+        .star-table {
+            width: 100%; border-collapse: collapse; font-size: 0.82rem;
+        }
+        .star-table thead th {
+            background: #f8f9fa;
+            padding: 9px 8px;
+            text-align: center;
+            font-weight: 700;
+            color: #555;
+            border-bottom: 2px solid #e0e4ea;
+            white-space: nowrap;
+            position: sticky; top: 0; z-index: 2;
+        }
+        .star-table thead th.th-group-trend {
+            background: #eaf4ff; color: #1a5bb5;
+        }
+        .star-table thead th.th-group-trade {
+            background: #fff8e7; color: #7a5a00;
+        }
+        .star-table tbody td {
+            padding: 8px 8px;
+            text-align: center;
+            border-bottom: 1px solid #f0f0f0;
+            white-space: nowrap;
+        }
+        .star-table tbody tr:hover { background: #f8fafd; }
+        .star-table tbody tr.drag-over-top { border-top: 2px solid #4a90d9; }
+        .star-table tbody tr.drag-over-bottom { border-bottom: 2px solid #4a90d9; }
+        .star-table tbody tr.dragging { opacity: 0.35; }
+
+        /* 拖拽手柄 */
+        .drag-handle {
+            cursor: grab; color: #bbb; font-size: 1rem; user-select: none;
+            transition: color 0.2s;
+        }
+        .drag-handle:hover { color: #666; }
+        .drag-handle:active { cursor: grabbing; }
+
+        /* 趋势颜色标签 */
+        .trend-up { color: #dc3545; font-weight: 700; }
+        .trend-down { color: #28a745; font-weight: 700; }
+        .trend-wait { color: #999; }
+
+        .profit-pos { color: #dc3545; font-weight: 600; }
+        .profit-neg { color: #28a745; font-weight: 600; }
+
+        /* 空状态 */
+        .empty-row td {
+            padding: 40px; color: #aaa; font-size: 0.95rem; text-align: center;
+        }
+
+        /* 同步反馈 */
+        .sync-feedback {
+            font-size: 0.78rem; color: #4a90d9; font-weight: 600;
+            transition: opacity 0.3s;
+        }
+
+        /* 导出下拉按钮 */
+        .export-dropdown {
+            position: relative;
+            display: inline-block;
+        }
+        .btn-export {
+            padding: 7px 16px;
+            border: 1.5px solid #28a745;
+            border-radius: 6px;
+            font-size: 0.82rem;
+            cursor: pointer;
+            background: linear-gradient(135deg, #28a745, #1e7e34);
+            color: white;
+            font-weight: 700;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+        .btn-export:hover { background: linear-gradient(135deg, #1e7e34, #155724); }
+        .btn-export:disabled { opacity: 0.55; cursor: not-allowed; }
+        .export-menu {
+            display: none;
+            position: absolute;
+            top: 100%;
+            right: 0;
+            margin-top: 4px;
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+            z-index: 100;
+            min-width: 160px;
+            overflow: hidden;
+        }
+        .export-menu.show { display: block; }
+        .export-menu-item {
+            padding: 10px 16px;
+            cursor: pointer;
+            font-size: 0.82rem;
+            color: #333;
+            transition: background 0.15s;
+            border-bottom: 1px solid #f0f0f0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .export-menu-item:last-child { border-bottom: none; }
+        .export-menu-item:hover { background: #f0f7ff; color: #1a5bb5; }
+        .export-menu-item .icon { font-size: 1rem; }
+    </style>
+</head>
+<body>
+{% include 'nav.html' %}
+
+<div class="dashboard" style="max-width:1500px;">
+
+<header>
+    <h1>⭐ 星标品种行情</h1>
+    <p class="subtitle">期货 Pro3 策略 · 多周期趋势一览</p>
+</header>
+
+<!-- ==================== 工具栏 ==================== -->
+<div class="star-toolbar">
+
+    <!-- 趋势刷新按钮 -->
+    <div class="tb-group">
+        <span class="tb-label">趋势刷新：</span>
+        <button class="btn-trend" id="btn-refresh-15m" onclick="refreshTrend('15m', this)">⏱ 15分钟</button>
+        <button class="btn-trend" id="btn-refresh-1H"  onclick="refreshTrend('1H',  this)">⏱ 1小时</button>
+        <button class="btn-trend" id="btn-refresh-1D"  onclick="refreshTrend('1D',  this)">⏱ 日线</button>
+    </div>
+
+    <div class="tb-sep"></div>
+
+    <!-- 全周期刷新行情 -->
+    <div class="tb-group">
+        <button class="btn-refresh-all" id="btn-refresh-all" onclick="refreshAll()">🔄 刷新行情</button>
+    </div>
+
+    <div class="tb-sep"></div>
+
+    <!-- 定时自动刷新 -->
+    <div class="tb-group timer-group">
+        <span class="tb-label">⏰ 定时：</span>
+        <select id="timer-period">
+            <option value="15m">15分钟</option>
+            <option value="1H" selected>1小时</option>
+            <option value="1D">日线</option>
+        </select>
+        <select id="timer-interval">
+            <option value="1">1分钟</option>
+            <option value="3">3分钟</option>
+            <option value="5" selected>5分钟</option>
+            <option value="10">10分钟</option>
+            <option value="15">15分钟</option>
+            <option value="30">30分钟</option>
+        </select>
+        <button class="btn-timer-toggle" id="btn-timer" onclick="toggleTimer()">开启</button>
+        <span class="timer-status" id="timer-status"></span>
+    </div>
+
+    <div class="tb-sep"></div>
+
+    <!-- 刷新状态 -->
+    <span class="refresh-status" id="refresh-status"></span>
+
+    <div style="flex:1;"></div>
+
+    <!-- 手动同步按钮 -->
+    <div class="tb-group">
+        <button class="btn-trend" onclick="syncStarred()">🔄 同步星标</button>
+        <span class="sync-feedback" id="sync-feedback"></span>
+    </div>
+
+    <div class="tb-sep"></div>
+
+    <!-- 导出数据 -->
+    <div class="export-dropdown" id="export-dropdown">
+        <button class="btn-export" id="btn-export" onclick="toggleExportMenu()">📥 导出数据 ▾</button>
+        <div class="export-menu" id="export-menu">
+            <div class="export-menu-item" onclick="exportData('csv')">
+                <span class="icon">📄</span> 导出为 CSV 格式
+            </div>
+            <div class="export-menu-item" onclick="exportData('excel')">
+                <span class="icon">📊</span> 导出为 Excel 格式
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 进度条 -->
+<div class="progress-bar-wrap" id="progress-bar-wrap" style="display:none;">
+    <div class="progress-bar-inner" id="progress-bar-inner" style="width:0%;"></div>
+    <span class="progress-bar-text" id="progress-bar-text">0%</span>
+</div>
+
+<!-- ==================== 数据表格 ==================== -->
+<div class="star-table-wrap">
+<table class="star-table" id="star-table">
+<thead>
+<tr>
+    <th style="width:30px;"></th>
+    <th>品种</th>
+    <th>代码</th>
+    <th>最新价</th>
+    <th class="th-group-trend">15m趋势</th>
+    <th class="th-group-trend">1H趋势</th>
+    <th class="th-group-trend">日线趋势</th>
+    <th class="th-group-trend">周线趋势</th>
+    <th class="th-group-trade">方向(1H)</th>
+    <th class="th-group-trade">交易价格</th>
+    <th class="th-group-trade">交易时间</th>
+    <th class="th-group-trade">盈亏</th>
+    <th class="th-group-trade">持仓</th>
+</tr>
+</thead>
+<tbody id="star-tbody">
+<tr class="empty-row"><td colspan="13">加载中...</td></tr>
+</tbody>
+</table>
+</div>
+
+</div><!-- /dashboard -->
+
+<script>
+// ================================================================
+// 全局状态
+// ================================================================
+var allRecords = [];
+var refreshInProgress = false;
+var timerId = null;
+var timerNextFire = null;  // Date 对象，下次触发时间
+
+// ================================================================
+// 数据加载
+// ================================================================
+function loadData() {
+    // 先触发后端同步（确保 config 手动修改能即时反映），再加载数据
+    fetch('/futures/api/star-market/sync', {method: 'POST'})
+    .then(function(r) { return r.json(); })
+    .then(function(syncResp) {
+        if (syncResp.code === 200) {
+            fetch('/futures/api/star-market/data')
+            .then(function(r) { return r.json(); })
+            .then(function(resp) {
+                if (resp.code === 200) {
+                    allRecords = resp.data.records || [];
+                    renderTable();
+                } else {
+                    showStatus('加载失败: ' + resp.message, 'err');
+                }
+            })
+            .catch(function(e) { showStatus('加载异常: ' + e.message, 'err'); });
+        }
+    })
+    .catch(function(e) {
+        // sync 失败时仍然尝试直接加载数据
+        fetch('/futures/api/star-market/data')
+        .then(function(r) { return r.json(); })
+        .then(function(resp) {
+            if (resp.code === 200) {
+                allRecords = resp.data.records || [];
+                renderTable();
+            } else {
+                showStatus('加载失败: ' + resp.message, 'err');
+            }
+        })
+        .catch(function(e2) { showStatus('加载异常: ' + e2.message, 'err'); });
+    });
+}
+
+// ================================================================
+// 表格渲染
+// ================================================================
+function trendClass(v) {
+    if (v === '上涨') return 'trend-up';
+    if (v === '下跌') return 'trend-down';
+    return 'trend-wait';
+}
+
+function profitClass(v) {
+    if (!v || v === 'nan' || v === '') return '';
+    var n = parseFloat(v);
+    return isNaN(n) ? '' : (n >= 0 ? 'profit-pos' : 'profit-neg');
+}
+
+function esc(s) {
+    if (s === 'nan' || s === '' || s === null || s === undefined) return '';
+    return String(s).replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function renderTable() {
+    var tbody = document.getElementById('star-tbody');
+    if (!allRecords || allRecords.length === 0) {
+        tbody.innerHTML = '<tr class="empty-row"><td colspan="13">暂无星标品种，请在监控台添加星标后点击"同步星标"</td></tr>';
+        return;
+    }
+    var html = '';
+    allRecords.forEach(function(r, idx) {
+        html += '<tr draggable="true" data-code="' + esc(r['代码']) + '" data-idx="' + idx + '">' +
+            '<td><span class="drag-handle" title="拖拽排序">⠿</span></td>' +
+            '<td style="text-align:left;font-weight:600;">' + esc(r['品种']) + '</td>' +
+            '<td><span style="font-family:Consolas,monospace;color:#4a90d9;">' + esc(r['代码']) + '</span></td>' +
+            '<td>' + esc(r['最新价']) + '</td>' +
+            '<td class="' + trendClass(r['15m趋势']) + '">' + esc(r['15m趋势']) + '</td>' +
+            '<td class="' + trendClass(r['1H趋势']) + '">' + esc(r['1H趋势']) + '</td>' +
+            '<td class="' + trendClass(r['日线趋势']) + '">' + esc(r['日线趋势']) + '</td>' +
+            '<td class="' + trendClass(r['周线趋势']) + '">' + esc(r['周线趋势']) + '</td>' +
+            '<td>' + esc(r['方向(1H)']) + '</td>' +
+            '<td>' + esc(r['上次交易价格(1H)']) + '</td>' +
+            '<td style="font-size:0.75rem;color:#777;">' + esc(r['上次交易时间(1H)']) + '</td>' +
+            '<td class="' + profitClass(r['策略盈亏(1H)']) + '">' + esc(r['策略盈亏(1H)']) + '</td>' +
+            '<td style="font-size:0.75rem;">' + esc(r['持仓时间']) + '</td>' +
+        '</tr>';
+    });
+    tbody.innerHTML = html;
+    initDragDrop();
+}
+
+// ================================================================
+// 趋势刷新（手动 + 定时器共用）
+// ================================================================
+function refreshTrend(bar, btnEl) {
+    if (refreshInProgress) {
+        showStatus('⏳ 已有刷新任务在运行中，请等待完成', '');
+        return;
+    }
+    refreshInProgress = true;
+    setAllTrendBtnsDisabled(true);
+    if (btnEl) btnEl.classList.add('running');
+    showStatus('⏳ 正在刷新 ' + bar + ' 趋势...', '');
+
+    fetch('/futures/api/star-market/refresh-trend', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({bar: bar})
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(resp) {
+        if (resp.code === 200) {
+            pollRefreshStatus(bar);
+        } else {
+            showStatus('❌ ' + resp.message, 'err');
+            finishRefresh();
+        }
+    })
+    .catch(function(e) {
+        showStatus('❌ 刷新异常: ' + e.message, 'err');
+        finishRefresh();
+    });
+}
+
+function pollRefreshStatus(bar) {
+    var pollId = setInterval(function() {
+        fetch('/futures/api/star-market/refresh-status')
+        .then(function(r) { return r.json(); })
+        .then(function(resp) {
+            var p = resp.data || {};
+            var pct = p.progress_pct || 0;
+            var sym = p.current_symbol || '';
+            showStatus('⏳ ' + bar + ' 刷新中: ' + pct + '% — ' + sym, '');
+
+            if (p.status === 'completed') {
+                clearInterval(pollId);
+                showStatus('✅ ' + (p.message || '刷新完成'), 'ok');
+                finishRefresh();
+                loadData();
+            } else if (p.status === 'error') {
+                clearInterval(pollId);
+                showStatus('❌ ' + (p.message || '刷新失败'), 'err');
+                finishRefresh();
+            }
+        })
+        .catch(function() {
+            clearInterval(pollId);
+            finishRefresh();
+        });
+    }, 1500);
+}
+
+function finishRefresh() {
+    refreshInProgress = false;
+    setAllTrendBtnsDisabled(false);
+    document.querySelectorAll('.btn-trend').forEach(function(b) {
+        b.classList.remove('running');
+    });
+}
+
+function setAllTrendBtnsDisabled(v) {
+    document.querySelectorAll('.btn-trend').forEach(function(b) {
+        b.disabled = v;
+    });
+}
+
+// ================================================================
+// 全周期刷新行情（15m + 1H + 1D + 1W）
+// ================================================================
+function refreshAll() {
+    if (refreshInProgress) {
+        showStatus('⏳ 已有刷新任务在运行中，请等待完成', '');
+        return;
+    }
+    refreshInProgress = true;
+    setAllTrendBtnsDisabled(true);
+    var btn = document.getElementById('btn-refresh-all');
+    btn.disabled = true;
+    btn.classList.add('running');
+    showProgress(0, '⏳ 正在启动全周期刷新...');
+    showStatus('⏳ 正在刷新全部周期行情...', '');
+
+    fetch('/futures/api/star-market/refresh-all', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'}
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(resp) {
+        if (resp.code === 200) {
+            pollRefreshAllStatus();
+        } else {
+            showStatus('❌ ' + resp.message, 'err');
+            hideProgress();
+            finishRefresh();
+            btn.disabled = false;
+            btn.classList.remove('running');
+        }
+    })
+    .catch(function(e) {
+        showStatus('❌ 刷新异常: ' + e.message, 'err');
+        hideProgress();
+        finishRefresh();
+        btn.disabled = false;
+        btn.classList.remove('running');
+    });
+}
+
+function pollRefreshAllStatus() {
+    var pollId = setInterval(function() {
+        fetch('/futures/api/star-market/refresh-status')
+        .then(function(r) { return r.json(); })
+        .then(function(resp) {
+            var p = resp.data || {};
+            var pct = p.progress_pct || 0;
+            var sym = p.current_symbol || '';
+            var cur = p.current || 0;
+            var tot = p.total || 0;
+            showProgress(pct, '⏳ 刷新中: ' + cur + '/' + tot + ' — ' + sym);
+
+            if (p.status === 'completed') {
+                clearInterval(pollId);
+                showProgress(100, '✅ ' + (p.message || '全周期刷新完成'));
+                showStatus('✅ ' + (p.message || '刷新完成'), 'ok');
+                finishRefresh();
+                var btn = document.getElementById('btn-refresh-all');
+                btn.disabled = false;
+                btn.classList.remove('running');
+                loadData();
+                // 3秒后隐藏进度条
+                setTimeout(hideProgress, 3000);
+            } else if (p.status === 'error') {
+                clearInterval(pollId);
+                showStatus('❌ ' + (p.message || '刷新失败'), 'err');
+                showProgress(pct, '❌ ' + (p.message || '刷新失败'));
+                finishRefresh();
+                var btn = document.getElementById('btn-refresh-all');
+                btn.disabled = false;
+                btn.classList.remove('running');
+            }
+        })
+        .catch(function() {
+            clearInterval(pollId);
+            finishRefresh();
+            var btn = document.getElementById('btn-refresh-all');
+            btn.disabled = false;
+            btn.classList.remove('running');
+        });
+    }, 1500);
+}
+
+function showProgress(pct, text) {
+    var wrap = document.getElementById('progress-bar-wrap');
+    var inner = document.getElementById('progress-bar-inner');
+    var txt = document.getElementById('progress-bar-text');
+    wrap.style.display = 'block';
+    inner.style.width = pct + '%';
+    txt.textContent = text || (Math.round(pct) + '%');
+}
+
+function hideProgress() {
+    document.getElementById('progress-bar-wrap').style.display = 'none';
+}
+
+// ================================================================
+// 定时自动刷新
+// ================================================================
+function toggleTimer() {
+    var btn = document.getElementById('btn-timer');
+    if (timerId) {
+        stopTimer();
+    } else {
+        startTimer();
+    }
+}
+
+function startTimer() {
+    var intervalMin = parseInt(document.getElementById('timer-interval').value) || 5;
+    var ms = intervalMin * 60 * 1000;
+
+    var btn = document.getElementById('btn-timer');
+    btn.textContent = '关闭';
+    btn.classList.add('active');
+
+    updateTimerStatus(intervalMin);
+
+    timerId = setInterval(function() {
+        // 页面不可见时跳过
+        if (document.hidden) {
+            updateTimerStatus(intervalMin);
+            return;
+        }
+        // 防重入：正在刷新时跳过本次
+        if (refreshInProgress) {
+            updateTimerStatus(intervalMin);
+            return;
+        }
+        var period = document.getElementById('timer-period').value;
+        refreshTrend(period, null);
+        updateTimerStatus(intervalMin);
+    }, ms);
+
+    // 启动后立即刷新一次
+    var period = document.getElementById('timer-period').value;
+    if (!refreshInProgress) {
+        refreshTrend(period, null);
+    }
+}
+
+function stopTimer() {
+    if (timerId) {
+        clearInterval(timerId);
+        timerId = null;
+    }
+    var btn = document.getElementById('btn-timer');
+    btn.textContent = '开启';
+    btn.classList.remove('active');
+    document.getElementById('timer-status').textContent = '';
+}
+
+function updateTimerStatus(intervalMin) {
+    var el = document.getElementById('timer-status');
+    var now = new Date();
+    var next = new Date(now.getTime() + intervalMin * 60 * 1000);
+    var hh = String(next.getHours()).padStart(2,'0');
+    var mm = String(next.getMinutes()).padStart(2,'0');
+    el.textContent = '下次 ' + hh + ':' + mm;
+}
+
+// 切换定时器间隔或周期时重置
+document.getElementById('timer-interval').addEventListener('change', function() {
+    if (timerId) { stopTimer(); startTimer(); }
+});
+document.getElementById('timer-period').addEventListener('change', function() {
+    // 下次触发时生效，无需重启
+});
+
+// ================================================================
+// 拖拽排序（HTML5 原生）
+// ================================================================
+var dragSrcRow = null;
+
+function initDragDrop() {
+    var tbody = document.getElementById('star-tbody');
+    var rows = tbody.querySelectorAll('tr[draggable]');
+
+    rows.forEach(function(row) {
+        row.addEventListener('dragstart', onDragStart);
+        row.addEventListener('dragover',  onDragOver);
+        row.addEventListener('dragleave', onDragLeave);
+        row.addEventListener('drop',      onDrop);
+        row.addEventListener('dragend',   onDragEnd);
+    });
+}
+
+function onDragStart(e) {
+    dragSrcRow = this;
+    this.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', this.dataset.code);
+}
+
+function onDragOver(e) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (this === dragSrcRow) return;
+
+    // 清除其他行的指示
+    var rows = this.parentNode.querySelectorAll('tr');
+    rows.forEach(function(r) {
+        r.classList.remove('drag-over-top', 'drag-over-bottom');
+    });
+
+    // 判断鼠标在上半部分还是下半部分
+    var rect = this.getBoundingClientRect();
+    var midY = rect.top + rect.height / 2;
+    if (e.clientY < midY) {
+        this.classList.add('drag-over-top');
+    } else {
+        this.classList.add('drag-over-bottom');
+    }
+}
+
+function onDragLeave(e) {
+    this.classList.remove('drag-over-top', 'drag-over-bottom');
+}
+
+function onDrop(e) {
+    e.preventDefault();
+    if (this === dragSrcRow) return;
+
+    var tbody = this.parentNode;
+    var rect = this.getBoundingClientRect();
+    var midY = rect.top + rect.height / 2;
+    var insertBefore = (e.clientY < midY);
+
+    // 移除指示类
+    var rows = tbody.querySelectorAll('tr');
+    rows.forEach(function(r) {
+        r.classList.remove('drag-over-top', 'drag-over-bottom');
+    });
+
+    if (insertBefore) {
+        tbody.insertBefore(dragSrcRow, this);
+    } else {
+        tbody.insertBefore(dragSrcRow, this.nextSibling);
+    }
+
+    saveNewOrder();
+}
+
+function onDragEnd(e) {
+    this.classList.remove('dragging');
+    var rows = this.parentNode.querySelectorAll('tr');
+    rows.forEach(function(r) {
+        r.classList.remove('drag-over-top', 'drag-over-bottom', 'dragging');
+    });
+}
+
+function saveNewOrder() {
+    var tbody = document.getElementById('star-tbody');
+    var rows = tbody.querySelectorAll('tr[data-code]');
+    var newOrder = [];
+    rows.forEach(function(r) { newOrder.push(r.dataset.code); });
+
+    showStatus('⏳ 保存排序中...', '');
+
+    fetch('/futures/api/star-market/reorder', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({order: newOrder})
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(resp) {
+        if (resp.code === 200) {
+            showStatus('✅ 排序已保存', 'ok');
+            loadData();
+        } else {
+            showStatus('❌ 保存失败: ' + resp.message, 'err');
+        }
+    })
+    .catch(function(e) {
+        showStatus('❌ 保存异常: ' + e.message, 'err');
+    });
+}
+
+// ================================================================
+// 同步星标
+// ================================================================
+function syncStarred() {
+    var fb = document.getElementById('sync-feedback');
+    fb.textContent = '⏳ 同步中...';
+    fb.style.opacity = 1;
+
+    fetch('/futures/api/star-market/sync', {method:'POST'})
+    .then(function(r) { return r.json(); })
+    .then(function(resp) {
+        if (resp.code === 200) {
+            fb.textContent = '✅ ' + resp.message;
+            loadData();
+        } else {
+            fb.textContent = '❌ ' + resp.message;
+        }
+        setTimeout(function() { fb.style.opacity = 0; }, 3000);
+    })
+    .catch(function(e) {
+        fb.textContent = '❌ ' + e.message;
+        setTimeout(function() { fb.style.opacity = 0; }, 3000);
+    });
+}
+
+// ================================================================
+// 状态显示
+// ================================================================
+function showStatus(msg, cls) {
+    var el = document.getElementById('refresh-status');
+    el.textContent = msg;
+    el.className = 'refresh-status' + (cls ? ' ' + cls : '');
+}
+
+// ================================================================
+// 数据导出（CSV / Excel）
+// ================================================================
+function toggleExportMenu() {
+    var menu = document.getElementById('export-menu');
+    menu.classList.toggle('show');
+}
+
+// 点击外部关闭下拉菜单
+document.addEventListener('click', function(e) {
+    var dropdown = document.getElementById('export-dropdown');
+    if (dropdown && !dropdown.contains(e.target)) {
+        document.getElementById('export-menu').classList.remove('show');
+    }
+});
+
+function exportData(format) {
+    // 关闭下拉菜单
+    document.getElementById('export-menu').classList.remove('show');
+
+    // 检查数据是否已加载
+    if (!allRecords || allRecords.length === 0) {
+        showStatus('⚠️ 数据尚未加载完成，请稍后再试', 'err');
+        return;
+    }
+
+    var btn = document.getElementById('btn-export');
+    btn.disabled = true;
+    showStatus('⏳ 正在生成导出文件...', '');
+
+    var url = format === 'excel'
+        ? '/futures/api/star-market/export/excel'
+        : '/futures/api/star-market/export/csv';
+
+    fetch(url)
+    .then(function(resp) {
+        if (!resp.ok) throw new Error('导出失败: HTTP ' + resp.status);
+        // 从 Content-Disposition 提取文件名
+        var disposition = resp.headers.get('Content-Disposition') || '';
+        var filename = '';
+        var match = disposition.match(/filename\*?=(?:UTF-8'')?(.+)/i);
+        if (match) {
+            filename = decodeURIComponent(match[1].replace(/"/g, ''));
+        } else {
+            var ts = new Date();
+            var pad = function(n) { return String(n).padStart(2, '0'); };
+            var tsStr = ts.getFullYear() + pad(ts.getMonth()+1) + pad(ts.getDate())
+                      + '_' + pad(ts.getHours()) + pad(ts.getMinutes()) + pad(ts.getSeconds());
+            filename = '星标品种行情_' + tsStr + (format === 'excel' ? '.xlsx' : '.csv');
+        }
+        return resp.blob().then(function(blob) {
+            return {blob: blob, filename: filename};
+        });
+    })
+    .then(function(result) {
+        // 触发浏览器下载
+        var link = document.createElement('a');
+        link.href = URL.createObjectURL(result.blob);
+        link.download = result.filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        setTimeout(function() { URL.revokeObjectURL(link.href); }, 5000);
+
+        showStatus('✅ 导出成功: ' + result.filename, 'ok');
+        btn.disabled = false;
+    })
+    .catch(function(e) {
+        showStatus('❌ 导出失败: ' + e.message, 'err');
+        btn.disabled = false;
+    });
+}
+
+// ================================================================
+// 初始加载
+// ================================================================
+loadData();
+</script>
+
+</body>
+</html>

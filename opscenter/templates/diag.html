@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% set active_page = "diag" %}
+{% block title %}诊断脚本 · OpsCenter{% endblock %}
+{% block crumb_group %}运维工具箱{% endblock %}
+{% block crumb_page %}诊断脚本{% endblock %}
+
+{% block content %}
+<div class="page-head fade-in">
+  <div class="page-head__top">
+    <div>
+      <h1 class="page-head__title">诊断脚本</h1>
+      <p class="page-head__desc">
+        运维工具箱 · 只读盘点 <span class="text-mono">_diag_*.py</span>（用途取自各脚本模块 docstring）
+        · 盘点于 {{ d.checked_at }}
+      </p>
+    </div>
+    <div class="page-head__actions">
+      <a class="btn btn--ghost" href="/tools/smoke">✅ 冒烟运行器</a>
+      <a class="btn btn--ghost" href="/tools/config">⚙️ 配置总览</a>
+      <a class="btn btn--primary" href="/">← 返回总览</a>
+    </div>
+  </div>
+</div>
+
+<div class="banner banner--warning fade-in">
+  🔧 诊断脚本大多<b>连真实 OKX / 数据库</b>（持仓对账、客户号字符集、保证金实况、实例归因等），
+  必须在能出到交易所、且已配好凭据的<b>交易系统终端</b>手动运行；运维站<b>只列位置与用途，绝不代跑</b>，
+  以免误连实盘或污染状态文件。
+</div>
+
+<!-- KPI -->
+<div class="grid grid--cols-12">
+  <div class="col-4"><div class="tile tile--hover fade-in"><div class="tile__glow"></div>
+    <div class="tile__top"><span class="tile__label">诊断脚本</span><span class="tile__icon tile__icon--info">🔧</span></div>
+    <div class="tile__value">{{ d.count }}<small>个</small></div>
+    <div class="tile__foot">分布于 {{ ' / '.join(['根目录','crypto','crypto/task']) }}</div>
+  </div></div>
+  <div class="col-4"><div class="tile tile--hover fade-in" style="animation-delay:.05s"><div class="tile__glow"></div>
+    <div class="tile__top"><span class="tile__label">连真实 API/DB</span><span class="tile__icon tile__icon--warning">🌐</span></div>
+    <div class="tile__value">{{ d.scripts | selectattr('safety.level','equalto','warning') | list | length }}<small>个</small></div>
+    <div class="tile__foot">运行前须确认凭据与终端网络</div>
+  </div></div>
+  <div class="col-4"><div class="tile tile--hover fade-in" style="animation-delay:.1s"><div class="tile__glow"></div>
+    <div class="tile__top"><span class="tile__label">运维站执行</span><span class="tile__icon tile__icon--neutral">🚫</span></div>
+    <div class="tile__value" style="font-size:var(--fs-2xl)">不代跑</div>
+    <div class="tile__foot">只读清单 · 红线保持</div>
+  </div></div>
+</div>
+
+<!-- 清单 -->
+<div class="card fade-in mt-5">
+  <div class="card__head"><div><div class="card__title">🔧 诊断脚本清单</div>
+    <div class="card__subtitle">用途 / 安全提示 / 落盘信息；命令行示例供在交易系统终端复制执行</div></div>
+    <a class="btn btn--ghost btn--sm" href="/tools/diag/data" target="_blank">🔌 JSON</a></div>
+  <div class="card__body">
+    {% if d.scripts %}
+    <div class="table-wrap">
+      <table class="table">
+        <thead><tr><th>脚本</th><th>用途（docstring）</th><th>安全提示</th><th class="num">行数</th><th class="num">大小</th><th>命令</th></tr></thead>
+        <tbody>
+          {% for g in d.scripts %}
+          <tr>
+            <td><div class="table__strong">{{ g.name }}</div><div class="table__mono text-mute">{{ g.relpath }}</div></td>
+            <td class="fs-xs" style="max-width:520px;line-height:1.7;color:var(--text-dim)">{{ g.desc or '（无 docstring，请打开文件确认用途）' }}</td>
+            <td><span class="badge badge--{{ g.safety.level }}"><span class="badge__dot"></span>{{ g.safety.label }}</span></td>
+            <td class="num">{{ g.lines }}</td>
+            <td class="num">{{ '%.1f KB' % (g.size / 1024) }}</td>
+            <td class="table__mono fs-xs">{{ g.cmd }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty"><span class="empty__icon">📭</span>未发现 _diag_*.py 脚本</div>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card fade-in mt-5">
+  <div class="card__head"><div><div class="card__title">🔒 只读口径</div></div></div>
+  <div class="card__body">
+    <p class="text-mute fs-xs" style="line-height:1.9;margin:0">
+      • 本页只 <b>os.listdir + ast.get_docstring</b> 读取脚本头部说明，不 import、不 exec、不运行；<br>
+      • 「安全提示」为按 docstring 关键词的<b>启发式</b>判定（连真实 API/DB、只读、仅清单），最终以脚本自述为准；<br>
+      • 各诊断脚本的详细约束与踩坑记录见 <span class="text-mono">{{ d.index_hint }}</span>。
+    </p>
+  </div>
+</div>
+{% endblock %}

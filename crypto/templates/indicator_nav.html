@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>指标导航 - LifeQuant</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="{{ url_for('static', filename='js/echarts.min.js') }}"></script>
+    <script defer src="{{ url_for('static', filename='js/indicator_nav.js') }}"></script>
+    <style>
+        .in-page { max-width: 1440px; margin: 0 auto; padding: 18px 16px 60px; }
+        .in-head { display: flex; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 10px; }
+        .in-head h1 { font-size: 1.35rem; margin: 0; }
+        .in-head .in-sub { color: #888; font-size: .8rem; margin-top: 4px; }
+        .in-src-badge { font-size: .74rem; padding: 3px 10px; border-radius: 999px; background: #eef1ff; color: #4356c0; border: 1px solid #c9d2ff; }
+
+        /* ---- 控制区 ---- */
+        .in-controls { background: #fff; border: 1px solid #e3e6ea; border-radius: 12px; padding: 12px 14px;
+            display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: flex-end; box-shadow: 0 1px 3px rgba(0,0,0,.05); }
+        .in-field { display: flex; flex-direction: column; gap: 4px; }
+        .in-field label { font-size: .74rem; color: #777; font-weight: 600; }
+        .in-field select, .in-field input { padding: 6px 9px; border: 1px solid #ccc; border-radius: 8px;
+            font-size: .86rem; background: #fff; min-width: 96px; }
+        .in-field input[type=number] { width: 92px; }
+        .in-adv { display: none; flex-wrap: wrap; gap: 10px 16px; align-items: flex-end; width: 100%;
+            border-top: 1px dashed #e3e6ea; padding-top: 10px; }
+        .in-adv.show { display: flex; }
+        .in-btn-row { display: flex; gap: 8px; align-items: center; margin-left: auto; }
+        .in-run { background: #4356c0; color: #fff; border: none; border-radius: 8px; padding: 8px 22px;
+            font-size: .92rem; font-weight: 700; cursor: pointer; }
+        .in-run:disabled { opacity: .55; cursor: wait; }
+        .in-linkbtn { background: none; border: none; color: #4356c0; font-size: .8rem; cursor: pointer; text-decoration: underline; }
+        .in-msg { margin-top: 10px; font-size: .82rem; border-radius: 8px; padding: 8px 12px; display: none; }
+        .in-msg.err { display: block; background: #fdecea; color: #c62828; border: 1px solid #f5c6c0; }
+        .in-msg.note { display: block; background: #fff8e6; color: #8a6d1a; border: 1px solid #f0dfae; }
+        .in-msg.busy { display: block; background: #e8f2fd; color: #1565c0; border: 1px solid #bcdcf5; }
+
+        /* ---- 图表区 ---- */
+        .in-chart-card { background: #fff; border: 1px solid #e3e6ea; border-radius: 12px; padding: 10px 8px 4px; margin-top: 14px; }
+        .in-chart-title { font-size: .82rem; color: #666; padding: 2px 10px 6px; display: flex; gap: 14px; flex-wrap: wrap; align-items: center; }
+        .in-legend-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 4px; }
+        #in-kline { width: 100%; height: 520px; }
+        @media (max-width: 760px) { #in-kline { height: 380px; } }
+
+        /* ---- 统计卡片区 ---- */
+        .in-stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(158px, 1fr)); gap: 10px; margin-top: 14px; }
+        .in-stat { background: #fff; border: 1px solid #e3e6ea; border-radius: 10px; padding: 10px 12px; }
+        .in-stat .k { font-size: .72rem; color: #888; }
+        .in-stat .v { font-size: 1.18rem; font-weight: 700; margin-top: 3px; font-variant-numeric: tabular-nums; }
+        .in-stat .v small { font-size: .74rem; font-weight: 400; color: #999; }
+        .in-stat .v.pos { color: #d32f2f; }
+        .in-stat .v.neg { color: #2e7d32; }
+
+        /* ---- 资金曲线 + 指标对比 ---- */
+        .in-duo { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 14px; }
+        @media (max-width: 980px) { .in-duo { grid-template-columns: 1fr; } }
+        .in-panel { background: #fff; border: 1px solid #e3e6ea; border-radius: 12px; padding: 12px 14px; }
+        .in-panel h2 { font-size: .95rem; margin: 0 0 8px; }
+        #in-money { width: 100%; height: 300px; }
+        .in-cmp-wrap { max-height: 300px; overflow: auto; }
+        .in-table { width: 100%; border-collapse: collapse; font-size: .78rem; }
+        .in-table th, .in-table td { padding: 6px 8px; border-bottom: 1px solid #f0f2f4; text-align: right; white-space: nowrap; }
+        .in-table th { background: #f7f8fa; color: #666; font-weight: 600; position: sticky; top: 0; }
+        .in-table td:first-child, .in-table th:first-child { text-align: left; }
+        .in-table tr.in-cmp-row { cursor: pointer; }
+        .in-table tr.in-cmp-row:hover { background: #f4f6ff; }
+        .in-table tr.in-cmp-row.sel { background: #eef1ff; font-weight: 700; }
+
+        /* ---- 交易记录 ---- */
+        .in-trades { margin-top: 14px; background: #fff; border: 1px solid #e3e6ea; border-radius: 12px; padding: 12px 14px; }
+        .in-trades h2 { font-size: .95rem; margin: 0 0 4px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+        .in-trades .in-sub { font-size: .76rem; color: #999; margin-bottom: 8px; }
+        .in-trades-scroll { max-height: 420px; overflow: auto; }
+        .in-dir-badge { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: .72rem; font-weight: 700; }
+        .in-dir-badge.rise { background: #fdecea; color: #d32f2f; }
+        .in-dir-badge.fall { background: #e5f6e8; color: #2e7d32; }
+        .in-excl-badge { display: inline-block; padding: 1px 7px; border-radius: 999px; font-size: .7rem;
+            background: #eceff1; color: #78909c; margin-left: 5px; }
+        .in-table tr.in-trade-row { cursor: pointer; }
+        .in-table tr.in-trade-row:hover { background: #f4f6ff; }
+        .in-pnl.pos { color: #d32f2f; font-weight: 700; }
+        .in-pnl.neg { color: #2e7d32; font-weight: 700; }
+        .in-empty { color: #999; font-size: .82rem; padding: 14px 4px; text-align: center; }
+    </style>
+</head>
+<body>
+    {% include 'nav.html' %}
+    <div class="in-page" id="indicator-nav-page">
+        <div class="in-head">
+            <div>
+                <h1>🧭 指标导航 · 趋势方法可视化回测</h1>
+                <div class="in-sub">BOLL 限价双周期策略 — 对比不同长周期趋势判断方法（TREND_INDICATORS 注册表）对信号与收益的影响</div>
+            </div>
+            <span class="in-src-badge" id="in-src-badge">数据源：--</span>
+        </div>
+
+        <!-- 控制区 -->
+        <div class="in-controls">
+            <div class="in-field">
+                <label for="in-symbol">币种</label>
+                <select id="in-symbol"></select>
+            </div>
+            <div class="in-field">
+                <label for="in-short-bar">K 线周期（短）</label>
+                <select id="in-short-bar"></select>
+            </div>
+            <div class="in-field">
+                <label for="in-long-bar">趋势周期（长）</label>
+                <select id="in-long-bar"></select>
+            </div>
+            <div class="in-field">
+                <label for="in-indicator">长周期趋势指标</label>
+                <select id="in-indicator"></select>
+            </div>
+            <div class="in-field">
+                <label for="in-view">图表视图</label>
+                <select id="in-view">
+                    <option value="short">短周期（持仓区间）</option>
+                    <option value="long">长周期（趋势方向段）</option>
+                </select>
+            </div>
+            <div class="in-adv show" id="in-adv">
+                <div class="in-field">
+                    <label for="in-leverage">杠杆倍数</label>
+                    <input type="number" id="in-leverage" value="10" min="0.1" max="125" step="0.5">
+                </div>
+                <div class="in-field">
+                    <label for="in-entry-atr">开仓外扩 A（×ATR）</label>
+                    <input type="number" id="in-entry-atr" value="0.7" min="0" max="10" step="0.1">
+                </div>
+                <div class="in-field">
+                    <label for="in-exit-atr">平仓外扩 B（×ATR）</label>
+                    <input type="number" id="in-exit-atr" value="0.3" min="0" max="10" step="0.1">
+                </div>
+                <div class="in-field">
+                    <label for="in-chart-bars">图表 bar 数</label>
+                    <input type="number" id="in-chart-bars" value="2000" min="200" max="6000" step="100">
+                </div>
+            </div>
+            <div class="in-btn-row">
+                <button type="button" class="in-linkbtn" id="in-adv-toggle">收起高级参数 ▴</button>
+                <button type="button" class="in-run" id="in-run">运行回测</button>
+            </div>
+        </div>
+        <div class="in-msg" id="in-msg" role="status"></div>
+
+        <!-- K 线可视化区 -->
+        <div class="in-chart-card">
+            <div class="in-chart-title" id="in-chart-title">
+                <span><span class="in-legend-dot" style="background:#d32f2f"></span>做多持仓区间 / ▲ 开多</span>
+                <span><span class="in-legend-dot" style="background:#2e7d32"></span>做空持仓区间 / ▼ 开空</span>
+                <span><span class="in-legend-dot" style="background:#4356c0"></span>BOLL(20,2) 轨道</span>
+                <span style="color:#999">滚轮缩放 · 拖动平移 · 点击交易行可定位</span>
+            </div>
+            <div id="in-kline"></div>
+        </div>
+
+        <!-- 回测统计概览 -->
+        <div class="in-stats" id="in-stats"></div>
+
+        <!-- 资金曲线 + 指标横向对比 -->
+        <div class="in-duo">
+            <div class="in-panel">
+                <h2>💰 资金曲线（起点 100）</h2>
+                <div id="in-money"></div>
+            </div>
+            <div class="in-panel">
+                <h2>🔬 指标横向对比 <small style="font-weight:400;color:#999;font-size:.72rem">（点击行切换指标重跑；按日均反转升序）</small></h2>
+                <div class="in-cmp-wrap">
+                    <table class="in-table" id="in-cmp-table">
+                        <thead><tr>
+                            <th>指标</th><th>方向段</th><th>反转</th><th>平均时长(h)</th>
+                            <th>中位(h)</th><th>有向占比</th><th>日均反转</th>
+                        </tr></thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- 交易记录面板 -->
+        <div class="in-trades">
+            <h2>📜 逐笔交易记录 <span class="in-sub" id="in-trade-count"></span></h2>
+            <div class="in-sub">「剔除」= 持仓期间长周期方向反转且亏损的交易（策略口径不计入收益曲线，但真实定投曲线计入）；点击行可在上图定位</div>
+            <div class="in-trades-scroll">
+                <table class="in-table" id="in-trade-table">
+                    <thead><tr>
+                        <th>#</th><th>方向</th><th>开仓时间</th><th>开仓价</th>
+                        <th>平仓时间</th><th>平仓价</th><th>持仓(h)</th>
+                        <th>盈亏%</th><th>最大盈利%</th><th>最大亏损%</th>
+                        <th>定投→</th><th>复投→</th><th>混投→</th>
+                    </tr></thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+            <div class="in-empty" id="in-trade-empty" style="display:none">暂无已平仓交易</div>
+        </div>
+    </div>
+</body>
+</html>

@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>系统状态 - LifeQuant</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="{{ url_for('static', filename='js/mdialog.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/echarts.min.js') }}"></script>
+    <style>
+        .sys-page { max-width: 1100px; margin: 30px auto; padding: 0 20px; }
+        .sys-page h1 { margin-bottom: 8px; }
+        .sys-desc { color: var(--text-muted); margin-bottom: 24px; }
+        .card {
+            background: var(--card-bg); border-radius: 8px; padding: 18px 20px;
+            margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        .card-title { font-weight: 600; font-size: 1rem; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+        /* 状态卡片 */
+        .status-card { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+        .status-dot { width: 12px; height: 12px; border-radius: 50%; background: #ccc; flex-shrink: 0; }
+        .status-dot.running { background: var(--success-color); box-shadow: 0 0 6px rgba(40,167,69,0.5); }
+        .status-dot.stopped { background: var(--danger-color); }
+        .status-info { flex: 1; min-width: 260px; }
+        .status-info span { color: var(--text-muted); font-size: 0.85rem; margin-left: 12px; }
+        .btn { padding: 8px 18px; border: none; border-radius: 6px; cursor: pointer; font-size: 0.9rem; transition: opacity 0.2s; }
+        .btn:hover { opacity: 0.85; }
+        .btn-warn { background: #f0ad4e; color: #fff; }
+        .btn-plain { background: #eef1f5; color: #333; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        /* 指标网格 */
+        .metric-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px; }
+        .metric-item {
+            border: 1px solid var(--border-color); border-radius: 8px; padding: 12px 14px;
+        }
+        .metric-label { font-size: 0.78rem; color: var(--text-muted); margin-bottom: 6px; }
+        .metric-value { font-size: 1.25rem; font-weight: 700; }
+        .metric-sub { font-size: 0.75rem; color: var(--text-muted); margin-top: 4px; }
+        .metric-value.ok { color: var(--success-color, #28a745); }
+        .metric-value.warn { color: #f0ad4e; }
+        .metric-value.danger { color: var(--danger-color, #dc3545); }
+        /* 趋势图 */
+        .chart-toolbar { display: flex; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; align-items: center; }
+        .chart-toolbar select { padding: 6px 10px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 0.85rem; }
+        .chart-toolbar .hint { font-size: 0.75rem; color: var(--text-muted); }
+        #memChart { width: 100%; height: 360px; }
+        /* 异常列表 */
+        .issue-list { margin: 0; padding-left: 20px; }
+        .issue-list li { color: var(--danger-color, #dc3545); font-size: 0.88rem; margin-bottom: 4px; }
+        .no-issue { color: var(--success-color, #28a745); font-size: 0.88rem; }
+        /* toast */
+        #toast {
+            position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+            padding: 10px 24px; border-radius: 6px; color: #fff; font-size: 0.9rem;
+            z-index: 9999; display: none; box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+        #toast.success { background: #28a745; }
+        #toast.error { background: #dc3545; }
+        #toast.info { background: #17a2b8; }
+        #toast.warning { background: #f0ad4e; }
+    </style>
+</head>
+<body>
+{% include 'nav.html' %}
+<div class="sys-page">
+    <h1>🖥️ 系统状态</h1>
+    <p class="sys-desc">进程内存自监控（每 2 分钟）+ 系统级健康检查（每 1 分钟）。内存超限自动预警并自重启，历史趋势用于排查内存泄漏。重启后先看「本次启动归因」，它说明进程是初次上线、撞线自愈、还是被系统杀掉的。</p>
+
+    <!-- 状态卡片 -->
+    <div class="card status-card">
+        <div class="status-dot" id="statusDot"></div>
+        <div class="status-info">
+            <b id="statusText">加载中…</b>
+            <span id="statusDetail"></span>
+        </div>
+        <button class="btn btn-warn" id="btnRunNow" onclick="runNow()">⚡ 立即检测一次</button>
+        <button class="btn btn-plain" onclick="refreshAll()">🔄 刷新</button>
+    </div>
+
+    <!-- 系统概况 -->
+    <div class="card">
+        <div class="card-title">📊 系统概况</div>
+        <div class="metric-grid" id="metricGrid">
+            <div class="metric-item"><div class="metric-label">加载中…</div></div>
+        </div>
+        <div style="margin-top:14px" id="issueBox"></div>
+    </div>
+
+    <!-- 历史趋势 -->
+    <div class="card">
+        <div class="card-title">📈 内存历史趋势 <span style="font-weight:400;font-size:0.78rem;color:var(--text-muted)">（数据源：logs/memory_history.jsonl，进程被杀也保留）</span></div>
+        <div class="chart-toolbar">
+            <select id="rangeSel" onchange="loadHistory()">
+                <option value="300">最近 300 个采样点</option>
+                <option value="1000" selected>最近 1000 个采样点</option>
+                <option value="3000">最近 3000 个采样点</option>
+                <option value="10000">最近 10000 个采样点</option>
+            </select>
+            <span class="hint">蓝线 = 进程内自监控采样（每 5 分钟）；绿点 = 系统监控外部采样（每 1 分钟）；红色虚线 = 强退阈值</span>
+        </div>
+        <div id="memChart"></div>
+    </div>
+</div>
+<div id="toast"></div>
+
+<script>
+// =================================================================
+// 工具函数
+// =================================================================
+function showToast(msg, type) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = type || 'info';
+    t.style.display = 'block';
+    clearTimeout(t._timer);
+    t._timer = setTimeout(() => { t.style.display = 'none'; }, 3000);
+}
+
+function pctClass(v, warn, danger) {
+    if (v == null) return '';
+    if (v >= danger) return 'danger';
+    if (v >= warn) return 'warn';
+    return 'ok';
+}
+
+function fmt(v, suffix) {
+    return (v == null) ? '—' : v + (suffix || '');
+}
+
+// 启动归因展示名（键名与 crypto/process_lifecycle.py 的 BOOT_LABELS 一致，
+// 文案是卡片上用的简称）
+const BOOT_LABELS = {
+    first_run: '初次启动',
+    mem_restart: '内存超限自愈',
+    daily_restart: '每日主动归零',
+    abnormal_death: '异常死亡后重启',
+    parallel_instance: '并发实例（旧进程还在跑）',
+    cold_start: '冷启动',
+    unknown: '原因未知'
+};
+
+// =================================================================
+// 系统概况
+// =================================================================
+function loadStatus() {
+    fetch('/api/system/status').then(r => r.json()).then(res => {
+        if (res.code !== 200) { showToast('加载状态失败: ' + (res.message || ''), 'error'); return; }
+        const d = res.data || {};
+        const wd = d.watchdog || {};
+        const dot = document.getElementById('statusDot');
+        const text = document.getElementById('statusText');
+        const detail = document.getElementById('statusDetail');
+        dot.className = 'status-dot ' + (wd.running ? 'running' : 'stopped');
+        text.textContent = wd.running ? '内存监控运行中' : '内存监控未启动';
+        const parts = [];
+        if (wd.rss_mb != null) parts.push('当前RSS ' + Number(wd.rss_mb).toFixed(1) + 'MB');
+        parts.push('预警 ' + wd.warn_mb + 'MB / 强退 ' + wd.kill_mb + 'MB');
+        if (wd.last_check) parts.push('上次检查 ' + wd.last_check);
+        if (d.boot) parts.push('启动归因 ' + (BOOT_LABELS[d.boot.reason] || d.boot.reason));
+        detail.textContent = parts.join('　');
+
+        // 指标网格
+        const snap = (d.last_check && d.last_check.snapshot) || {};
+        const rss = wd.rss_mb;
+        const items = [
+            { label: '交易进程',
+              value: d.last_check
+                  ? (d.last_check.process_alive == null ? '未知'
+                       : (d.last_check.process_alive ? '存活' : '已退出'))
+                  : '存活',
+              cls: d.last_check && d.last_check.process_alive === false ? 'danger' : 'ok',
+              sub: wd.pid ? 'PID ' + wd.pid : '' },
+            { label: '进程内存（RSS）', value: fmt(rss != null ? Number(rss).toFixed(1) : null, 'MB'),
+              cls: pctClass(rss, wd.warn_mb, wd.kill_mb),
+              sub: '预警 ' + wd.warn_mb + 'MB / 强退 ' + wd.kill_mb + 'MB' },
+            { label: '系统内存使用率', value: fmt(snap.mem_usage_pct, '%'),
+              cls: pctClass(snap.mem_usage_pct, 80, 90), sub: '' },
+            { label: 'SWAP 使用率', value: fmt(snap.swap_usage_pct, '%'),
+              cls: pctClass(snap.swap_usage_pct, 60, 80), sub: '' },
+            { label: '磁盘使用率', value: fmt(snap.disk_usage_pct, '%'),
+              cls: pctClass(snap.disk_usage_pct, 80, 90),
+              sub: snap.disk_free_gb != null ? '剩余 ' + snap.disk_free_gb + 'GB' : '' },
+            { label: '系统负载（1分钟）', value: fmt(snap.load_1min),
+              cls: (snap.load_1min != null && snap.cpu_count && snap.load_1min / snap.cpu_count > 2) ? 'warn' : 'ok',
+              sub: snap.cpu_count ? snap.cpu_count + ' 核' : '' },
+            { label: '本次启动归因',
+              value: d.boot ? (BOOT_LABELS[d.boot.reason] || d.boot.reason) : '未归因',
+              // 异常死亡（崩溃/被 OOM 杀）与原因未知要显眼，其余按正常展示
+              cls: !d.boot ? 'ok' : (['abnormal_death', 'unknown'].indexOf(d.boot.reason) >= 0 ? 'warn' : 'ok'),
+              sub: d.boot
+                  ? ('boot #' + (d.boot.boot_seq || '?')
+                     + (d.boot.heartbeat_lag_sec != null ? ' · 上次心跳距今 ' + d.boot.heartbeat_lag_sec + 's' : ''))
+                  : '后台线程未启动（如设了 CRYPTO_NO_BACKGROUND）或归因层不可用'
+            },
+        ];
+        document.getElementById('metricGrid').innerHTML = items.map(it =>
+            '<div class="metric-item">' +
+            '<div class="metric-label">' + it.label + '</div>' +
+            '<div class="metric-value ' + it.cls + '">' + it.value + '</div>' +
+            (it.sub ? '<div class="metric-sub">' + it.sub + '</div>' : '') +
+            '</div>').join('');
+
+        // 最近一轮异常
+        const issues = (d.last_check && d.last_check.issues) || [];
+        const box = document.getElementById('issueBox');
+        if (issues.length) {
+            box.innerHTML = '<ul class="issue-list">' +
+                issues.map(x => '<li>' + x + '</li>').join('') + '</ul>';
+        } else {
+            const at = d.last_check ? d.last_check.checked_at : '';
+            box.innerHTML = '<span class="no-issue">✅ 最近一轮检查无异常' + (at ? '（' + at + '）' : '') + '</span>';
+        }
+    }).catch(e => showToast('加载状态失败: ' + e, 'error'));
+}
+
+function runNow() {
+    const btn = document.getElementById('btnRunNow');
+    btn.disabled = true;
+    btn.textContent = '检测中…';
+    fetch('/api/system/check', { method: 'POST' }).then(r => r.json()).then(res => {
+        if (res.code === 200) {
+            const d = res.data || {};
+            const n = (d.issues || []).length;
+            showToast('检测完成：' + (n ? '发现 ' + n + ' 项异常' : '无异常'), n ? 'warning' : 'success');
+            loadStatus();
+        } else {
+            showToast(res.message || '检测失败', 'error');
+        }
+    }).catch(e => showToast('检测失败: ' + e, 'error'))
+      .finally(() => { btn.disabled = false; btn.textContent = '⚡ 立即检测一次'; });
+}
+
+// =================================================================
+// 历史趋势（ECharts）
+// =================================================================
+let memChart = null;
+
+function loadHistory() {
+    const limit = document.getElementById('rangeSel').value;
+    fetch('/api/system/memory/history?limit=' + limit).then(r => r.json()).then(res => {
+        if (res.code !== 200) { showToast('加载历史失败: ' + (res.message || ''), 'error'); return; }
+        renderChart(res.data || {});
+    }).catch(e => showToast('加载历史失败: ' + e, 'error'));
+}
+
+function renderChart(data) {
+    const records = data.records || [];
+    const killMb = data.kill_mb || 800;
+    const warnMb = data.warn_mb || 600;
+
+    // 拆分两条采样序列：app（进程内，连线）/ guard（外部，散点）
+    const appPts = [], guardPts = [];
+    records.forEach(r => {
+        if (r.rss_mb == null) return;
+        const pt = [r.timestamp, r.rss_mb];
+        if (r.source === 'guard') guardPts.push(pt);
+        else appPts.push(pt);
+    });
+
+    const el = document.getElementById('memChart');
+    if (!memChart) {
+        memChart = echarts.init(el);
+        window.addEventListener('resize', () => memChart && memChart.resize());
+    }
+    memChart.setOption({
+        tooltip: { trigger: 'axis' },
+        legend: { data: ['进程自监控（app）', '外部监控（guard）'], bottom: 0 },
+        grid: { left: 50, right: 20, top: 30, bottom: 40 },
+        xAxis: { type: 'category', boundaryGap: false,
+                 axisLabel: { fontSize: 11, formatter: v => v.slice(5, 16) } },
+        yAxis: { type: 'value', name: 'RSS (MB)', axisLabel: { fontSize: 11 } },
+        dataZoom: [{ type: 'inside' }, { type: 'slider', height: 18, bottom: 24 }],
+        series: [
+            {
+                name: '进程自监控（app）', type: 'line', data: appPts,
+                showSymbol: false, lineStyle: { width: 2.2, color: '#2f80ed' },
+                itemStyle: { color: '#2f80ed' },
+                areaStyle: {
+                    color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                        { offset: 0, color: 'rgba(47,128,237,0.28)' },
+                        { offset: 1, color: 'rgba(47,128,237,0.02)' }
+                    ])
+                },
+                markLine: {
+                    silent: true, symbol: 'none',
+                    lineStyle: { type: 'dashed' },
+                    data: [
+                        { yAxis: warnMb, label: { formatter: '预警 ' + warnMb + 'MB' }, lineStyle: { color: '#f0ad4e' }, itemStyle: { color: '#f0ad4e' } },
+                        { yAxis: killMb, label: { formatter: '强退 ' + killMb + 'MB' }, lineStyle: { color: '#dc3545' }, itemStyle: { color: '#dc3545' } }
+                    ]
+                }
+            },
+            {
+                name: '外部监控（guard）', type: 'scatter', data: guardPts,
+                symbolSize: 6, itemStyle: { color: '#27ae60' }
+            }
+        ]
+    }, true);
+}
+
+// =================================================================
+// 初始化
+// =================================================================
+function refreshAll() { loadStatus(); loadHistory(); }
+refreshAll();
+setInterval(loadStatus, 30000);
+</script>
+</body>
+</html>

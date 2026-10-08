@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+{% set active_page = "schedule" %}
+{% block title %}任务调度 · OpsCenter{% endblock %}
+{% block crumb_group %}日志与调度{% endblock %}
+{% block crumb_page %}任务调度{% endblock %}
+
+{% macro status_badge(level, text) -%}
+<span class="badge badge--{{ level }}"><span class="badge__dot"></span>{{ text }}</span>
+{%- endmacro %}
+
+{% set run_txt = ('运行中' if s.scheduler_running else '已停止') if s.reachable else '未知' %}
+{% set run_level = ('success' if s.scheduler_running else 'warning') if s.reachable else 'neutral' %}
+{% if s.trading.running %}{% set tr_txt, tr_level = '下单运行中', 'success' %}
+{% elif s.trading.finishing %}{% set tr_txt, tr_level = '停止收尾中', 'warning' %}
+{% elif s.reachable %}{% set tr_txt, tr_level = '未启动', 'neutral' %}
+{% else %}{% set tr_txt, tr_level = '未知', 'neutral' %}{% endif %}
+
+{% block content %}
+<div class="page-head fade-in">
+  <div class="page-head__top">
+    <div>
+      <h1 class="page-head__title">任务调度</h1>
+      <p class="page-head__desc">
+        运行态全景 · 只读快照交易系统 APScheduler 任务列表 / 下次触发 / 实盘调度器线程状态
+        · 采集于 {{ s.checked_at }}{% if s.reachable %}（{{ s.elapsed_ms }}ms）{% endif %}
+      </p>
+    </div>
+    <div class="page-head__actions">
+      <a class="btn btn--ghost" href="/logs">📜 执行流水</a>
+      <a class="btn btn--ghost" href="/live">📈 实盘监控</a>
+      <a class="btn btn--primary" href="/">← 返回总览</a>
+    </div>
+  </div>
+</div>
+
+{% if not s.reachable %}
+<div class="banner banner--danger fade-in">
+  ⛔ 无法读取调度状态：{{ s.message or '交易系统 Web 未启动或不可达' }}。
+  请确认交易进程在运行、地址 <span class="text-mono">{{ trading_display }}</span> 正确{% if s.kind == 'auth' %} 且访问口令匹配{% endif %}。
+  {% if not s.token_configured %}<span class="text-mute">（本机未读到访问口令；交易 Web 若配了口令，运维站需共享 <span class="text-mono">data/web_token.txt</span>）</span>{% endif %}
+</div>
+{% endif %}
+
+<!-- KPI 磁贴 -->
+<div class="grid grid--cols-12">
+  <div class="col-3">
+    <div class="tile tile--hover fade-in">
+      <div class="tile__glow"></div>
+      <div class="tile__top"><span class="tile__label">调度器</span><span class="tile__icon tile__icon--{{ run_level }}">⏱️</span></div>
+      <div class="tile__value" style="font-size:var(--fs-2xl)">{{ run_txt }}</div>
+      <div class="tile__foot">APScheduler BackgroundScheduler · 内存态</div>
+    </div>
+  </div>
+  <div class="col-3">
+    <div class="tile tile--hover fade-in" style="animation-delay:.05s">
+      <div class="tile__glow"></div>
+      <div class="tile__top"><span class="tile__label">已注册任务</span><span class="tile__icon tile__icon--info">🧩</span></div>
+      <div class="tile__value">{% if s.job_count is not none %}{{ s.job_count }}{% else %}—{% endif %}<small>个</small></div>
+      <div class="tile__foot">活跃入队 {{ s.active_count }}{% if s.reachable %} · 下次触发即刷新{% endif %}</div>
+    </div>
+  </div>
+  <div class="col-3">
+    <div class="tile tile--hover fade-in" style="animation-delay:.1s">
+      <div class="tile__glow"></div>
+      <div class="tile__top"><span class="tile__label">实盘调度器</span><span class="tile__icon tile__icon--{{ tr_level }}">📈</span></div>
+      <div class="tile__value" style="font-size:var(--fs-2xl)">{{ tr_txt }}</div>
+      <div class="tile__foot">{% if s.trading.account_name %}账号 {{ s.trading.account_name }}{% else %}TrendRangeTrader 线程{% endif %}</div>
+    </div>
+  </div>
+  <div class="col-3">
+    <div class="tile tile--hover fade-in" style="animation-delay:.15s">
+      <div class="tile__glow"></div>
+      <div class="tile__top"><span class="tile__label">数据链路</span><span class="tile__icon tile__icon--{{ 'success' if s.reachable else 'danger' }}">🛰️</span></div>
+      <div class="tile__value" style="font-size:var(--fs-2xl)">{{ '在线' if s.reachable else '不可达' }}</div>
+      <div class="tile__foot">{% if s.reachable %}HTTP GET · {{ s.elapsed_ms }}ms{% else %}{{ s.kind }}{% endif %}</div>
+    </div>
+  </div>
+</div>
+
+<div class="grid grid--cols-12 mt-5">
+  <!-- 任务列表 -->
+  <div class="col-8">
+    <div class="card fade-in">
+      <div class="card__head"><div><div class="card__title">🧩 任务列表</div>
+        <div class="card__subtitle">下次触发时间仅运行进程内存可见；本页只读，不在此启停任务</div></div>
+        {% if s.trigger_summary %}
+        <div class="row gap-2 wrap">
+          {% for tk, tn in s.trigger_summary.items() %}<span class="kv">{{ tk }} × {{ tn }}</span>{% endfor %}
+        </div>
+        {% endif %}
+      </div>
+      <div class="card__body">
+        {% if s.jobs %}
+        <div class="table-wrap">
+          <table class="table">
+            <thead><tr><th>任务</th><th>触发器</th><th>下次触发</th><th>状态</th></tr></thead>
+            <tbody>
+              {% for j in s.jobs %}
+              <tr>
+                <td>
+                  <div class="table__strong">{{ j.name }}{% if j.is_trading %} <span class="badge badge--info">实盘</span>{% endif %}</div>
+                  <div class="table__mono text-mute">{{ j.id }}{% if j.func_name %} · {{ j.func_name }}{% endif %}</div>
+                </td>
+                <td class="table__mono">{{ j.trigger_txt }}</td>
+                <td class="table__mono">{{ j.next_run_time or '—' }}</td>
+                <td>{{ status_badge(j.level, '活跃' if (j.is_trading or j.active) else '未排队') if not j.is_trading else status_badge(j.level, tr_txt) }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="empty"><span class="empty__icon">{{ '⛔' if not s.reachable else '📭' }}</span>
+          {{ '交易 Web 不可达，暂无任务快照' if not s.reachable else '暂无已注册任务' }}</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- 侧栏：实盘线程 + 只读口径 -->
+  <div class="col-4">
+    <div class="card fade-in" style="animation-delay:.05s">
+      <div class="card__head"><div><div class="card__title">📈 实盘调度器</div>
+        <div class="card__subtitle">线程态（非 APScheduler job）</div></div>
+        {{ status_badge(tr_level, tr_txt) }}</div>
+      <div class="card__body">
+        <div class="list-row"><div class="list-row__main"><div class="list-row__title">运行标志 running</div></div>
+          <div class="list-row__aside">{{ '是' if s.trading.running else '否' }}</div></div>
+        <div class="list-row"><div class="list-row__main"><div class="list-row__title">线程存活 thread_alive</div></div>
+          <div class="list-row__aside">{{ '是' if s.trading.thread_alive else '否' }}</div></div>
+        <div class="list-row"><div class="list-row__main"><div class="list-row__title">收尾中 finishing</div>
+          <div class="list-row__sub">标志已停但线程仍在收尾，勿重复启动</div></div>
+          <div class="list-row__aside">{{ '是' if s.trading.finishing else '否' }}</div></div>
+        <div class="list-row"><div class="list-row__main"><div class="list-row__title">交易账号</div></div>
+          <div class="list-row__aside table__mono">{{ s.trading.account_name or s.trading.account or '—' }}</div></div>
+      </div>
+    </div>
+
+    <div class="card fade-in mt-5" style="animation-delay:.1s">
+      <div class="card__head"><div><div class="card__title">🔒 只读口径</div></div></div>
+      <div class="card__body">
+        <div class="stat" style="margin-bottom:var(--sp-3)">
+          <div class="stat__k">数据端点</div>
+          <div class="stat__v" style="font-size:var(--fs-sm)"><span class="text-mono">{{ s.endpoint }}</span></div>
+        </div>
+        <p class="text-mute fs-xs" style="line-height:1.8;margin:0">
+          • 仅 <b>GET</b> 读取，页面不提供启动/停止/平仓入口；<br>
+          • 任务启停、实盘开关仍在交易系统原页面操作；<br>
+          • APScheduler 无持久 jobstore，快照只反映<b>此刻运行进程</b>；<br>
+          • 各任务的执行流水（成功/异常）见
+            <a href="/logs">日志聚合中心</a>。
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

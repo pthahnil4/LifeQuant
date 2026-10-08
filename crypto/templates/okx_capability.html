@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OKX 交易操作能力清单 - LifeQuant</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        /* ===== 页面骨架：左目录 + 右正文，宽表靠内部滚动而非撑破版面 ===== */
+        .nav-inner { max-width: 1420px; }
+        .cap-page { width: min(1420px, 96vw); margin: 16px auto 48px; box-sizing: border-box; }
+        .cap-hero { background: linear-gradient(135deg, #eef4fb 0%, #f7fbf9 100%);
+            border: 1px solid var(--border-color); border-radius: 12px; padding: 18px 22px; margin-bottom: 14px; }
+        .cap-hero h1 { margin: 0 0 6px; font-size: 1.45rem; letter-spacing: .5px; }
+        .cap-hero .cap-sub { color: var(--text-muted); font-size: .88rem; margin: 0 0 12px; }
+        .cap-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+        .cap-chip { font-size: .76rem; background: #fff; border: 1px solid #e2e8f0; color: #52606d;
+            border-radius: 999px; padding: 3px 11px; white-space: nowrap; }
+        .cap-chip b { color: #2c3e50; font-variant-numeric: tabular-nums; }
+        .cap-chip-warn { background: #fff7e6; border-color: #ffd591; color: #8a5a00; }
+
+        .cap-layout { display: grid; grid-template-columns: 252px minmax(0, 1fr); gap: 16px; align-items: start; }
+        @media (max-width: 1080px) { .cap-layout { grid-template-columns: minmax(0, 1fr); } }
+
+        /* ===== 左侧：搜索 + 目录（粘滞跟随） ===== */
+        .cap-side { position: sticky; top: 66px; max-height: calc(100vh - 86px); overflow: auto;
+            background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 12px;
+            padding: 12px; box-shadow: 0 2px 6px rgba(0,0,0,.04); }
+        @media (max-width: 1080px) { .cap-side { position: static; max-height: none; } }
+        .cap-search-box { position: relative; margin-bottom: 8px; }
+        .cap-search { width: 100%; box-sizing: border-box; padding: 7px 26px 7px 28px; font-size: .85rem;
+            border: 1px solid #dfe6ee; border-radius: 8px; background: #fbfdff; font-family: inherit; }
+        .cap-search:focus { outline: none; border-color: #4a90d9; background: #fff; }
+        .cap-search-ico { position: absolute; left: 8px; top: 7px; font-size: .82rem; opacity: .55; }
+        .cap-search-clear { position: absolute; right: 6px; top: 5px; border: 0; background: none; cursor: pointer;
+            color: #99a; font-size: .95rem; line-height: 1; display: none; }
+        .cap-search-meta { font-size: .74rem; color: var(--text-muted); margin: 0 2px 8px; min-height: 15px; }
+        .cap-search-meta b { color: #c0392b; }
+        .cap-toc { display: flex; flex-direction: column; gap: 1px; }
+        .cap-toc a { display: block; font-size: .8rem; color: #52606d; text-decoration: none;
+            flex: 0 0 auto; /* 目录容器一旦限高，flex 默认会把每条压扁到 13px 再裁掉文字（窄屏展开态实测） */
+            padding: 4px 8px; border-radius: 6px; border-left: 2px solid transparent;
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .cap-toc a.lv3 { padding-left: 20px; font-size: .76rem; color: #7b8794; }
+        .cap-toc a:hover { background: #f1f6fb; color: #1c5d99; }
+        .cap-toc a.on { background: #eaf3fd; border-left-color: #4a90d9; color: #1c5d99; font-weight: 600; }
+        .cap-toc a.dim { opacity: .35; }
+        .cap-toc a.dim:hover { opacity: .8; }
+        .cap-toc-switch { display: none; align-items: center; justify-content: space-between; gap: 6px;
+            width: 100%; font: inherit; font-size: .78rem; color: #52606d; cursor: pointer;
+            padding: 6px 9px; margin-bottom: 6px; border: 1px solid #dfe6ee; border-radius: 8px; background: #fbfdff; }
+        .cap-toc-switch .cap-toc-caret { transition: transform .15s; }
+        .cap-toc-switch.is-open .cap-toc-caret { transform: rotate(180deg); }
+        .cap-side-foot { display: flex; gap: 6px; margin-top: 10px; padding-top: 10px; border-top: 1px dashed #e6ebf1; }
+        .cap-mini-btn { flex: 1; font-size: .74rem; padding: 5px 6px; border-radius: 7px; cursor: pointer;
+            border: 1px solid #dfe6ee; background: #fff; color: #52606d; font-family: inherit; }
+        .cap-mini-btn:hover { background: #f4f8fc; border-color: #b9cfE6; }
+
+        /* 窄屏：目录收成浮层，不让 34 条目录把正文推到一屏之外 */
+        @media (max-width: 1080px) {
+            .cap-toc-switch { display: flex; }
+            .cap-toc, .cap-side-foot { display: none; }
+            .cap-toc.is-open { display: flex; max-height: 52vh; overflow: auto; margin-bottom: 8px;
+                padding: 4px; border: 1px solid #e6ebf1; border-radius: 8px; background: #fbfdff; }
+            .cap-toc.is-open ~ .cap-side-foot { display: flex; }
+            .cap-chip { white-space: normal; }
+            /* 14 个模块卡在窄屏按 196px 起排会退化成单列（1422px 高），降到 148px 可两列 */
+            .cap-mod-grid { grid-template-columns: repeat(auto-fill, minmax(148px, 1fr)); }
+        }
+
+        /* ===== 卡片通用 ===== */
+        .cap-card { background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 12px;
+            box-shadow: 0 2px 6px rgba(0,0,0,.04); padding: 16px 18px; margin-bottom: 14px; }
+        .cap-card-hd { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 4px; }
+        .cap-card-hd h2 { font-size: 1.05rem; margin: 0; padding: 0; border: 0; }
+        .cap-card-hd .cap-hint { font-size: .76rem; color: var(--text-muted); }
+
+        /* ===== 工具矩阵面板（数据源 = data/_okx_list_tools.json） ===== */
+        .cap-mod-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(196px, 1fr)); gap: 10px; margin: 12px 0; }
+        .cap-mod { border: 1px solid #eaf0f6; border-radius: 10px; padding: 9px 11px; background: #fbfdff; cursor: pointer;
+            transition: transform .12s, box-shadow .12s, border-color .12s; }
+        .cap-mod:hover { transform: translateY(-1px); box-shadow: 0 4px 10px rgba(52,101,153,.13); border-color: #cfe0f0; }
+        .cap-mod.sel { border-color: #4a90d9; background: #eff6fd; box-shadow: inset 3px 0 0 #4a90d9; }
+        .cap-mod-nm { font-family: Consolas, Menlo, monospace; font-size: .84rem; font-weight: 700; color: #2c3e50; }
+        .cap-mod-nm .cap-mod-tag { float: right; font-size: .66rem; font-weight: 400; color: #8fa0b3; font-family: inherit; }
+        .cap-mod-num { font-size: .74rem; color: #78909c; margin-top: 3px; font-variant-numeric: tabular-nums; }
+        .cap-mod-num i { font-style: normal; font-weight: 700; }
+        .cap-mod-num i.w { color: #c0392b; }
+        .cap-bar { height: 5px; border-radius: 3px; background: #e8eef4; overflow: hidden; display: flex; margin-top: 6px; }
+        .cap-bar span { display: block; height: 100%; }
+        .cap-bar .bw { background: #e57373; } .cap-bar .br { background: #90a4ae; }
+        .cap-toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+        .cap-toolbar .cap-search { width: 240px; }
+        .cap-seg { display: inline-flex; border: 1px solid #dfe6ee; border-radius: 8px; overflow: hidden; }
+        .cap-seg button { border: 0; background: #fff; padding: 5px 11px; font-size: .76rem; cursor: pointer;
+            color: #607086; font-family: inherit; }
+        .cap-seg button.on { background: #4a90d9; color: #fff; }
+        .cap-seg button.on.war { background: #c0392b; }
+        #cap-matrix-empty, .cap-empty-line { font-size: .82rem; color: var(--text-muted); padding: 10px 2px; }
+        .cap-cmd-tbl { width: 100%; border-collapse: collapse; font-size: .78rem; table-layout: fixed; }
+        .cap-cmd-tbl th { text-align: left; background: #f5f8fb; color: #5b6b7d; font-weight: 600; padding: 6px 8px;
+            border-bottom: 2px solid #e6ecf2; position: sticky; top: 0; z-index: 1; }
+        .cap-cmd-tbl td { padding: 6px 8px; border-bottom: 1px solid #f0f3f7; vertical-align: top; word-break: break-word; }
+        .cap-cmd-tbl tr:hover td { background: #fafdff; }
+        .cap-cmd-tbl code { font-family: Consolas, Menlo, monospace; font-size: .76rem; background: none; padding: 0; color: #1c5d99; }
+        .cap-tag { display: inline-block; font-size: .64rem; padding: 1px 6px; border-radius: 5px; font-weight: 700; }
+        .cap-tag-w { background: #fdecea; color: #c0392b; border: 1px solid #f7c9c3; }
+        .cap-tag-r { background: #eef3f7; color: #64778c; border: 1px solid #dbe3ea; }
+        .cap-req { color: #8b98a7; font-size: .72rem; }
+        .cap-req b { color: #b07d2a; font-weight: 400; }
+
+        /* ===== 正文文档排版 ===== */
+        .cap-doc { min-width: 0; }
+        .cap-sec { position: relative; background: var(--card-bg); border: 1px solid var(--border-color);
+            border-radius: 12px; box-shadow: 0 2px 6px rgba(0,0,0,.04); padding: 16px 46px 18px 20px; margin-bottom: 12px; }
+        .cap-sec-toggle { position: absolute; right: 12px; top: 16px; width: 24px; height: 24px; line-height: 22px;
+            border: 1px solid #e2e8f0; background: #fbfdff; border-radius: 6px; cursor: pointer; color: #78909c;
+            font-size: .78rem; padding: 0; }
+        .cap-sec-toggle:hover { background: #eef4fa; color: #1c5d99; }
+        .cap-sec.is-fold > *:not(.cap-h2):not(.cap-sec-toggle) { display: none; }
+        .cap-sec.cap-hidden { display: none; }
+        .cap-h1 { font-size: 1.3rem; margin: 2px 0 12px; }
+        .cap-h2 { font-size: 1.12rem; margin: 2px 0 12px; padding-bottom: 8px; border-bottom: 2px solid #eef2f6; color: #1f3348; cursor: pointer; }
+        .cap-h3 { font-size: .98rem; margin: 20px 0 8px; color: #2c4257; }
+        .cap-h4 { font-size: .9rem; margin: 14px 0 6px; color: #40566c; }
+        /* 锚点跳转时给粘性导航条让位，否则标题被压在导航下面 */
+        .cap-h2, .cap-h3, .cap-h4 { scroll-margin-top: 76px; }
+        .cap-doc p, .cap-doc li { font-size: .86rem; line-height: 1.75; color: #3d4b58;
+            /* 正文里有 place/cancel/amend/… 这种不带空格的长串，不禁断行会把整页顶出横向滚动条（480px 实测 505） */
+            overflow-wrap: anywhere; }
+        .cap-doc ul, .cap-doc ol { padding-left: 22px; margin: 8px 0; }
+        .cap-doc li { margin: 3px 0; }
+        .cap-doc li > ul { margin: 3px 0; }
+        .cap-doc hr { border: 0; border-top: 1px dashed #e2e8f0; margin: 18px 0; }
+        .cap-doc :not(pre) > code { font-family: Consolas, Menlo, monospace; font-size: .8rem;
+            background: #f2f6fa; color: #b03a5b; padding: 1px 5px; border-radius: 4px; border: 1px solid #e8eef4;
+            /* 列表项里常有 maxPx/minPx/gridNum/... 这种超长无空格标识符，不许它把整页顶出横向滚动条 */
+            overflow-wrap: anywhere; }
+        .cap-doc strong { color: #1f3348; }
+
+        /* 表格：外层横向滚动 + 表头吸顶 */
+        .cap-scroll { overflow-x: auto; margin: 10px 0 14px; border: 1px solid #eef2f6; border-radius: 9px; }
+        .cap-tbl { border-collapse: collapse; width: 100%; font-size: .8rem; min-width: 620px; }
+        .cap-tbl th { background: linear-gradient(180deg, #f6f9fc, #eff4f9); color: #34495e; font-weight: 700;
+            text-align: left; padding: 8px 10px; border-bottom: 2px solid #e3ebf2; white-space: nowrap;
+            position: sticky; top: 0; z-index: 1; }
+        .cap-tbl td { padding: 7px 10px; border-bottom: 1px solid #f1f4f8; vertical-align: top; line-height: 1.6; }
+        .cap-tbl tbody tr:nth-child(even) { background: #fbfcfe; }
+        .cap-tbl tbody tr:hover { background: #f3f8fd; }
+        .cap-tbl td:first-child { color: #2c4257; }
+        .cap-tbl code { white-space: normal; word-break: break-word; }
+
+        /* 代码块：深色底 + 语言标签 + 复制 */
+        .cap-code { position: relative; margin: 10px 0 14px; }
+        .cap-pre { margin: 0; padding: 12px 14px; border-radius: 9px; overflow-x: auto;
+            background: #26333f; color: #dbe6f0; font-family: Consolas, Menlo, "Courier New", monospace;
+            font-size: .78rem; line-height: 1.65; tab-size: 4; }
+        .cap-pre code { background: none; border: 0; padding: 0; color: inherit; font-size: inherit; }
+        .cap-pre-ascii { background: #2d3748; }
+        .cap-lang-tag { position: absolute; right: 9px; top: -1px; transform: translateY(-50%);
+            font-size: .62rem; letter-spacing: .5px; text-transform: uppercase; color: #9fb3c8;
+            background: #1f2933; border: 1px solid #33414f; border-radius: 999px; padding: 1px 8px; }
+        .cap-code-copy { position: absolute; right: 8px; bottom: 8px; font-size: .7rem; padding: 3px 9px;
+            border-radius: 6px; border: 1px solid #45566a; background: #31404f; color: #cfe0f0; cursor: pointer;
+            opacity: 0; transition: opacity .15s; font-family: inherit; }
+        .cap-code:hover .cap-code-copy { opacity: 1; }
+        .cap-code-copy:hover { background: #3d5162; }
+        .cap-code-copy.done { background: #27ae60; border-color: #27ae60; color: #fff; opacity: 1; }
+        .ck-key { color: #7fd1ff; } .ck-str { color: #ffd479; } .ck-num { color: #f0a868; }
+        .ck-kw { color: #ff9ec7; } .ck-flag { color: #9ae6b4; } .ck-cmd { color: #7fd1ff; font-weight: 700; }
+        .ck-cmt { color: #7f93a8; font-style: italic; }
+
+        /* 引用块 → 语义提示条 */
+        .cap-quote { margin: 10px 0 14px; padding: 10px 14px; border-radius: 8px; font-size: .84rem;
+            line-height: 1.7; border-left: 4px solid; background: #f7fafc; border-color: #cbd5e0; }
+        .cap-quote p { margin: 4px 0; font-size: .84rem; }
+        .cap-quote-warn { background: #fff6f3; border-color: #e05d44; }
+        .cap-quote-tip { background: #f2fbf5; border-color: #27ae60; }
+        .cap-quote-rule { background: #f4f7ff; border-color: #4a6fd6; }
+        .cap-quote-note { background: #f7f9fb; border-color: #94a3b3; }
+
+        /* 图示卡片 */
+        .cap-scenario-row { display: flex; flex-wrap: wrap; gap: 12px; margin: 12px 0 16px; }
+        .cap-scenario { flex: 1 1 420px; min-width: 0; border: 1px solid #e6eef6; border-radius: 10px;
+            background: linear-gradient(180deg, #fbfdff, #f6fafd); overflow: hidden; }
+        .cap-scenario-hd { font-size: .82rem; font-weight: 700; color: #1c5d99; padding: 8px 12px;
+            background: rgba(74,144,217,.09); border-bottom: 1px solid #e6eef6; }
+        .cap-fig { margin: 0; padding: 8px 10px 2px; background: #fff; }
+        .cap-fig svg { width: 100%; height: auto; display: block; }
+        .cap-scenario-cap { font-size: .78rem; line-height: 1.72; color: #4a5a68; padding: 8px 12px 11px; }
+        .cap-scenario-cap code { font-size: .72rem; }
+
+        /* 搜索命中高亮 / 无结果 */
+        mark.cap-hit { background: #ffe08a; color: #7a4b00; border-radius: 2px; padding: 0 1px; }
+        mark.cap-hit.cur { background: #ffb64a; box-shadow: 0 0 0 2px rgba(255,182,74,.4); }
+        .cap-nohit { text-align: center; color: #8b98a7; font-size: .88rem; padding: 30px 10px; }
+        .cap-fallback { white-space: pre-wrap; font-family: Consolas, Menlo, monospace; font-size: .78rem;
+            line-height: 1.7; color: #40566c; background: #fbfcfe; border-radius: 8px; padding: 14px;
+            max-height: 70vh; overflow: auto; }
+        .cap-err { background: #fff6f3; border: 1px solid #f3c3b6; color: #a03d22; border-radius: 8px;
+            padding: 10px 14px; font-size: .84rem; margin-bottom: 12px; }
+        .cap-foot { font-size: .74rem; color: #94a3b3; text-align: center; padding: 6px 0 0; }
+
+        @media print {
+            .main-nav, .cap-side, .cap-sec-toggle, .cap-code-copy, .cap-lang-tag { display: none !important; }
+            .cap-layout { grid-template-columns: minmax(0, 1fr); }
+            .cap-sec, .cap-card { box-shadow: none; break-inside: avoid; }
+            body { background: #fff; }
+        }
+    </style>
+</head>
+<body>
+{% include 'nav.html' %}
+<div class="cap-page">
+
+    <header class="cap-hero">
+        <h1>📖 OKX 交易操作能力清单</h1>
+        <p class="cap-sub">
+            MCP <code>okx-trade-mcp</code> · CLI <code>okx-trade-cli</code> · Skills <code>okx-cex-*</code>
+            与原生 REST / Python SDK 的能力边界对照 &amp; 逐条端点标注
+        </p>
+        <div class="cap-chips">
+            {% if doc.ok %}
+            <span class="cap-chip">内容源 <b>{{ doc.meta.path }}</b></span>
+            <span class="cap-chip"><b>{{ doc.meta.lines }}</b> 行 / <b>{{ doc.meta.size }}</b> B</span>
+            <span class="cap-chip">文档更新 <b>{{ doc.meta.mtime }}</b></span>
+            <span class="cap-chip"><b>{{ doc.sections }}</b> 节 / <b>{{ doc.tables }}</b> 表 / <b>{{ doc.codes }}</b> 代码块</span>
+            <span class="cap-chip"><b>{{ doc.diagrams }}</b> 张场景图示</span>
+            {% endif %}
+            {% if tools.ok %}
+            <span class="cap-chip">Kit v<b>{{ tools.version }}</b> · CLI 命令 <b>{{ tools.cliTotal }}</b>
+                （写 <b>{{ tools.writeTotal }}</b> / 读 {{ tools.readTotal }}）</span>
+            <span class="cap-chip">MCP totalTools <b>{{ tools.totalTools }}</b> · 去重工具名 <b>{{ tools.uniqToolTotal }}</b></span>
+            <span class="cap-chip">证据快照 <b>{{ tools.snapshotMtime }}</b></span>
+            {% endif %}
+            {% if stale %}
+            <span class="cap-chip cap-chip-warn">⚠️ 证据快照早于文档，建议重跑 data\okx_capability_dump.ps1</span>
+            {% endif %}
+        </div>
+    </header>
+
+    <div class="cap-layout">
+        <aside class="cap-side">
+            <div class="cap-search-box">
+                <span class="cap-search-ico">🔍</span>
+                <input type="search" id="cap-q" class="cap-search" placeholder="搜索能力 / 参数 / 端点…" autocomplete="off">
+                <button class="cap-search-clear" id="cap-q-clear" type="button" title="清空">✕</button>
+            </div>
+            <p class="cap-search-meta" id="cap-q-meta"></p>
+            {% if doc.toc %}
+            <button class="cap-toc-switch" id="cap-toc-switch" type="button" aria-expanded="false"
+                    aria-controls="cap-toc">📑 目录 · {{ doc.toc|length }} 条标题 <span class="cap-toc-caret">▾</span></button>
+            <nav class="cap-toc" id="cap-toc">
+                {% for t in doc.toc %}
+                <a href="#{{ t.id }}" class="lv{{ t.level }}" data-t="{{ t.text }}" title="{{ t.text }}">{{ t.text }}</a>
+                {% endfor %}
+            </nav>
+            <div class="cap-side-foot">
+                <button class="cap-mini-btn" id="cap-fold-all" type="button">全部折叠</button>
+                <button class="cap-mini-btn" id="cap-unfold-all" type="button">全部展开</button>
+            </div>
+            {% endif %}
+        </aside>
+
+        <main class="cap-main">
+            {% if not doc.ok %}
+            <div class="cap-err">
+                {{ doc.error }}
+                {% if doc.path %}<br>期望路径：<code>{{ doc.path }}</code>{% endif %}
+            </div>
+            {% endif %}
+
+            <!-- ===================== 工具矩阵（实时解析证据文件） ===================== -->
+            {% if tools.ok %}
+            <section class="cap-card" id="cap-matrix">
+                <div class="cap-card-hd">
+                    <h2>🧩 全量工具矩阵</h2>
+                    <span class="cap-hint">
+                        逐条解析自 <code>{{ tools.source }}</code>（<code>okx list-tools --json</code> 快照）·
+                        {{ tools.moduleTotal }} 个模块，其中 {{ tools.modules | length }} 个含命令
+                    </span>
+                </div>
+                <div class="cap-chips">
+                    <span class="cap-chip">CLI 命令 <b>{{ tools.cliTotal }}</b></span>
+                    <span class="cap-chip">其中写命令 <b>{{ tools.writeTotal }}</b></span>
+                    <span class="cap-chip">纯本地命令（无 MCP 工具）<b>{{ tools.localTotal }}</b></span>
+                    <span class="cap-chip">官方 totalTools <b>{{ tools.totalTools }}</b>
+                        = {{ tools.cliTotal }} − {{ tools.localTotal }}</span>
+                    <span class="cap-chip">去重 toolName <b>{{ tools.uniqToolTotal }}</b>
+                        （{{ tools.aliasTotal }} 条为别名）</span>
+                </div>
+                <p class="cap-hint" style="font-size:.74rem;margin:8px 0 0;color:#8b98a7;">
+                    读写分类规则 = CLI 路径末段以 place/cancel/amend/close/set/leverage/batch/create/stop/trail/
+                    transfer/purchase/redeem/subscribe/withdraw/adjust/trail/topup 开头，
+                    <b>属本项目推导口径、非官方标注</b>（规则实现见 <code>capability_diagrams.is_write_command</code>）。
+                    点击模块卡片可筛选该模块命令。
+                </p>
+                <div class="cap-mod-grid" id="cap-mods">
+                    {% for m in tools.modules %}
+                    <div class="cap-mod" data-mod="{{ m.name }}" title="点击筛选 {{ m.name }} 模块命令">
+                        <div class="cap-mod-nm">{{ m.name }}
+                            <span class="cap-mod-tag">{{ m.total }} 条</span></div>
+                        <div class="cap-mod-num"><i class="w">{{ m.write }}</i> 写 · <i>{{ m.read }}</i> 读
+                            {% if m.local %}· <i>{{ m.local }}</i> 本地{% endif %}</div>
+                        <div class="cap-bar" data-w="{{ m.wpct }}" data-r="{{ m.rpct }}"
+                             title="写 {{ m.write }} / 读 {{ m.read }}"></div>
+                    </div>
+                    {% endfor %}
+                </div>
+                <div class="cap-toolbar">
+                    <div class="cap-search-box" style="margin:0">
+                        <span class="cap-search-ico">🔎</span>
+                        <input type="search" id="cap-cmd-q" class="cap-search" placeholder="按命令名 / 工具名 / 描述过滤" autocomplete="off">
+                    </div>
+                    <div class="cap-seg" id="cap-kind-seg">
+                        <button type="button" data-k="all" class="on">全部</button>
+                        <button type="button" data-k="W">仅写 ⚠</button>
+                        <button type="button" data-k="R">仅读</button>
+                    </div>
+                    <button class="cap-mini-btn" id="cap-mod-reset" type="button" style="flex:0 0 auto">清除模块筛选</button>
+                    <span class="cap-hint" id="cap-cmd-count"></span>
+                </div>
+                <div class="cap-scroll" style="max-height:520px;overflow-y:auto">
+                    <table class="cap-cmd-tbl">
+                        <colgroup><col style="width:22%"><col style="width:16%"><col style="width:5%">
+                            <col style="width:32%"><col style="width:25%"></colgroup>
+                        <thead><tr><th>CLI 命令</th><th>MCP 工具名</th><th>读写</th><th>说明</th><th>必填参数</th></tr></thead>
+                        <tbody id="cap-cmd-body"></tbody>
+                    </table>
+                </div>
+                <div id="cap-matrix-empty" class="cap-empty-line" style="display:none"></div>
+                <noscript><p class="cap-err">命令明细表需要 JavaScript 渲染；上方模块统计为服务端输出，仍可用。</p></noscript>
+            </section>
+            {% else %}
+            <div class="cap-err">🧩 工具矩阵不可用：{{ tools.error }}
+                （页面正文仍正常显示；重跑 <code>data\okx_capability_dump.ps1</code> 可恢复）</div>
+            {% endif %}
+
+            <!-- ===================== 文档正文 ===================== -->
+            <div class="cap-doc" id="cap-doc">
+                {% if doc.ok %}
+                    {{ doc.body | safe }}
+                    <div class="cap-nohit" id="cap-nohit" style="display:none">
+                        正文中没有匹配内容，试试搜「iceberg」「twap」「写命令」「/api/v5/trade」等关键词。
+                    </div>
+                {% else %}
+                    <section class="cap-sec"><pre class="cap-fallback">{{ doc.text }}</pre></section>
+                {% endif %}
+            </div>
+
+            <p class="cap-foot">
+                本页面内容 100% 来自 <code>{{ doc.meta.path if doc.ok else 'doc/OKX交易操作能力清单.md' }}</code>，
+                不单独维护副本；改文档即改页面。校验：<code>python data\okx_capability_check.py</code>
+            </p>
+        </main>
+    </div>
+</div>
+
+{% if tools.ok %}
+<script id="cap-tools-data" type="application/json">{{ tools | tojson }}</script>
+{% endif %}
+<script src="{{ url_for('static', filename='js/okx_capability.js') }}?v=20260916"></script>
+</body>
+</html>

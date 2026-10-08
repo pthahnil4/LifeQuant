@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>盘感模拟 - LifeQuant</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        /* 本页采用深色主题：统一整页背景与基准文字色，避免深色卡片浮在浅色 body 上导致浅字看不清（导航栏有自己的白底，不受影响） */
+        body { background: #0d1117; color: #e6edf3; }
+        .inst-wrap { max-width: 1180px; margin: 0 auto; padding: 18px 16px 60px; }
+        .inst-hero { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 14px; }
+        .inst-hero h1 { margin: 0; font-size: 22px; color: #e6edf3; }
+        .inst-hero .inst-sub { color: #a9b4c2; font-size: 13px; width: 100%; }
+        .badge { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 12px; }
+        .badge-ok { background: rgba(46,160,67,.18); color: #3fb950; border: 1px solid #238636; }
+        .badge-off { background: rgba(218,54,51,.15); color: #f85149; border: 1px solid #da3633; }
+        .inst-card { background: #161b22; border: 1px solid #30363d; border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+        .inst-card h2 { margin: 0 0 10px; font-size: 16px; color: #e6edf3; }
+        .inst-toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+        .inst-select, .inst-btn { background: #21262d; color: #e6edf3; border: 1px solid #30363d; border-radius: 6px; padding: 6px 12px; font-size: 13px; cursor: pointer; }
+        .inst-btn:hover { border-color: #a9b4c2; }
+        .inst-btn.primary { background: #1f6feb; border-color: #1f6feb; }
+        .inst-btn.warn { background: #9e6a03; border-color: #9e6a03; }
+        .inst-btn.danger { background: #da3633; border-color: #da3633; }
+        .inst-btn:disabled { opacity: .5; cursor: not-allowed; }
+        table.inst-tb { width: 100%; border-collapse: collapse; font-size: 13px; color: #e6edf3; }
+        .inst-tb th, .inst-tb td { border-bottom: 1px solid #21262d; padding: 7px 8px; text-align: left; vertical-align: top; }
+        .inst-tb th { color: #cdd6e0; font-weight: 600; white-space: nowrap; }
+        .kv { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+        .kv .k { color: #a9b4c2; font-size: 12px; }
+        .kv .v { font-size: 15px; color: #e6edf3; font-variant-numeric: tabular-nums; }
+        .dir-up { color: #3fb950; } .dir-down { color: #f85149; } .dir-flat { color: #a9b4c2; }
+        .rule-st { font-size: 12px; color: #c9d1d9; line-height: 1.55; }
+        .rule-basis { font-size: 11px; color: #a9b4c2; margin-top: 3px; }
+        .tag { font-size: 11px; padding: 1px 8px; border-radius: 10px; border: 1px solid #30363d; color: #a9b4c2; }
+        .tag-active { color: #3fb950; border-color: #238636; }
+        .tag-candidate { color: #d29922; border-color: #9e6a03; }
+        .tag-retired { color: #f85149; border-color: #da3633; }
+        .pred-card { border: 1px solid #30363d; border-radius: 8px; padding: 12px; margin-top: 10px; background: #0d1117; }
+        .pred-judge { font-size: 18px; font-weight: 700; }
+        .fb-btn { margin-right: 6px; }
+        .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+        .stat-box { border: 1px solid #30363d; border-radius: 8px; padding: 12px; }
+        .stat-box .t { color: #a9b4c2; font-size: 12px; margin-bottom: 6px; }
+        .stat-box .n { font-size: 22px; font-weight: 700; }
+        .stat-box .s { font-size: 12px; color: #a9b4c2; margin-top: 4px; }
+        .inst-note { font-size: 12px; color: #d29922; margin-top: 8px; }
+        .muted { color: #a9b4c2; font-size: 12px; }
+        /* 影子预测流水批量选择复选框 */
+        #pred-tb input[type=checkbox], #pred-ck-all { width: 15px; height: 15px; cursor: pointer; accent-color: #1f6feb; vertical-align: middle; }
+        #pred-ck-all { margin: 0; }
+        /* 功能说明与操作指南（折叠卡） */
+        .inst-guide { background: #161b22; border: 1px solid #30363d; border-radius: 10px; padding: 0 16px; margin-bottom: 16px; }
+        .inst-guide > summary { cursor: pointer; list-style: none; padding: 14px 0; font-size: 16px; font-weight: 600; color: #e6edf3; }
+        .inst-guide > summary::-webkit-details-marker { display: none; }
+        .inst-guide > summary::before { content: '▸ '; color: #58a6ff; }
+        .inst-guide[open] > summary::before { content: '▾ '; color: #58a6ff; }
+        .inst-guide .g-body { border-top: 1px solid #21262d; padding: 14px 0 18px; font-size: 13px; line-height: 1.7; color: #c9d1d9; }
+        .inst-guide h3 { margin: 14px 0 6px; font-size: 14px; color: #e6edf3; }
+        .inst-guide h3:first-child { margin-top: 0; }
+        .inst-guide ol, .inst-guide ul { margin: 4px 0 4px 20px; padding: 0; }
+        .inst-guide li { margin: 3px 0; }
+        .inst-guide code { background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 1px 6px; font-size: 12px; color: #79c0ff; }
+        .inst-guide table { width: 100%; border-collapse: collapse; font-size: 12px; margin: 6px 0; }
+        .inst-guide th, .inst-guide td { border: 1px solid #21262d; padding: 5px 8px; text-align: left; }
+        .inst-guide th { color: #a9b4c2; background: #0d1117; }
+        .inst-guide .g-tip { background: rgba(210,153,34,.12); border-left: 3px solid #9e6a03; border-radius: 4px; padding: 8px 12px; margin: 8px 0; }
+        .inst-guide .g-alert { background: rgba(63,185,80,.1); border-left: 3px solid #238636; border-radius: 4px; padding: 8px 12px; margin: 8px 0; }
+    </style>
+</head>
+<body>
+    {% include 'nav.html' %}
+    <div class="inst-wrap">
+        <header class="inst-hero">
+            <span style="font-size:30px">🧠</span>
+            <div>
+                <h1>盘感模拟台</h1>
+                <div class="inst-sub">历史语料检索 · Wiki 规则卡 · LLM 影子预测 —— 只复盘感，不碰委托单
+                    ｜ <a href="/instinct/wiki" style="color:#58a6ff;font-size:12px">📚 Wiki 管理台（治理/审计/校准/检索调试）→</a></div>
+            </div>
+            <span id="llm-badge" class="badge badge-off">LLM 状态检测中…</span>
+        </header>
+
+        <!-- ============ 功能说明与操作指南 ============ -->
+        <details class="inst-guide" id="inst-guide">
+            <summary>❓ 功能说明与操作指南（这是什么 · 怎么用 · 常见问题）</summary>
+            <div class="g-body">
+                <h3>一、这是什么</h3>
+                <p>盘感模拟是一套基于 <b>RAG + LLM 的“交易直觉校准器”</b>：把你历史的行情判断、规则、当时可见的行情上下文重建成可检索的“记忆库”，再让 LLM 在这个库的辅助下，对当前局面做一个<b>只记录不下单的“影子预测”</b>，最后通过满窗结算与 <b>A/B 对比</b>告诉你——“这种局面，你的直觉 vs 策略 vs 模型到底谁更靠谱”。</p>
+                <p>它的定位不是“复读你的感觉”，而是<b>拿你自己的历史命中率当镜子照</b>（探针实测：个人判断远窗口命中低于策略）。</p>
+                <div class="g-alert"><b>🛡 影子系统铁律：</b>本模块永不下单、永不进入任何委托/风控链路。它只读行情、只写 instinct_* 表。无论预测结果如何，都不影响你的实盘。</div>
+
+                <h3>二、三层记忆与防泄漏</h3>
+                <table>
+                    <tr><th>层</th><th>内容</th><th>进预测 prompt？</th></tr>
+                    <tr><td>情景记忆</td><td>每次决策的“当时可见上下文 + 判断 + 事后对错”</td><td>仅当时可见信息（事后涨跌一律不注入）</td></tr>
+                    <tr><td>语义记忆</td><td>蒸馏出的显式规则卡（candidate→active）</td><td>仅已确认生效且条件命中的规则</td></tr>
+                    <tr><td>工作记忆</td><td>每次预测的快照/引用/输出/结算流水</td><td>不进，纯审计与 A/B 统计</td></tr>
+                </table>
+                <p><b>防泄漏</b>：“当时可见信息(ctx)”与“事后结果(outcome)”在数据库层面就物理二分。检索相似度、提示词渲染只触碰当时可见信息——防止“用未来数据作弊”。</p>
+
+                <h3>三、快速上手（四步）</h3>
+                <ol>
+                    <li><b>选币种 → 刷新快照</b>：在下方「📍 当前局面」下拉选一个币 → 点「🔄 刷新快照」（走实盘同源双周期引擎，约几秒），自动列出相似历史案例。</li>
+                    <li><b>来一发影子预测</b>：点「⚡ 来一发影子预测」，LLM 会产出一条 pending 预测（看涨/看跌/观望 + 置信度 + 引用了哪些案例/规则）。</li>
+                    <li><b>给反馈</b>：在这条预测上点 👍可信/👎存疑、🤝一致/🙅相反——这是判断“元认知校准是否有效”的唯一数据。</li>
+                    <li><b>看成绩单</b>：滚到下方「📊 三感对比」看你 vs 策略 vs LLM 的命中率；顶部「📚 Wiki 管理台」可逐条治理规则/审计预测/看校准曲线。</li>
+                </ol>
+
+                <h3>四、五个区块分别干什么</h3>
+                <ul>
+                    <li>📍 <b>当前局面</b>：选币 + 刷新快照 + 发起预测。</li>
+                    <li>🗂️ <b>相似历史</b>：随快照自动展示 topK 邻居（仅当时可见信息）。</li>
+                    <li>📜 <b>Wiki 规则卡</b>：快速确认/下线（完整治理在管理台）。candidate 必须人工确认才生效。</li>
+                    <li>🤖 <b>影子预测流水</b>：查看/反馈，“🧮 立即结算到期项”手动触发满窗回填。</li>
+                    <li>📊 <b>三感对比</b>：你 vs 策略 vs LLM 命中率（LLM &lt;60 样本会标注“样本不足”）。</li>
+                </ul>
+
+                <h3>五、关键须知（别当 bug）</h3>
+                <div class="g-tip">
+                    <p style="margin:0">① <b>数据是喂出来的</b>：影子预测想真正上线，需 labeled 样本 ≥100（现在才十几条）。靠你每天照常写“分析记录”、写“复盘四格”、给预测点反馈来积累；源表新增后需隔几天跑一次 <code>corpus_builder --build</code> 同步进语料库。</p>
+                    <p style="margin:6px 0 0">② <b>刚生成的预测是 pending</b>：要等近/远窗满（短周期×4 和 ×8）才结算成命中率；bar 未收线会静默重试。</p>
+                    <p style="margin:6px 0 0">③ <b>预测报 503</b>：LLM 未配置或未生效（配置进程启动时读取，改完需重启 app）。</p>
+                    <p style="margin:6px 0 0">④ <b>三感对比 LLM 列空/“样本不足”</b>：scored 且非 mock 的预测才计数，现在数据少属预期。</p>
+                </div>
+
+                <h3>六、命令行走狗（可选）</h3>
+                <ul>
+                    <li>重建/核对语料：<code>python -m crypto.instinct.corpus_builder --build</code> / <code>--verify</code></li>
+                    <li>检索自检：<code>python -m crypto.instinct.retriever --self-check</code></li>
+                    <li>统计蒸馏规则：<code>python -m crypto.instinct.wiki_distiller --report</code></li>
+                    <li>无 key 验管线：<code>python -m crypto.instinct.predict_service --backfill --mock</code></li>
+                </ul>
+                <p class="muted" style="margin-top:10px">深度原理与统计口径见 <code>doc/RAG_LLM_Wiki模拟盘感落地方案.md</code>；操作细节见 <code>doc/RAG_LLM_Wiki模块使用手册.md</code>。</p>
+            </div>
+        </details>
+
+        <!-- ============ 当前局面 ============ -->
+        <div class="inst-card">
+            <h2>📍 当前局面</h2>
+            <div class="inst-toolbar">
+                <select id="inst-select" class="inst-select"></select>
+                <button class="inst-btn" id="btn-refresh">🔄 刷新快照</button>
+                <button class="inst-btn primary" id="btn-predict">⚡ 来一发影子预测</button>
+                <span id="now-ts" class="muted"></span>
+            </div>
+            <div id="ctx-box" class="kv"><span class="muted">加载中…</span></div>
+            <div id="predict-out"></div>
+        </div>
+
+        <!-- ============ 相似历史 + 命中规则 ============ -->
+        <div class="inst-card">
+            <h2>🗂️ 相似历史案例 <span class="muted">（防泄漏：仅当时可见信息，不含事后涨跌）</span></h2>
+            <table class="inst-tb"><thead><tr>
+                <th>相似度</th><th>时间</th><th>币种</th><th>当时判断</th><th>长周期方向</th><th>翻转</th><th>备注</th>
+            </tr></thead><tbody id="cases-tb"><tr><td colspan="7" class="muted">先刷新快照</td></tr></tbody></table>
+        </div>
+
+        <!-- ============ Wiki 规则卡 ============ -->
+        <div class="inst-card">
+            <h2>📜 Wiki 规则卡 <span class="muted">（candidate 须人工确认才生效；retired 可再蒸馏复活）</span>
+                <span id="rule-counts" class="muted" style="margin-left:8px"></span></h2>
+            <table class="inst-tb"><thead><tr>
+                <th>状态</th><th>类型</th><th>规则</th><th>统计依据</th><th>有效期至</th><th>操作</th>
+            </tr></thead><tbody id="rules-tb"><tr><td colspan="6" class="muted">加载中…</td></tr></tbody></table>
+        </div>
+
+        <!-- ============ 影子预测流水 ============ -->
+        <div class="inst-card">
+            <h2>🤖 影子预测流水 <span class="muted">（pending = 窗口未满待结算；mock 为管线自测不留痕）</span>
+                <button class="inst-btn" id="btn-settle" style="float:right">🧮 立即结算到期项</button></h2>
+            <div class="inst-toolbar">
+                <button class="inst-btn danger" id="btn-pred-del" disabled>🗑 删除所选</button>
+                <button class="inst-btn danger" id="btn-pred-clear">🧹 清空全部</button>
+                <span id="pred-sel-info" class="muted"></span>
+            </div>
+            <table class="inst-tb"><thead><tr>
+                <th style="width:30px"><input type="checkbox" id="pred-ck-all" title="全选/反选"></th>
+                <th>时间</th><th>币种</th><th>模型</th><th>判断</th><th>置信</th><th>近窗</th><th>远窗</th><th>理由</th><th>你的态度</th>
+            </tr></thead><tbody id="pred-tb"><tr><td colspan="10" class="muted">加载中…</td></tr></tbody></table>
+        </div>
+
+        <!-- ============ A/B 统计 ============ -->
+        <div class="inst-card">
+            <h2>📊 三感对比 <span class="muted">（你本人 / 策略引擎 / LLM 影子；LLM &lt;60 样本不出结论）</span></h2>
+            <div id="stats-box" class="stat-grid"><span class="muted">加载中…</span></div>
+            <div id="stats-note" class="inst-note"></div>
+        </div>
+    </div>
+
+<script>
+(function () {
+    var $ = function (id) { return document.getElementById(id); };
+    var DIRCN = { up: '↑ 多头', down: '↓ 空头', flat: '— 中性' };
+    function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+    function dirHtml(d) { var cls = d === 'up' ? 'dir-up' : (d === 'down' ? 'dir-down' : 'dir-flat'); return '<span class="' + cls + '">' + esc(DIRCN[d] || d || '—') + '</span>'; }
+    function jcn(j) { return { rise: '看涨', fall: '看跌', watch: '观望' }[j] || j || '—'; }
+    function post(url, body) {
+        return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(body || {}) }).then(readJson);
+    }
+    function get(url) { return fetch(url).then(readJson); }
+    // 非 JSON 响应（后端 500 会返回 HTML 错误页）时抛出可读信息，避免 "Unexpected token '<'"
+    function readJson(r) {
+        return r.text().then(function (t) {
+            var looksHtml = t.charAt(0) === '<';
+            if (looksHtml) {
+                throw new Error('接口异常 HTTP ' + r.status + '（服务端报错，返回了 HTML 错误页，看后台日志）');
+            }
+            var j;
+            try { j = JSON.parse(t); } catch (e) {
+                throw new Error('接口返回无法解析 HTTP ' + r.status);
+            }
+            if (!r.ok && j && !j.message) throw new Error('接口异常 HTTP ' + r.status);
+            return j;
+        });
+    }
+
+    // ---------- 币种下拉 ----------
+    get('/instinct/api/currencies').then(function (res) {
+        var sel = $('inst-select');
+        var items = (res.data && res.data.items) || [];
+        if (!items.length) { sel.innerHTML = '<option>（交易配置无币种）</option>'; return; }
+        sel.innerHTML = items.map(function (i) { return '<option>' + esc(i) + '</option>'; }).join('');
+        loadNow();
+    }).catch(function () { $('ctx-box').innerHTML = '<span class="muted">币种清单加载失败</span>'; });
+
+    // ---------- 当前局面 ----------
+    function loadNow() {
+        var inst = $('inst-select').value;
+        if (!inst) return;
+        $('ctx-box').innerHTML = '<span class="muted">快照计算中（双周期引擎，约数秒）…</span>';
+        get('/instinct/api/now?instId=' + encodeURIComponent(inst)).then(function (res) {
+            if (res.code !== 200) { $('ctx-box').innerHTML = '<span class="dir-down">' + esc(res.message) + '</span>'; return; }
+            var d = res.data, c = d.ctx;
+            $('llm-badge').className = 'badge ' + (d.llm_configured ? 'badge-ok' : 'badge-off');
+            $('llm-badge').textContent = d.llm_configured ? 'LLM 已配置' : 'LLM 未配置（预测按钮会给出指引）';
+            $('now-ts').textContent = '快照时间 ' + c.ts;
+            var at = c.ctx_atr_pctile;
+            $('ctx-box').innerHTML = [
+                ['币种', esc(c.inst_id)], ['价格', c.ctx_price],
+                ['短周期方向', DIRCN[c.ctx_short_dir] || '—'], ['长周期方向', DIRCN[c.ctx_long_dir] || '—'],
+                ['长周期翻转', c.ctx_dir_flipped ? '是' : '否'],
+                ['ATR%', c.ctx_atr_pct + (at >= 0 ? '（分位 ' + Math.round(at * 100) + '%）' : '')],
+            ].map(function (p) { return '<div><div class="k">' + p[0] + '</div><div class="v">' + p[1] + '</div></div>'; }).join('');
+            var ctb = $('cases-tb');
+            ctb.innerHTML = (d.cases.length ? d.cases.map(function (x) {
+                return '<tr><td>' + x.score.toFixed(2) + '</td><td>' + esc(x.ts) + '</td><td>' + esc(x.inst_id) +
+                       '</td><td>' + esc(x.judgment_cn) + '</td><td>' + dirHtml(x.long_dir) + '</td><td>' +
+                       (x.flipped ? '🔄' : '') + '</td><td class="muted">' + esc(x.text) + '</td></tr>';
+            }).join('') : '<tr><td colspan="7" class="muted">暂无相似历史（语料继续积累中）</td></tr>');
+        }).catch(function (e) { $('ctx-box').innerHTML = '<span class="dir-down">快照失败: ' + esc(e) + '</span>'; });
+    }
+    $('btn-refresh').onclick = loadNow;
+
+    // ---------- 影子预测 ----------
+    $('btn-predict').onclick = function () {
+        var btn = this; btn.disabled = true; btn.textContent = '⏳ 推理中…';
+        post('/instinct/api/predict', { instId: $('inst-select').value }).then(function (res) {
+            btn.disabled = false; btn.textContent = '⚡ 来一发影子预测';
+            if (res.code !== 200) {
+                $('predict-out').innerHTML = '<div class="pred-card"><span class="inst-note">' + esc(res.message) + '</span></div>';
+                loadPredictions(); return;
+            }
+            var p = res.data;
+            $('predict-out').innerHTML = '<div class="pred-card">' +
+                '<span class="pred-judge">' + esc(jcn(p.judgment)) + '</span>　置信 ' + p.confidence +
+                '　<span class="muted">' + esc(p.model) + ' · ' + p.latency_ms + 'ms · 邻居' + p.n_cases + '条/规则' + p.n_rules + '条 · #' + p.prediction_id + '</span>' +
+                '<div class="rule-st" style="margin-top:6px">' + esc(p.rationale) + '</div>' +
+                (p.meta_cognition ? '<div class="muted" style="margin-top:4px">🪞 元认知：' + esc(p.meta_cognition) + '</div>' : '') +
+                '<div style="margin-top:8px">' +
+                '<button class="inst-btn fb-btn" onclick="INST.fb(' + p.prediction_id + ',\'user_trusted\',1)">👍 可信</button>' +
+                '<button class="inst-btn fb-btn" onclick="INST.fb(' + p.prediction_id + ',\'user_trusted\',0)">👎 存疑</button>' +
+                '<button class="inst-btn fb-btn" onclick="INST.fb(' + p.prediction_id + ',\'user_agree\',1)">🤝 与我一致</button>' +
+                '<button class="inst-btn fb-btn" onclick="INST.fb(' + p.prediction_id + ',\'user_agree\',0)">🙅 与我相反</button></div></div>';
+            loadPredictions();
+        }).catch(function (e) { btn.disabled = false; btn.textContent = '⚡ 来一发影子预测'; alert('预测请求失败: ' + e); });
+    };
+    window.INST = {
+        fb: function (pid, col, val) {
+            var b = {}; b[col] = !!val;
+            post('/instinct/api/predictions/' + pid + '/feedback', b).then(function (r) {
+                if (r.code !== 200) alert(r.message);
+            });
+        }
+    };
+
+    // ---------- 规则卡 ----------
+    function loadRules() {
+        get('/instinct/api/rules').then(function (res) {
+            var d = res.data || { rules: [], counts: {} };
+            $('rule-counts').textContent = Object.keys(d.counts).map(function (k) { return k + ' ' + d.counts[k]; }).join(' · ');
+            var tb = $('rules-tb');
+            tb.innerHTML = (d.rules.length ? d.rules.map(function (r) {
+                var ops = '';
+                if (r.status === 'candidate') ops = '<button class="inst-btn primary" onclick="INST.ruleAct(' + r.id + ',\'confirm\')">✅ 确认生效</button> ' +
+                                                    '<button class="inst-btn danger" onclick="INST.ruleAct(' + r.id + ',\'retire\')">🚫 否决</button>';
+                else if (r.status === 'active') ops = '<button class="inst-btn warn" onclick="INST.ruleAct(' + r.id + ',\'retire\')">⏸ 下线</button>';
+                return '<tr><td><span class="tag tag-' + esc(r.status) + '">' + esc(r.status) + '</span></td>' +
+                       '<td>' + esc(r.kind) + '</td>' +
+                       '<td class="rule-st"><b>' + esc(r.statement) + '</b>' +
+                       (r.condition && Object.keys(r.condition).length ? '<div class="muted">条件: ' + esc(JSON.stringify(r.condition)) + '</div>' : '') + '</td>' +
+                       '<td class="rule-basis">' + esc(r.stat_basis || '') + (r.evidence_refs && r.evidence_refs.length ? '<br>证据 ' + r.evidence_refs.length + ' 条' : '') + '</td>' +
+                       '<td class="muted">' + esc((r.valid_until || '').slice(0, 10)) + '</td><td>' + ops + '</td></tr>';
+            }).join('') : '<tr><td colspan="6" class="muted">暂无规则卡（跑一次蒸馏 CLI 生成候选）</td></tr>');
+        });
+    }
+    window.INST.ruleAct = function (rid, act) {
+        var tip = act === 'confirm' ? '确认该规则生效？生效后进入预测 prompt（90 天有效）' : '下线/否决该规则？（可附原因，写进证据链）';
+        var reason = '';
+        if (act === 'retire') { reason = prompt(tip + '\n（可选）原因：') || ''; if (reason === null) return; }
+        else if (!confirm(tip)) return;
+        post('/instinct/api/rules/' + rid + '/' + act, { reason: reason }).then(function (r) {
+            if (r.code !== 200) alert(r.message);
+            loadRules();
+        });
+    };
+    loadRules();
+
+    // ---------- 预测流水 ----------
+    function hitCell(v) { return v === null || v === undefined ? '<span class="muted">待结算</span>' : (v ? '<span class="dir-up">✔</span>' : '<span class="dir-down">✘</span>'); }
+    function loadPredictions() {
+        get('/instinct/api/predictions?limit=30').then(function (res) {
+            var items = (res.data && res.data.items) || [];
+            $('pred-tb').innerHTML = (items.length ? items.map(function (p) {
+                return '<tr><td><input type="checkbox" class="pred-ck" value="' + p.id + '"></td>' +
+                       '<td>' + esc((p.ts || '').slice(0, 16)) + '</td><td>' + esc(p.inst_id) + '</td>' +
+                       '<td class="muted">' + esc(p.model) + '</td><td>' + esc(p.judgment_cn) + '</td>' +
+                       '<td>' + (p.confidence == null ? '—' : p.confidence) + '</td>' +
+                       '<td>' + hitCell(p.hit_near) + '</td><td>' + hitCell(p.hit_far) + '</td>' +
+                       '<td class="muted" style="max-width:320px">' + esc(p.rationale) + '</td>' +
+                       '<td>' + (p.user_trusted == null && p.user_agree == null ? '<span class="muted">未评</span>' :
+                            (p.user_trusted ? '👍' : '👎') + (p.user_agree ? ' 🤝' : (p.user_agree === false ? ' 🙅' : ''))) + '</td></tr>';
+            }).join('') : '<tr><td colspan="10" class="muted">暂无影子预测（配置 LLM 后点上方按钮或等整点任务）</td></tr>');
+            updateSel();
+        });
+    }
+    // ---------- 预测流水批量管理（选择 / 删除所选 / 清空全部） ----------
+    function predCks() { return Array.prototype.slice.call(document.querySelectorAll('#pred-tb .pred-ck')); }
+    function selectedIds() { return predCks().filter(function (c) { return c.checked; }).map(function (c) { return parseInt(c.value, 10); }); }
+    function updateSel() {
+        var cks = predCks(), n = cks.filter(function (c) { return c.checked; }).length;
+        $('btn-pred-del').disabled = n === 0;
+        $('pred-sel-info').textContent = cks.length ? (n ? ('已选 ' + n + ' / ' + cks.length + ' 条') : ('共 ' + cks.length + ' 条')) : '';
+        var all = $('pred-ck-all');
+        if (all) all.checked = cks.length > 0 && n === cks.length;
+    }
+    document.addEventListener('change', function (e) {
+        if (e.target && e.target.classList && e.target.classList.contains('pred-ck')) updateSel();
+    });
+    $('pred-ck-all').addEventListener('change', function () {
+        var on = this.checked;
+        predCks().forEach(function (c) { c.checked = on; });
+        updateSel();
+    });
+    $('btn-pred-del').onclick = function () {
+        var ids = selectedIds();
+        if (!ids.length) return;
+        if (!confirm('删除选中的 ' + ids.length + ' 条影子预测流水？（不可恢复，不影响情景语料与规则卡）')) return;
+        var btn = this; btn.disabled = true; btn.textContent = '⏳ 删除中…';
+        post('/instinct/api/predictions/delete', { ids: ids }).then(function (r) {
+            btn.textContent = '🗑 删除所选';
+            if (r.code !== 200) { alert(r.message); btn.disabled = false; return; }
+            loadPredictions(); loadStats();
+        }).catch(function (e) { alert('删除失败: ' + e); btn.textContent = '🗑 删除所选'; btn.disabled = false; });
+    };
+    $('btn-pred-clear').onclick = function () {
+        if (!confirm('清空全部影子预测流水？此操作不可恢复（仅删预测流水，不影响情景语料与规则卡）。')) return;
+        var btn = this; btn.disabled = true;
+        post('/instinct/api/predictions/clear', { confirm: true }).then(function (r) {
+            btn.disabled = false;
+            if (r.code !== 200) { alert(r.message); return; }
+            alert('已清空 ' + r.data.cleared + ' 条预测流水');
+            loadPredictions(); loadStats();
+        }).catch(function (e) { btn.disabled = false; alert('清空失败: ' + e); });
+    };
+    $('btn-settle').onclick = function () {
+        $('btn-settle').disabled = true;
+        post('/instinct/api/settle', {}).then(function (r) {
+            $('btn-settle').disabled = false;
+            alert(r.code === 200 ? ('结算完成，回填 ' + r.data.filled + ' 个字段') : r.message);
+            loadPredictions(); loadStats();
+        }).catch(function () { $('btn-settle').disabled = false; });
+    };
+    loadPredictions();
+
+    // ---------- A/B 统计 ----------
+    function loadStats() {
+        get('/instinct/api/stats').then(function (res) {
+            var d = res.data || {};
+            function box(title, s, sub) {
+                var r = s && s.rate != null ? s.rate + '%' : '—';
+                return '<div class="stat-box"><div class="t">' + title + '</div><div class="n">' + r +
+                       '</div><div class="s">近窗 n=' + ((s && s.n) || 0) + (sub || '') + '</div></div>';
+            }
+            var out = [];
+            out.push(box('🧑 你本人 · 近窗', d.user));
+            out.push(box('⚙️ 策略引擎 · 近窗', d.strategy));
+            out.push(box('🤖 LLM 影子 · 近窗', d.llm, '　远窗 ' + (d.llm && d.llm.far && d.llm.far.rate != null ? d.llm.far.rate + '%' : '—') +
+                        '　待结算 ' + (d.llm_pending || 0)));
+            $('stats-box').innerHTML = out.join('');
+            $('stats-note').textContent = d.note || '';
+        });
+    }
+    loadStats();
+})();
+</script>
+</body>
+</html>

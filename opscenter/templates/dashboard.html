@@ -1,0 +1,248 @@
+{% extends "base.html" %}
+{% set active_page = "dashboard" %}
+{% block title %}总览仪表盘 · OpsCenter{% endblock %}
+{% block crumb_group %}态势总览{% endblock %}
+{% block crumb_page %}总览仪表盘{% endblock %}
+
+{% set alive = h.process.alive %}
+{% set ring_color = 'var(--success)' if h.score >= 80 else ('var(--warning)' if h.score >= 60 else 'var(--danger)') %}
+
+{% block content %}
+<div class="page-head fade-in">
+  <div class="page-head__top">
+    <div>
+      <h1 class="page-head__title">系统健康概览</h1>
+      <p class="page-head__desc">
+        {% if h.stale %}
+          数据源 <span class="text-mono">memory_history.jsonl</span> 暂无可读心跳
+        {% else %}
+          实时读取交易系统落盘产物 · 最近采样 {{ h.checked_at }}
+          {%- if h.lag_sec is not none %}（{{ h.lag_sec }} 秒前）{% endif %}
+        {% endif %}
+      </p>
+    </div>
+    <div class="page-head__actions">
+      <a class="btn btn--ghost" href="/lifecycle">♻️ 生命周期</a>
+      <a class="btn btn--primary" href="/health">🩺 进入健康检查</a>
+    </div>
+  </div>
+</div>
+
+{% if h.stale %}
+<div class="banner banner--info fade-in">ℹ️ 未读到内存心跳数据。请确认数据源路径：<span class="text-mono">{{ log_dir }}</span></div>
+{% elif not alive %}
+<div class="banner banner--danger fade-in">⚠️ 交易进程心跳已超时（最近采样 {{ h.checked_at }}），可能已退出或运维站与交易系统不在同一台机器。</div>
+{% endif %}
+
+<!-- KPI 磁贴 -->
+<div class="grid grid--cols-12">
+  <div class="col-3">
+    <div class="tile tile--hover fade-in">
+      <div class="tile__glow"></div>
+      <div class="tile__top"><span class="tile__label">综合健康评分</span>
+        <span class="tile__icon tile__icon--{% if h.score>=80 %}success{% elif h.score>=60 %}warning{% else %}danger{% endif %}">🛡️</span></div>
+      <div class="tile__value">{{ h.score }}<small>/100</small></div>
+      <div class="tile__foot"><span class="badge badge--{% if h.score>=80 %}success{% elif h.score>=60 %}warning{% else %}danger{% endif %}">
+        <span class="badge__dot"></span>{% if h.score>=80 %}优秀{% elif h.score>=60 %}需关注{% else %}异常{% endif %}</span></div>
+    </div>
+  </div>
+
+  <div class="col-3">
+    <div class="tile tile--hover fade-in" style="animation-delay:.05s">
+      <div class="tile__glow"></div>
+      <div class="tile__top"><span class="tile__label">交易进程</span>
+        <span class="tile__icon tile__icon--{% if alive %}success{% else %}danger{% endif %}">🐍</span></div>
+      <div class="tile__value" style="font-size:var(--fs-2xl)">{% if alive %}存活{% else %}离线{% endif %}</div>
+      <div class="tile__foot">
+        {% if h.process.pid %}<span class="text-mono">PID {{ h.process.pid }}</span>{% endif %}
+        {%- if h.lag_sec is not none %} · 心跳 {{ h.lag_sec }}s{% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-3">
+    <div class="tile tile--hover fade-in" style="animation-delay:.1s">
+      <div class="tile__glow"></div>
+      <div class="tile__top"><span class="tile__label">进程内存 RSS</span>
+        <span class="tile__icon tile__icon--{{ 'success' if h.rss_mb is none or h.rss_mb < 600 else ('warning' if h.rss_mb < 800 else 'danger') }}">🧠</span></div>
+      <div class="tile__value">{% if h.rss_mb is not none %}{{ h.rss_mb }}{% else %}—{% endif %}<small>MB</small></div>
+      <div class="tile__foot">危险线 800MB{% if h.rss_mb is not none %} · {{ '%.0f' % (h.rss_mb / 800 * 100) }}%{% endif %}</div>
+      {% if rss_spark %}
+      <div class="tile__spark">
+        <svg viewBox="0 0 100 28" preserveAspectRatio="none" style="height:28px;width:100%">
+          <polyline points="{{ rss_spark }}" fill="none" stroke="var(--warning)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="col-3">
+    <div class="tile tile--hover fade-in" style="animation-delay:.15s">
+      <div class="tile__glow"></div>
+      <div class="tile__top"><span class="tile__label">今日重启</span>
+        <span class="tile__icon tile__icon--{{ 'success' if lc.today_restarts == 0 else 'warning' }}">♻️</span></div>
+      <div class="tile__value">{{ lc.today_restarts }}<small>次</small></div>
+      <div class="tile__foot">累计 {{ lc.total }} 次 · 运行 {{ lc.running_for }}</div>
+    </div>
+  </div>
+</div>
+
+<!-- 内存趋势 + 健康评分环 -->
+<div class="grid grid--cols-12 mt-5">
+  <div class="col-8">
+    <div class="card fade-in">
+      <div class="card__head">
+        <div><div class="card__title">📈 进程内存 RSS 趋势</div>
+          <div class="card__subtitle">数据源 <span class="text-mono">memory_history.jsonl</span> · app 心跳</div></div>
+        <span class="kv">采样 {{ h.memory_series|length }} 点</span>
+      </div>
+      <div class="card__body">
+        {% if chart.available %}
+        <div class="chart">
+          <svg viewBox="{{ chart.viewbox }}" preserveAspectRatio="none" style="height:260px">
+            <defs>
+              <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="var(--brand-400)" stop-opacity=".38"/>
+                <stop offset="100%" stop-color="var(--brand-400)" stop-opacity="0"/>
+              </linearGradient>
+            </defs>
+            <line class="chart__grid" x1="0" y1="16" x2="800" y2="16"/>
+            <line class="chart__grid" x1="0" y1="{{ (260+16)/2|round }}" x2="800" y2="{{ (260+16)/2|round }}"/>
+            {% if chart.threshold_y is not none %}
+            <line class="chart__thresh" x1="0" y1="{{ chart.threshold_y }}" x2="800" y2="{{ chart.threshold_y }}"/>
+            <text class="chart__axis" x="6" y="{{ chart.threshold_y - 5 }}">{{ chart.threshold_label }}</text>
+            {% endif %}
+            <path class="chart__area" d="{{ chart.area_path }}"/>
+            <polyline class="chart__line draw-line" points="{{ chart.line_points }}"/>
+            <circle class="chart__dot" cx="{{ chart.last_x }}" cy="{{ chart.last_y }}" r="4"/>
+          </svg>
+        </div>
+        <div class="chart-legend mt-4">
+          <span class="chart-legend__item"><span class="chart-legend__line" style="background:var(--brand-400)"></span>RSS</span>
+          <span class="chart-legend__item"><span class="chart-legend__line" style="background:var(--danger)"></span>危险线</span>
+          <span class="chart-legend__item text-mute">区间 {{ chart.min }} ~ {{ chart.max }} MB</span>
+        </div>
+        {% else %}
+        <div class="empty"><span class="empty__icon">📉</span>内存趋势数据不足（需 ≥2 个采样点）</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-4">
+    <div class="card fade-in" style="animation-delay:.05s">
+      <div class="card__head"><div><div class="card__title">🛡️ 评分构成</div><div class="card__subtitle">五维加权</div></div></div>
+      <div class="card__body">
+        <div class="score-wrap" style="flex-direction:column;gap:var(--sp-5)">
+          <div class="score-ring">
+            <svg width="132" height="132" viewBox="0 0 132 132">
+              <circle cx="66" cy="66" r="56" fill="none" stroke="var(--surface-3)" stroke-width="12"/>
+              <circle cx="66" cy="66" r="56" fill="none" stroke="{{ ring_color }}" stroke-width="12" stroke-linecap="round"
+                      stroke-dasharray="{{ ring_circ }}" stroke-dashoffset="{{ ring_offset }}"/>
+            </svg>
+            <div class="score-ring__val"><div><div class="score-ring__num">{{ h.score }}</div><div class="score-ring__cap">综合</div></div></div>
+          </div>
+          <div class="score-legend" style="width:100%">
+            {% for p in h.score_parts %}
+            <div class="score-legend__item">
+              <span class="score-legend__label"><span class="score-legend__swatch" style="background:var(--{{ p.level }})"></span>{{ p.label }}</span>
+              <b>{{ p.score }}</b>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 服务健康 + 生命周期时间线 -->
+<div class="grid grid--cols-12 mt-5">
+  <div class="col-7">
+    <div class="card fade-in">
+      <div class="card__head"><div><div class="card__title">🩺 服务健康检查</div><div class="card__subtitle">只读可观测项</div></div>
+        <span class="badge badge--{{ 'success' if alive else 'danger' }}"><span class="badge__dot"></span>{{ '进程存活' if alive else '进程离线' }}</span></div>
+      <div class="card__body">
+        {% for s in h.services %}
+        <div class="list-row">
+          <div class="list-row__icon" style="background:var(--{{ s.level }}-soft);color:var(--{{ s.level }})">{{ s.icon }}</div>
+          <div class="list-row__main">
+            <div class="list-row__title">{{ s.name }}</div>
+            <div class="list-row__sub">{{ s.meta }}</div>
+            <div class="progress" style="height:4px;margin-top:8px"><div class="progress__bar progress__bar--{{ s.level }}" style="width:{{ s.pct }}%"></div></div>
+          </div>
+          <div class="list-row__aside"><span class="badge badge--{{ s.level }}"><span class="badge__dot"></span>{{ s.stat }}</span></div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-5">
+    <div class="card fade-in" style="animation-delay:.05s">
+      <div class="card__head"><div><div class="card__title">♻️ 最近启动归因</div><div class="card__subtitle"><span class="text-mono">boot_ledger.jsonl</span></div></div>
+        <a class="btn btn--sm btn--ghost" href="/lifecycle">全部 →</a></div>
+      <div class="card__body">
+        {% if lc.events %}
+        <div class="timeline">
+          {% for e in lc.events[:6] %}
+          <div class="timeline__item">
+            <span class="timeline__dot timeline__dot--{{ e.level }}"></span>
+            <div class="timeline__title">{{ e.label }}<span class="badge badge--{{ e.level }}">{{ e.reason }}</span></div>
+            <div class="timeline__meta">{{ e.ts }} · seq {{ e.seq }}{% if e.pid %} · PID {{ e.pid }}{% endif %}</div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty"><span class="empty__icon">🗒️</span>暂无启动台账</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 近期异常 + 归因分布 -->
+<div class="grid grid--cols-12 mt-5">
+  <div class="col-6">
+    <div class="card fade-in">
+      <div class="card__head"><div><div class="card__title">🚨 近期异常</div><div class="card__subtitle">来自采样记录 issues 字段</div></div>
+        {% if h.issues %}<span class="badge badge--warning">{{ h.issues|length }}</span>{% endif %}</div>
+      <div class="card__body">
+        {% if h.issues %}
+          {% for a in h.issues %}
+          <div class="list-row">
+            <div class="list-row__icon" style="background:var(--warning-soft);color:var(--warning)">⚠️</div>
+            <div class="list-row__main"><div class="list-row__title">{{ a.text }}</div><div class="list-row__sub">{{ a.ts }}</div></div>
+          </div>
+          {% endfor %}
+        {% else %}
+        <div class="empty"><span class="empty__icon">✅</span>近期无异常记录</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-6">
+    <div class="card fade-in" style="animation-delay:.05s">
+      <div class="card__head"><div><div class="card__title">📊 启动归因分布</div><div class="card__subtitle">累计 {{ lc.total }} 次启动</div></div></div>
+      <div class="card__body">
+        {% if lc.distribution %}
+          {% set mx = lc.distribution|map(attribute='count')|max %}
+          <div class="dist">
+            {% for d in lc.distribution %}
+            <div class="dist__row">
+              <span class="dist__label">{{ d.label }}</span>
+              <span class="dist__track"><span class="dist__fill" style="width:{{ (d.count / mx * 100)|round }}%;background:var(--{{ d.level }})"></span></span>
+              <span class="dist__count">{{ d.count }}</span>
+            </div>
+            {% endfor %}
+          </div>
+        {% else %}
+        <div class="empty"><span class="empty__icon">📊</span>暂无归因数据</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

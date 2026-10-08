@@ -1,0 +1,624 @@
+{
+  "_comment_consecutive_failure_alert": "consecutive_failure_alert_rounds：同一币种连续执行失败（分析失败/持仓查询失败/执行异常）达此轮数后发送告警邮件（默认5，0=不告警）；发送后重置计数，故障持续则每 N 轮再提醒，另受邮件冷却约束",
+  "_comment_file_description": "实盘交易配置 — 双仓位架构（趋势跟踪 + 区间波动），全仓做多 / 逐仓做空",
+  "_comment_manual_close_pause": "manual_close_pause_minutes：人工强平后暂停自动开新仓的冷却分钟数（默认30，0=不冷却），避免下一轮调度把刚平掉的仓位重新开回来；冷却状态持久化，重启程序不重置",
+  "_comment_night_force_close": {
+    "enabled": "睡眠时段长周期反转强平开关（默认true）",
+    "start_hour/end_hour": "东八区小时区间 [start, end)，默认 0-6 点。该时段内长周期方向反转 → 趋势跟踪仓位强制减仓（smart_reduce 保留残留，不全平；用户睡眠看不到提醒邮件）；时段外仅发提醒邮件不动仓"
+  },
+  "_comment_position_architecture": {
+    "1. 仓位划分": "trend_position(趋势跟踪)=按趋势策略信号操作 | range_position(区间波动)=按BOLL边界限价操作，两者独立配置张数、独立记账、互不干扰",
+    "2. 交易所隔离": "净持仓模式下多头统一走全仓(cross)、空头统一走逐仓(isolated)；同模式下两仓位共享净头寸，靠本地账本(position_order_state.json)记录各自持仓张数与加权均价",
+    "3. 趋势跟踪方向": "period_mode=single(单周期)→双向，只看短周期方向翻转，多空都做 | period_mode=dual(双周期)→单向，短长周期共振才开仓，只做长周期方向",
+    "4. 区间波动方向": "固定双周期单向，只做长周期方向：长多→BOLL下轨挂限价买入、上轨挂限价平仓 | 长空→上轨挂限价卖出、下轨挂限价平仓；平仓成交后立即开始下一轮循环",
+    "5. 挂单方式": "全部限价单。趋势跟踪按 entry_price_type/exit_price_type 取反转bar的 open/close 价挂单，不追价（宁愿错过，等成交或下次反转信号撤单）；区间波动挂BOLL边界价并随边界移动自动改单追价",
+    "6. 长周期反转": "不再强制平掉趋势仓，仅发送方向反转提醒邮件；但处于 night_force_close 时段（默认东八区0-6点，用户睡眠期）则强制减仓（smart_reduce 全局强制：保留1U/minSz残留，不全平）。区间波动仓位始终强制处理：撤未成交开仓单换方向重挂 + 已持仓市价减仓（保留残留）",
+    "7. 止盈止损": "仅对趋势跟踪仓位生效（区间波动自带对侧BOLL边界止盈）"
+  },
+  "_comment_range_position": {
+    "boll_amend_min_pct": "BOLL限价单追价最小改价幅度（相对比例，0.001=0.1%），边界变动超过此幅度才改单；0=只要变就改",
+    "boll_period/boll_dev": "短周期布林带参数（默认 20 / 2.0）",
+    "contracts": "该仓位合约张数（独立配置），size_mode='contracts'时生效",
+    "enabled": "区间波动仓位（BOLL边界限价）总开关",
+    "notional_usd": "size_mode='usd'时生效：占用保证金预算(USDT)，每轮按 张数=floor(金额×杠杆÷每张面值÷lotSz)×lotSz 折算（保证金×杠杆=可开持仓价值，低于minSz不挂单）；面值=ctVal×现价，各币种不同；杠杆取币种leverage（0/缺省按1x）",
+    "size_mode": "下单量模式：'contracts'=按张数(默认,存量行为) / 'usd'=按保证金金额×杠杆折算张数",
+    "运作流程": "空仓且无挂单 → 入场边界挂限价开仓单（随边界改单追价）→ 成交后立即在对侧边界挂 reduce-only 限价平仓单（随边界改单追价）→ 平仓成交后篮子归零，下一轮重新挂开仓单，无限循环刷区间"
+  },
+  "_comment_reverse_position_guard": {
+    "enabled": "人工反向持仓风控总开关：检测到与长周期方向相反的人工持仓（如长多但手动开空）时启用预警+超时强平",
+    "grace_minutes": "预警到强平的宽限分钟数（默认10）：首次检测立即发预警邮件，超过此时长未处理则系统强制平仓（计时器持久化，重启不重置）",
+    "生效条件": "仅当趋势跟踪为双周期单向模式(period_mode=dual)时启用；单周期双向模式下多空持仓均为合法策略仓，自动关闭本风控"
+  },
+  "_comment_risk_control": "max_position_per_currency：单币种上限（两篮子双向持仓+未成交开仓挂单合计），张数口径 | max_position_per_currency_usd：单币种上限USD口径，每轮按现价折算张数后与张数口径取更严者（0=不启用） | max_total_position：全账户总上限（跨全部币种同口径合计，仅张数口径，跨币种张数相加无实际意义，建议设0停用改用单币种USD上限），两者均在开仓挂单前强制拦截，超限拒单",
+  "_comment_signal_and_price": {
+    "entry_price_type": "趋势跟踪开仓挂单价：'close'(反转bar收盘价,默认) / 'open'(反转bar开盘价)。行情趋势强弱由人为切换判断",
+    "exit_price_type": "趋势跟踪平仓挂单价：'open'(反转bar开盘价,默认) / 'close'(反转bar收盘价)",
+    "leverage": "杠杆倍数（两仓位共用，下单前设置）；金额模式(size_mode='usd')下为放大因子：张数=floor(保证金×杠杆÷每张面值)",
+    "signal_algo": "短周期信号算法：'diff'(平滑差,灵敏,默认) / 'hybrid'(混合状态机,稳定)",
+    "verbose_lifecycle": "生命周期日志详细开关（默认 true）：true=记录下单/状态变更/改单/成交/撤销全部事件；false=仅保留成交/撤销关键事件，减少震荡行情刷屏"
+  },
+  "_comment_trend_position": {
+    "contracts": "该仓位合约张数（独立配置，与区间波动仓位互不占用），size_mode='contracts'时生效",
+    "enabled": "趋势跟踪仓位总开关",
+    "exchange_algo_backup": "交易所侧兜底委托开关（默认true）：开仓成交后按本地均价挂一张交易所止损/固定目标止盈策略委托，断网/程序停止/睡眠时仍能触发；本地评估并行运行，谁先触发算谁",
+    "notional_usd": "size_mode='usd'时生效：占用保证金预算(USDT)，每轮按 张数=floor(金额×杠杆÷每张面值÷lotSz)×lotSz 折算（保证金×杠杆=可开持仓价值，低于minSz不挂单）；面值=ctVal×现价，各币种不同；杠杆取币种leverage（0/缺省按1x）",
+    "period_mode": "'single'=单周期双向（短周期方向翻转即平旧开新，多空都做） / 'dual'=双周期单向（短长共振开仓，只做长周期方向）",
+    "size_mode": "下单量模式：'contracts'=按张数(默认,存量行为) / 'usd'=按保证金金额×杠杆折算张数",
+    "stop_loss": "止损配置：enabled=总开关, type='fixed'(固定百分比)/'atr'(ATR倍数), fixed_pct=固定止损百分比, atr_multiple=ATR止损倍数，止损永远最先检查，支持交易所侧兜底委托",
+    "take_profit": "止盈配置：enabled=总开关, category=主止盈六选一 none/fixed_target/trailing/momentum/channel/ladder，time_stop=时间兜底独立开关可与任意主止盈共存",
+    "take_profit.channel": "通道边界：mode='outer'(碰BOLL外轨平) / 'middle'(跌破/升破BOLL中轨平,需盈利≥min_profit_pct%)",
+    "take_profit.fixed_target": "固定目标：mode='pct'(盈利pct%平) / 'r_multiple'(盈利N倍R,R=止损距离,止损未启用1R=1ATR) / 'atr_multiple'(盈利N倍ATR平)。仅本类支持交易所侧兜底委托",
+    "take_profit.ladder": "分批：levels=[{pct,close_ratio},..]盈利达各档pct%时按close_ratio比例平当前仓位，末档close_ratio=1.0清仓，已触发档位持久化不重复",
+    "take_profit.momentum": "动能衰竭：mode='hist_decay'(MACD柱连续decay_bars根收缩) / 'divergence'(MACD背离,lookback回溯窗口)，均需盈利≥min_profit_pct%",
+    "take_profit.time_stop": "时间兜底：持仓超max_bars根短周期K线且盈利仍<min_profit_pct% → 平仓",
+    "take_profit.trailing": "追踪：mode='pullback_pct'(盈利达activate_pct%后峰值回撤pullback_pct%平) / 'chandelier'(吊灯:峰值回撤N倍ATR平) / 'r_ladder'(r_levels=[[reach_r,lock_r],..]阶梯锁利)"
+  },
+  "_comment_smart_reduce": {
+    "enabled": "智能减仓全局强制总开关（默认true=启用，仅作紧急闸）：所有策略平仓场景永不全平，只市价减仓保留残留仓",
+    "scenes": "生效场景白名单，缺省=全部：reversal反转清理 / night_force睡眠强平 / reverse_guard反向持仓风控 / stop_loss止损 / take_profit止盈(含分批) / range_risk区间风险退出；显式配置可收窄",
+    "target_margin_usd": "残留仓目标保证金(USDT，默认1)：保留量=目标保证金×杠杆折算张数 与 合约minSz 取较大值；残留仓无自动退出机制，靠 /api/task/residual-positions 人工处理",
+    "不覆盖": "对侧BOLL限价平仓/趋势限价平仓单/交易所兜底委托等挂单侧成交，人工强平API，账本外人工反向单定量平仓"
+  },
+  "_comment_update_time": "2026-10-06",
+  "_comment_version": "3.0",
+  "currencies": [
+    {
+      "entry_price_type": "close",
+      "exit_price_type": "open",
+      "instId": "XRP-USDT-SWAP",
+      "leverage": 10,
+      "long_period": "4H",
+      "manual_direction": "auto",
+      "range_position": {
+        "atr_period": 14,
+        "boll_amend_min_pct": 0.001,
+        "boll_dev": 2,
+        "boll_period": 20,
+        "contracts": 0.2,
+        "direction_filter": true,
+        "direction_source": "keltner",
+        "enabled": true,
+        "entry_atr_mult": 0.7,
+        "exit_atr_mult": 0.3,
+        "notional_usd": 1,
+        "risk": {
+          "enabled": false,
+          "hard_stop_atr_mult": 1,
+          "max_hold_bars": 0,
+          "breakdown_rounds": 0,
+          "cooldown_bars": 3
+        },
+        "size_mode": "usd",
+        "strategy": "keltner_boll",
+        "trend_indicator": "keltner"
+      },
+      "short_period": "15m",
+      "signal_algo": "diff",
+      "trade_enabled": true,
+      "trend_position": {
+        "contracts": 0.2,
+        "enabled": false,
+        "exchange_algo_backup": true,
+        "notional_usd": 2,
+        "period_mode": "dual",
+        "size_mode": "usd",
+        "stop_loss": {
+          "enabled": false,
+          "type": "fixed",
+          "fixed_pct": 3,
+          "atr_multiple": 1.5
+        },
+        "take_profit": {
+          "enabled": false,
+          "category": "none",
+          "fixed_target": {
+            "mode": "pct",
+            "pct": 5,
+            "r_multiple": 2,
+            "atr_multiple": 3
+          },
+          "trailing": {
+            "mode": "pullback_pct",
+            "activate_pct": 1,
+            "pullback_pct": 2,
+            "chandelier_atr": 3,
+            "r_levels": [
+              [
+                1,
+                0
+              ],
+              [
+                2,
+                1
+              ],
+              [
+                3,
+                2
+              ]
+            ]
+          },
+          "momentum": {
+            "mode": "hist_decay",
+            "decay_bars": 3,
+            "lookback": 30,
+            "min_profit_pct": 0.5
+          },
+          "channel": {
+            "mode": "outer",
+            "min_profit_pct": 0
+          },
+          "ladder": {
+            "levels": [
+              {
+                "pct": 2,
+                "close_ratio": 0.33
+              },
+              {
+                "pct": 4,
+                "close_ratio": 0.5
+              },
+              {
+                "pct": 6,
+                "close_ratio": 1
+              }
+            ]
+          },
+          "combo": {
+            "init_r_atr": 2,
+            "activate_r": 1.5,
+            "chandelier_atr": 3,
+            "partial_r": 2,
+            "partial_ratio": 0.3,
+            "breakeven_buffer_pct": 0.1,
+            "lock_steps": [
+              [
+                1.5,
+                0
+              ],
+              [
+                2.5,
+                1
+              ],
+              [
+                4,
+                2
+              ]
+            ]
+          },
+          "time_stop": {
+            "enabled": false,
+            "max_bars": 24,
+            "min_profit_pct": 1
+          }
+        }
+      },
+      "verbose_lifecycle": true
+    },
+    {
+      "entry_price_type": "close",
+      "exit_price_type": "open",
+      "instId": "SOL-USDT-SWAP",
+      "leverage": 10,
+      "long_period": "4H",
+      "manual_direction": "auto",
+      "range_position": {
+        "atr_period": 14,
+        "boll_amend_min_pct": 0.001,
+        "boll_dev": 2,
+        "boll_period": 20,
+        "contracts": 0.2,
+        "direction_filter": true,
+        "direction_source": "keltner",
+        "enabled": true,
+        "entry_atr_mult": 0.7,
+        "exit_atr_mult": 0.3,
+        "notional_usd": 1,
+        "risk": {
+          "breakdown_rounds": 0,
+          "cooldown_bars": 3,
+          "enabled": false,
+          "hard_stop_atr_mult": 1,
+          "max_hold_bars": 0
+        },
+        "size_mode": "usd",
+        "strategy": "keltner_boll",
+        "trend_indicator": "keltner"
+      },
+      "short_period": "15m",
+      "signal_algo": "diff",
+      "trade_enabled": true,
+      "trend_position": {
+        "contracts": 0.2,
+        "enabled": false,
+        "exchange_algo_backup": true,
+        "notional_usd": 2,
+        "period_mode": "dual",
+        "size_mode": "usd",
+        "stop_loss": {
+          "atr_multiple": 1.5,
+          "enabled": false,
+          "fixed_pct": 3,
+          "type": "fixed"
+        },
+        "take_profit": {
+          "category": "none",
+          "channel": {
+            "min_profit_pct": 0,
+            "mode": "outer"
+          },
+          "combo": {
+            "activate_r": 1.5,
+            "breakeven_buffer_pct": 0.1,
+            "chandelier_atr": 3,
+            "init_r_atr": 2,
+            "lock_steps": [
+              [
+                1.5,
+                0
+              ],
+              [
+                2.5,
+                1
+              ],
+              [
+                4,
+                2
+              ]
+            ],
+            "partial_r": 2,
+            "partial_ratio": 0.3
+          },
+          "enabled": false,
+          "fixed_target": {
+            "atr_multiple": 3,
+            "mode": "pct",
+            "pct": 5,
+            "r_multiple": 2
+          },
+          "ladder": {
+            "levels": [
+              {
+                "close_ratio": 0.33,
+                "pct": 2
+              },
+              {
+                "close_ratio": 0.5,
+                "pct": 4
+              },
+              {
+                "close_ratio": 1,
+                "pct": 6
+              }
+            ]
+          },
+          "momentum": {
+            "decay_bars": 3,
+            "lookback": 30,
+            "min_profit_pct": 0.5,
+            "mode": "hist_decay"
+          },
+          "time_stop": {
+            "enabled": false,
+            "max_bars": 24,
+            "min_profit_pct": 1
+          },
+          "trailing": {
+            "activate_pct": 1,
+            "chandelier_atr": 3,
+            "mode": "pullback_pct",
+            "pullback_pct": 2,
+            "r_levels": [
+              [
+                1,
+                0
+              ],
+              [
+                2,
+                1
+              ],
+              [
+                3,
+                2
+              ]
+            ]
+          }
+        }
+      },
+      "verbose_lifecycle": true
+    },
+    {
+      "entry_price_type": "close",
+      "exit_price_type": "open",
+      "instId": "LTC-USDT-SWAP",
+      "leverage": 10,
+      "long_period": "4H",
+      "manual_direction": "auto",
+      "range_position": {
+        "atr_period": 14,
+        "boll_amend_min_pct": 0.001,
+        "boll_dev": 2,
+        "boll_period": 20,
+        "contracts": 0.2,
+        "direction_filter": true,
+        "direction_source": "keltner",
+        "enabled": true,
+        "entry_atr_mult": 0.7,
+        "exit_atr_mult": 0.3,
+        "notional_usd": 1,
+        "risk": {
+          "breakdown_rounds": 0,
+          "cooldown_bars": 3,
+          "enabled": false,
+          "hard_stop_atr_mult": 1,
+          "max_hold_bars": 0
+        },
+        "size_mode": "usd",
+        "strategy": "keltner_boll",
+        "trend_indicator": "keltner"
+      },
+      "short_period": "15m",
+      "signal_algo": "diff",
+      "trade_enabled": true,
+      "trend_position": {
+        "contracts": 0.2,
+        "enabled": false,
+        "exchange_algo_backup": true,
+        "notional_usd": 2,
+        "period_mode": "dual",
+        "size_mode": "usd",
+        "stop_loss": {
+          "atr_multiple": 1.5,
+          "enabled": false,
+          "fixed_pct": 3,
+          "type": "fixed"
+        },
+        "take_profit": {
+          "category": "none",
+          "channel": {
+            "min_profit_pct": 0,
+            "mode": "outer"
+          },
+          "combo": {
+            "activate_r": 1.5,
+            "breakeven_buffer_pct": 0.1,
+            "chandelier_atr": 3,
+            "init_r_atr": 2,
+            "lock_steps": [
+              [
+                1.5,
+                0
+              ],
+              [
+                2.5,
+                1
+              ],
+              [
+                4,
+                2
+              ]
+            ],
+            "partial_r": 2,
+            "partial_ratio": 0.3
+          },
+          "enabled": false,
+          "fixed_target": {
+            "atr_multiple": 3,
+            "mode": "pct",
+            "pct": 5,
+            "r_multiple": 2
+          },
+          "ladder": {
+            "levels": [
+              {
+                "close_ratio": 0.33,
+                "pct": 2
+              },
+              {
+                "close_ratio": 0.5,
+                "pct": 4
+              },
+              {
+                "close_ratio": 1,
+                "pct": 6
+              }
+            ]
+          },
+          "momentum": {
+            "decay_bars": 3,
+            "lookback": 30,
+            "min_profit_pct": 0.5,
+            "mode": "hist_decay"
+          },
+          "time_stop": {
+            "enabled": false,
+            "max_bars": 24,
+            "min_profit_pct": 1
+          },
+          "trailing": {
+            "activate_pct": 1,
+            "chandelier_atr": 3,
+            "mode": "pullback_pct",
+            "pullback_pct": 2,
+            "r_levels": [
+              [
+                1,
+                0
+              ],
+              [
+                2,
+                1
+              ],
+              [
+                3,
+                2
+              ]
+            ]
+          }
+        }
+      },
+      "verbose_lifecycle": true
+    },
+    {
+      "entry_price_type": "close",
+      "exit_price_type": "open",
+      "instId": "ETH-USDT-SWAP",
+      "leverage": 10,
+      "long_period": "4H",
+      "manual_direction": "auto",
+      "range_position": {
+        "atr_period": 14,
+        "boll_amend_min_pct": 0.001,
+        "boll_dev": 2,
+        "boll_period": 20,
+        "contracts": 0.2,
+        "direction_filter": true,
+        "direction_source": "keltner",
+        "enabled": true,
+        "entry_atr_mult": 0.7,
+        "exit_atr_mult": 0.3,
+        "notional_usd": 1,
+        "risk": {
+          "breakdown_rounds": 0,
+          "cooldown_bars": 3,
+          "enabled": false,
+          "hard_stop_atr_mult": 1,
+          "max_hold_bars": 0
+        },
+        "size_mode": "usd",
+        "strategy": "keltner_boll",
+        "trend_indicator": "keltner"
+      },
+      "short_period": "15m",
+      "signal_algo": "diff",
+      "trade_enabled": true,
+      "trend_position": {
+        "contracts": 0.2,
+        "enabled": false,
+        "exchange_algo_backup": true,
+        "notional_usd": 2,
+        "period_mode": "dual",
+        "size_mode": "usd",
+        "stop_loss": {
+          "atr_multiple": 1.5,
+          "enabled": false,
+          "fixed_pct": 3,
+          "type": "fixed"
+        },
+        "take_profit": {
+          "category": "none",
+          "channel": {
+            "min_profit_pct": 0,
+            "mode": "outer"
+          },
+          "combo": {
+            "activate_r": 1.5,
+            "breakeven_buffer_pct": 0.1,
+            "chandelier_atr": 3,
+            "init_r_atr": 2,
+            "lock_steps": [
+              [
+                1.5,
+                0
+              ],
+              [
+                2.5,
+                1
+              ],
+              [
+                4,
+                2
+              ]
+            ],
+            "partial_r": 2,
+            "partial_ratio": 0.3
+          },
+          "enabled": false,
+          "fixed_target": {
+            "atr_multiple": 3,
+            "mode": "pct",
+            "pct": 5,
+            "r_multiple": 2
+          },
+          "ladder": {
+            "levels": [
+              {
+                "close_ratio": 0.33,
+                "pct": 2
+              },
+              {
+                "close_ratio": 0.5,
+                "pct": 4
+              },
+              {
+                "close_ratio": 1,
+                "pct": 6
+              }
+            ]
+          },
+          "momentum": {
+            "decay_bars": 3,
+            "lookback": 30,
+            "min_profit_pct": 0.5,
+            "mode": "hist_decay"
+          },
+          "time_stop": {
+            "enabled": false,
+            "max_bars": 24,
+            "min_profit_pct": 1
+          },
+          "trailing": {
+            "activate_pct": 1,
+            "chandelier_atr": 3,
+            "mode": "pullback_pct",
+            "pullback_pct": 2,
+            "r_levels": [
+              [
+                1,
+                0
+              ],
+              [
+                2,
+                1
+              ],
+              [
+                3,
+                2
+              ]
+            ]
+          }
+        }
+      },
+      "verbose_lifecycle": true
+    }
+  ],
+  "global_settings": {
+    "consecutive_failure_alert_rounds": 5,
+    "email_cooldown_minutes": 30,
+    "email_notifications": true,
+    "enabled": true,
+    "execution_interval_seconds": 20,
+    "manual_close_pause_minutes": 30,
+    "max_notifications_per_hour": 30,
+    "night_force_close": {
+      "enabled": true,
+      "start_hour": 0,
+      "end_hour": 6
+    },
+    "order_ttl_periods": 4,
+    "reverse_position_guard": {
+      "enabled": true,
+      "grace_minutes": 10
+    },
+    "smart_reduce": {
+      "enabled": true,
+      "target_margin_usd": 1.0,
+      "scenes": ["reversal", "night_force", "reverse_guard", "stop_loss", "take_profit", "range_risk"]
+    },
+    "risk_control": {
+      "emergency_stop": false,
+      "max_position_per_currency": 10000,
+      "max_position_per_currency_usd": 0,
+      "max_total_position": 10000
+    }
+  }
+}

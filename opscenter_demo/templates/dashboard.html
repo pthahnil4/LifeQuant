@@ -1,0 +1,330 @@
+{% extends "base.html" %}
+{% set active_page = "dashboard" %}
+{% block title %}总览仪表盘 · OpsCenter{% endblock %}
+{% block crumb_group %}态势总览{% endblock %}
+{% block crumb_page %}总览仪表盘{% endblock %}
+
+{% block content %}
+<!-- 页头 -->
+<div class="page-head fade-in">
+  <div class="page-head__top">
+    <div>
+      <h1 class="page-head__title">系统健康概览</h1>
+      <p class="page-head__desc">实时监控交易进程、内存水位、调度任务与告警 · 数据更新于 12 秒前（演示为静态样例）</p>
+    </div>
+    <div class="page-head__actions">
+      <button class="btn btn--ghost">⤓ 导出快照</button>
+      <button class="btn btn--primary">⟳ 立即巡检</button>
+    </div>
+  </div>
+</div>
+
+<!-- KPI 磁贴 -->
+<div class="grid grid--cols-12">
+  <div class="col-3">
+    <div class="tile tile--hover fade-in">
+      <div class="tile__glow"></div>
+      <div class="tile__top">
+        <span class="tile__label">综合健康评分</span>
+        <span class="tile__icon tile__icon--success">🛡️</span>
+      </div>
+      <div class="tile__value">96<small>/100</small></div>
+      <div class="tile__foot"><span class="trend trend--up">▲ 2.1</span> 较昨日</div>
+      <div class="tile__spark">
+        <svg viewBox="0 0 100 28" preserveAspectRatio="none" style="height:28px;width:100%">
+          <polyline points="0,20 12,18 24,19 36,14 48,15 60,10 72,12 84,7 100,6" fill="none" stroke="var(--success)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-3">
+    <div class="tile tile--hover fade-in" style="animation-delay:.05s">
+      <div class="tile__glow"></div>
+      <div class="tile__top">
+        <span class="tile__label">进程运行时长</span>
+        <span class="tile__icon tile__icon--info">⏱️</span>
+      </div>
+      <div class="tile__value">3<small>天</small> 14<small>时</small></div>
+      <div class="tile__foot"><span class="badge badge--success"><span class="badge__dot"></span>无异常退出</span></div>
+      <div class="tile__spark">
+        <svg viewBox="0 0 100 28" preserveAspectRatio="none" style="height:28px;width:100%">
+          <polyline points="0,14 14,14 28,14 42,14 56,14 70,14 84,14 100,14" fill="none" stroke="var(--info)" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-3">
+    <div class="tile tile--hover fade-in" style="animation-delay:.1s">
+      <div class="tile__glow"></div>
+      <div class="tile__top">
+        <span class="tile__label">内存占用 (RSS)</span>
+        <span class="tile__icon tile__icon--warning">🧠</span>
+      </div>
+      <div class="tile__value">1.82<small>GB</small></div>
+      <div class="tile__foot"><span class="trend trend--up">▲ 6.4%</span> 阈值 3.0GB · 61%</div>
+      <div class="tile__spark">
+        <svg viewBox="0 0 100 28" preserveAspectRatio="none" style="height:28px;width:100%">
+          <polyline points="0,22 12,20 24,21 36,17 48,18 60,13 72,14 84,10 100,9" fill="none" stroke="var(--warning)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-3">
+    <div class="tile tile--hover fade-in" style="animation-delay:.15s">
+      <div class="tile__glow"></div>
+      <div class="tile__top">
+        <span class="tile__label">今日重启次数</span>
+        <span class="tile__icon tile__icon--danger">♻️</span>
+      </div>
+      <div class="tile__value">2<small>次</small></div>
+      <div class="tile__foot"><span class="badge badge--warning"><span class="badge__dot"></span>1 次内存归零</span></div>
+      <div class="tile__spark">
+        <svg viewBox="0 0 100 28" preserveAspectRatio="none" style="height:28px;width:100%">
+          <polyline points="0,24 20,24 20,8 40,8 40,24 60,24 60,12 80,12 80,24 100,24" fill="none" stroke="var(--danger)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 内存趋势 + 健康评分环 -->
+<div class="grid grid--cols-12 mt-5">
+  <div class="col-8">
+    <div class="card fade-in">
+      <div class="card__head">
+        <div>
+          <div class="card__title">📈 内存 / 资源趋势</div>
+          <div class="card__subtitle">近 24 小时 · 数据源 memory_history.jsonl</div>
+        </div>
+        <div class="row gap-2">
+          <button class="btn btn--sm">1H</button>
+          <button class="btn btn--sm btn--primary">24H</button>
+          <button class="btn btn--sm">7D</button>
+        </div>
+      </div>
+      <div class="card__body">
+        <div class="chart">
+          <svg viewBox="0 0 800 260" preserveAspectRatio="none" style="height:260px">
+            <defs>
+              <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="var(--brand-400)" stop-opacity=".38"/>
+                <stop offset="100%" stop-color="var(--brand-400)" stop-opacity="0"/>
+              </linearGradient>
+            </defs>
+            <!-- 网格 -->
+            <line class="chart__grid" x1="0" y1="40"  x2="800" y2="40"/>
+            <line class="chart__grid" x1="0" y1="90"  x2="800" y2="90"/>
+            <line class="chart__grid" x1="0" y1="140" x2="800" y2="140"/>
+            <line class="chart__grid" x1="0" y1="190" x2="800" y2="190"/>
+            <line class="chart__grid" x1="0" y1="240" x2="800" y2="240"/>
+            <!-- 阈值线 -->
+            <line class="chart__thresh" x1="0" y1="70" x2="800" y2="70"/>
+            <text class="chart__axis" x="6" y="64" fill="var(--danger)">阈值 3.0GB</text>
+            <!-- 面积 + 折线 -->
+            <path class="chart__area" d="M0,180 L66,165 L133,170 L200,150 L266,140 L333,155 L400,120 L466,110 L533,130 L600,95 L666,85 L733,100 L800,80 L800,260 L0,260 Z"/>
+            <polyline class="chart__line draw-line" points="0,180 66,165 133,170 200,150 266,140 333,155 400,120 466,110 533,130 600,95 666,85 733,100 800,80"/>
+            <circle class="chart__dot" cx="800" cy="80" r="4"/>
+            <!-- X 轴标签 -->
+            <text class="chart__axis" x="0"   y="256">00:00</text>
+            <text class="chart__axis" x="180" y="256">04:00</text>
+            <text class="chart__axis" x="360" y="256">08:00</text>
+            <text class="chart__axis" x="540" y="256">16:00</text>
+            <text class="chart__axis" x="740" y="256">现在</text>
+          </svg>
+        </div>
+        <div class="chart-legend mt-4">
+          <span class="chart-legend__item"><span class="chart-legend__line" style="background:var(--brand-400)"></span>RSS 内存</span>
+          <span class="chart-legend__item"><span class="chart-legend__line" style="background:var(--danger)"></span>告警阈值</span>
+          <span class="chart-legend__item text-mute">峰值 2.31GB @ 03:12 · 均值 1.64GB</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-4">
+    <div class="card fade-in" style="animation-delay:.05s">
+      <div class="card__head">
+        <div>
+          <div class="card__title">🛡️ 健康评分构成</div>
+          <div class="card__subtitle">五维聚合</div>
+        </div>
+      </div>
+      <div class="card__body">
+        <div class="score-wrap" style="flex-direction:column;gap:var(--sp-5)">
+          <div class="score-ring">
+            <svg width="132" height="132" viewBox="0 0 132 132">
+              <circle cx="66" cy="66" r="56" fill="none" stroke="var(--surface-3)" stroke-width="12"/>
+              <circle cx="66" cy="66" r="56" fill="none" stroke="var(--success)" stroke-width="12"
+                      stroke-linecap="round" stroke-dasharray="351.8" stroke-dashoffset="14"/>
+            </svg>
+            <div class="score-ring__val">
+              <div>
+                <div class="score-ring__num">96</div>
+                <div class="score-ring__cap">优秀</div>
+              </div>
+            </div>
+          </div>
+          <div class="score-legend" style="width:100%">
+            <div class="score-legend__item"><span class="score-legend__label"><span class="score-legend__swatch" style="background:var(--success)"></span>进程存活</span><b>100</b></div>
+            <div class="score-legend__item"><span class="score-legend__label"><span class="score-legend__swatch" style="background:var(--success)"></span>内存水位</span><b>94</b></div>
+            <div class="score-legend__item"><span class="score-legend__label"><span class="score-legend__swatch" style="background:var(--success)"></span>数据库连通</span><b>100</b></div>
+            <div class="score-legend__item"><span class="score-legend__label"><span class="score-legend__swatch" style="background:var(--warning)"></span>API 延迟</span><b>88</b></div>
+            <div class="score-legend__item"><span class="score-legend__label"><span class="score-legend__swatch" style="background:var(--success)"></span>调度成功率</span><b>98</b></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 服务健康 + 生命周期时间线 -->
+<div class="grid grid--cols-12 mt-5">
+  <div class="col-7">
+    <div class="card fade-in">
+      <div class="card__head">
+        <div>
+          <div class="card__title">🩺 服务健康检查</div>
+          <div class="card__subtitle">依赖组件实时探活</div>
+        </div>
+        <span class="badge badge--success"><span class="badge__dot"></span>6/7 正常</span>
+      </div>
+      <div class="card__body">
+        {% set services = [
+          ('🐍', '交易主进程', 'app.py · PID 20201', 'success', '存活', '100'),
+          ('🗄️', 'MySQL 数据库', 'crypto_trade · 连接池 3/10', 'success', '8ms', '100'),
+          ('⏰', 'APScheduler 调度器', '已注册 14 个作业', 'success', '运行中', '98'),
+          ('🌐', 'OKX REST API', '只读限频 · 令牌桶 62%', 'warning', '412ms', '74'),
+          ('🧠', '内存看门狗', 'RSS 1.82GB / 阈值 3.0GB', 'success', '在岗', '94'),
+          ('📡', 'WebSocket 行情', '订阅 8 个币种', 'success', '延迟 34ms', '99'),
+          ('✉️', 'SMTP 告警通道', 'QQ 邮箱 · 最近投递成功', 'success', '就绪', '100'),
+        ] %}
+        {% for icon, name, meta, level, stat, pct in services %}
+        <div class="list-row">
+          <div class="list-row__icon" style="background:var(--{{ level }}-soft);color:var(--{{ level }})">{{ icon }}</div>
+          <div class="list-row__main">
+            <div class="list-row__title">{{ name }}</div>
+            <div class="list-row__sub">{{ meta }}</div>
+            <div class="progress mt-4" style="height:4px;margin-top:8px">
+              <div class="progress__bar progress__bar--{{ level }}" style="width:{{ pct }}%"></div>
+            </div>
+          </div>
+          <div class="list-row__aside">
+            <span class="badge badge--{{ level }}"><span class="badge__dot"></span>{{ stat }}</span>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-5">
+    <div class="card fade-in" style="animation-delay:.05s">
+      <div class="card__head">
+        <div>
+          <div class="card__title">♻️ 进程生命周期</div>
+          <div class="card__subtitle">启动归因台账 boot_ledger.jsonl</div>
+        </div>
+      </div>
+      <div class="card__body">
+        <div class="timeline">
+          {% set events = [
+            ('success', '冷启动接回', '今日 06:00 · 夜间窗口自动接回实盘', 'cold_start'),
+            ('warning', '每日内存归零', '今日 00:05 · 计划内重启，不占熔断额度', 'daily_restart'),
+            ('success', '调度器就绪', '昨日 20:14 · 注册 14 个作业', 'boot'),
+            ('danger', '内存超限退出', '昨日 03:12 · RSS 3.1GB 触发保护，supervisord 拉起', 'mem_restart'),
+            ('info', '手动重启', '前日 15:40 · SIGTERM 优雅停止', 'manual_exit'),
+          ] %}
+          {% for level, title, meta, tag in events %}
+          <div class="timeline__item">
+            <span class="timeline__dot timeline__dot--{{ level }}"></span>
+            <div class="timeline__title">{{ title }} <span class="badge badge--neutral text-mono">{{ tag }}</span></div>
+            <div class="timeline__meta">{{ meta }}</div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 调度任务表 + 最近告警 -->
+<div class="grid grid--cols-12 mt-5">
+  <div class="col-8">
+    <div class="card fade-in">
+      <div class="card__head">
+        <div>
+          <div class="card__title">⏰ 任务调度状态</div>
+          <div class="card__subtitle">调度器作业一览（只读视图）</div>
+        </div>
+        <button class="btn btn--sm btn--ghost">查看全部 →</button>
+      </div>
+      <div class="card__body">
+        <div class="table-wrap">
+          <table class="table">
+            <thead>
+              <tr><th>作业</th><th>周期</th><th>下次触发</th><th>上次结果</th><th>状态</th></tr>
+            </thead>
+            <tbody>
+              {% set jobs = [
+                ('趋势篮子挂单', '每 5 分钟', '00:42', '成功 · 挂出 6 笔', 'success', '运行中'),
+                ('行情快照拉取', '每 1 分钟', '00:38', '成功 · 8 币种', 'success', '运行中'),
+                ('持仓对账', '每 15 分钟', '00:51', '成功 · 无偏差', 'success', '运行中'),
+                ('内存心跳写入', '每 2 分钟', '00:39', '成功 · 1.82GB', 'success', '运行中'),
+                ('止盈止损巡检', '每 3 分钟', '00:40', '警告 · 1 笔待成交', 'warning', '运行中'),
+                ('每日内存归零', '每天 00:00', '明日 00:00', '成功', 'success', '待机'),
+                ('日报邮件推送', '每天 21:00', '今日 21:00', '成功 · 已投递', 'success', '待机'),
+              ] %}
+              {% for name, cycle, next_run, result, level, state in jobs %}
+              <tr>
+                <td class="table__strong">{{ name }}</td>
+                <td>{{ cycle }}</td>
+                <td class="table__mono">{{ next_run }}</td>
+                <td>{{ result }}</td>
+                <td><span class="badge badge--{{ level }}"><span class="badge__dot"></span>{{ state }}</span></td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-4">
+    <div class="card fade-in" style="animation-delay:.05s">
+      <div class="card__head">
+        <div>
+          <div class="card__title">🚨 最近告警</div>
+          <div class="card__subtitle">近 24 小时</div>
+        </div>
+        <span class="badge badge--danger">5</span>
+      </div>
+      <div class="card__body">
+        {% set alerts = [
+          ('danger', '🔴', '内存超限保护退出', '昨日 03:12 · RSS 3.1GB'),
+          ('warning', '🟠', 'OKX 只读接口 50011', '今日 09:24 · 已退避重试'),
+          ('warning', '🟠', '止盈单待成交超时', '今日 11:02 · XRP-USDT'),
+          ('info', '🔵', '每日内存归零完成', '今日 00:05 · 计划内'),
+          ('success', '🟢', 'SMTP 通道恢复正常', '昨日 22:40 · 投递成功'),
+        ] %}
+        {% for level, icon, title, meta in alerts %}
+        <div class="list-row">
+          <div class="list-row__icon" style="background:var(--{{ level }}-soft);color:var(--{{ level }})">{{ icon }}</div>
+          <div class="list-row__main">
+            <div class="list-row__title">{{ title }}</div>
+            <div class="list-row__sub">{{ meta }}</div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      <div class="card__foot row row--between">
+        <span class="text-mute fs-xs">告警全部来自现有系统产物，演示为样例</span>
+        <a href="#" class="fs-xs" style="color:var(--brand-400)">进入告警中心 →</a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

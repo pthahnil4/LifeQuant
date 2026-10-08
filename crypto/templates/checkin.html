@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>每日评级总控台 - LifeQuant</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script defer src="{{ url_for('static', filename='js/checkin.js') }}"></script>
+    <style>
+        .ck-page { max-width: 960px; margin: 0 auto; padding: 18px 16px 60px; }
+        .ck-head { display: flex; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 6px; }
+        .ck-head h1 { font-size: 1.35rem; margin: 0; }
+        .ck-head .ck-sub { color: #888; font-size: .8rem; margin-top: 4px; }
+        .ck-datebox { display: flex; align-items: center; gap: 8px; font-size: .88rem; }
+        .ck-datebox input[type=date] { padding: 5px 8px; border: 1px solid #ccc; border-radius: 6px; font-size: .88rem; }
+        .ck-notice { font-size: .82rem; color: #b26a00; background: #fff8e6; border: 1px solid #f0dfae;
+            border-radius: 8px; padding: 8px 12px; margin: 10px 0; display: none; }
+        .ck-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 14px; }
+        @media (max-width: 760px) { .ck-cards { grid-template-columns: 1fr; } }
+        .ck-card { background: #fff; border: 1px solid #e3e6ea; border-radius: 12px; padding: 14px 16px;
+            box-shadow: 0 1px 3px rgba(0,0,0,.05); position: relative; }
+        .ck-card-title { font-size: .85rem; color: #666; display: flex; align-items: center; justify-content: space-between; }
+        .ck-card-value { font-size: 1.7rem; font-weight: 700; margin: 8px 0 2px; font-variant-numeric: tabular-nums; }
+        .ck-card-value small { font-size: .85rem; font-weight: 400; color: #999; }
+        .ck-card-target { font-size: .78rem; color: #999; }
+        .ck-card-extra { font-size: .78rem; color: #777; margin-top: 8px; line-height: 1.6; border-top: 1px dashed #eee; padding-top: 7px; }
+        .ck-badge { font-size: .72rem; padding: 2px 9px; border-radius: 999px; font-weight: 600; }
+        .ck-badge.pass { background: #e5f6e8; color: #2e7d32; }
+        .ck-badge.fail { background: #fdecea; color: #c62828; }
+        .ck-badge.na { background: #eceff1; color: #78909c; }
+        .ck-trade-actions { margin-top: 8px; }
+        .ck-summary { margin-top: 14px; background: #fff; border: 1px solid #e3e6ea; border-radius: 12px; padding: 14px 16px; }
+        .ck-rating { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+        .ck-rating-label { font-size: .85rem; color: #666; }
+        .ck-rating-chip { border: 1px solid #ccc; background: #fff; border-radius: 8px; padding: 4px 14px;
+            font-size: .9rem; font-weight: 700; cursor: pointer; transition: all .12s; }
+        .ck-rating-chip:hover { border-color: #7d8cff; }
+        .ck-rating-chip.sel { background: #4356c0; border-color: #4356c0; color: #fff; }
+        .ck-comment { width: 100%; box-sizing: border-box; border: 1px solid #ccc; border-radius: 8px;
+            padding: 9px 11px; font-size: .88rem; min-height: 76px; resize: vertical; font-family: inherit; }
+        .ck-submit-row { display: flex; align-items: center; gap: 12px; margin-top: 12px; flex-wrap: wrap; }
+        .ck-submit-hint { font-size: .76rem; color: #999; }
+        .ck-history { margin-top: 26px; }
+        .ck-history h2 { font-size: 1rem; margin-bottom: 4px; }
+        .ck-history .ck-sub { font-size: .78rem; color: #999; }
+        .ck-hist-table { width: 100%; border-collapse: collapse; margin-top: 10px; background: #fff;
+            border: 1px solid #e3e6ea; border-radius: 12px; overflow: hidden; font-size: .82rem; }
+        .ck-hist-table th, .ck-hist-table td { padding: 8px 10px; text-align: left; border-bottom: 1px solid #f0f2f4; }
+        .ck-hist-table th { background: #f7f8fa; color: #666; font-weight: 600; font-size: .78rem; }
+        .ck-hist-table tr.ck-hist-row { cursor: pointer; }
+        .ck-hist-table tr.ck-hist-row:hover { background: #f4f6ff; }
+        .ck-allpass { font-weight: 700; }
+        /* 日记关联提示 + 未评级高亮（批次15 每日评级总控台） */
+        .ck-diary-tip { display: none; align-items: center; gap: 10px; flex-wrap: wrap;
+            font-size: .84rem; color: #1565c0; background: #e8f2fd; border: 1px solid #bcdcf5;
+            border-radius: 8px; padding: 8px 12px; margin: 10px 0; }
+        .ck-diary-tip.show { display: flex; }
+        .ck-rating.need { outline: 2px solid #ff9800; outline-offset: 6px; border-radius: 10px;
+            background: #fff8ec; }
+        .ck-rating .ck-rating-need-hint { display: none; font-size: .78rem; color: #e65100; font-weight: 600; }
+        .ck-rating.need .ck-rating-need-hint { display: inline; }
+    </style>
+</head>
+<body>
+    {% include 'nav.html' %}
+    <div class="ck-page" id="checkin-page">
+        <div class="ck-head">
+            <div>
+                <h1>📋 每日评级总控台</h1>
+                <div class="ck-sub">热量缺口 · 交易收益 · 学习时长，服务端自动采集，提交即定格</div>
+            </div>
+            <div class="ck-datebox">
+                <label for="ck-date">打卡日期</label>
+                <input type="date" id="ck-date">
+                <button type="button" id="ck-goto-today" class="m-btn m-btn-secondary m-btn-xs">回到今天</button>
+            </div>
+        </div>
+
+        <div class="ck-notice" id="ck-notice" role="status"></div>
+
+        <!-- 未写日记友好提示（当日已打卡但 diary_entries 无当天条目时显示） -->
+        <div class="ck-diary-tip" id="ck-diary-tip" role="status">
+            <span id="ck-diary-tip-text">📔 今日尚未写日记，建议记录一下心得</span>
+            <a href="#" id="ck-diary-jump" class="m-btn m-btn-info m-btn-xs">✍️ 去写日记</a>
+        </div>
+
+        <div class="ck-cards">
+            <!-- 热量 -->
+            <div class="ck-card" id="ck-card-calorie">
+                <div class="ck-card-title"><span>🔥 热量缺口</span><span class="ck-badge na">--</span></div>
+                <div class="ck-card-value">-- <small>kcal</small></div>
+                <div class="ck-card-target">目标：缺口 ≥ -- kcal</div>
+                <div class="ck-card-extra">来源：当日饮食记录（热量页）</div>
+            </div>
+            <!-- 交易 -->
+            <div class="ck-card" id="ck-card-trade">
+                <div class="ck-card-title"><span>📈 交易收益</span><span class="ck-badge na">--</span></div>
+                <div class="ck-card-value">-- <small>%</small></div>
+                <div class="ck-card-target">目标：当日权益涨幅 ≥ --%</div>
+                <div class="ck-card-extra" id="ck-trade-detail">--</div>
+                <div class="ck-trade-actions" id="ck-trade-actions">
+                    <button type="button" id="ck-refresh-trade" class="m-btn m-btn-info m-btn-xs">🔄 刷新交易数据</button>
+                </div>
+            </div>
+            <!-- 学习 -->
+            <div class="ck-card" id="ck-card-learn">
+                <div class="ck-card-title"><span>📚 学习</span><span class="ck-badge na">--</span></div>
+                <div class="ck-card-value" id="ck-learn-value">-- <small>h</small></div>
+                <div class="ck-card-target" id="ck-learn-target">目标：≥ -- 小时 且 完成任务 ≥ -- 个</div>
+                <div class="ck-card-extra" id="ck-learn-detail">来源：学习卡当日打卡格</div>
+            </div>
+        </div>
+
+        <div class="ck-summary">
+            <div class="ck-rating" id="ck-rating">
+                <span class="ck-rating-label">自我评级（可选，再点一次取消）：</span>
+                <button type="button" class="ck-rating-chip" data-rating="E">E</button>
+                <button type="button" class="ck-rating-chip" data-rating="D">D</button>
+                <button type="button" class="ck-rating-chip" data-rating="C">C</button>
+                <button type="button" class="ck-rating-chip" data-rating="B">B</button>
+                <button type="button" class="ck-rating-chip" data-rating="A">A</button>
+                <button type="button" class="ck-rating-chip" data-rating="S">S</button>
+                <span class="ck-rating-need-hint">⚠️ 尚未评级，点一个给今天打个分</span>
+            </div>
+            <textarea class="ck-comment" id="ck-comment" maxlength="2000"
+                      placeholder="今天的评价（可选，纯文本，最多 2000 字）…"></textarea>
+            <div class="ck-submit-row">
+                <button type="button" id="ck-submit" class="m-btn m-btn-primary">✅ 提交打卡</button>
+                <span class="ck-badge na" id="ck-all-badge">三项全达标：--</span>
+                <a href="#" id="ck-diary-entry" class="m-btn m-btn-secondary m-btn-xs">📔 今日日记</a>
+                <span class="ck-submit-hint">提交时服务端重算三项指标；同日期重复提交会覆盖（定格快照，不随源数据回改）。</span>
+            </div>
+        </div>
+
+        <div class="ck-history">
+            <h2>近 30 天打卡</h2>
+            <div class="ck-sub">点击行可回看该日数据（未来日期不可打卡）</div>
+            <table class="ck-hist-table">
+                <thead>
+                    <tr><th>日期</th><th>达标</th><th>评级</th><th>评价</th></tr>
+                </thead>
+                <tbody id="ck-hist-body">
+                    <tr><td colspan="4" style="color:#999;">加载中…</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Toast 轻提示（复用全站 .task-toast 样式） -->
+    <div id="ck-toast" class="task-toast"></div>
+</body>
+</html>

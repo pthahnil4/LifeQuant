@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>盘感 Wiki 管理台 - LifeQuant</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/instinct_wiki.css') }}">
+    <script src="{{ url_for('static', filename='js/echarts.min.js') }}"></script>
+</head>
+<body>
+    {% include 'nav.html' %}
+    <div class="iwk-wrap">
+        <header class="iwk-hero">
+            <span style="font-size:30px">📚</span>
+            <div>
+                <h1>盘感 Wiki 管理台</h1>
+                <div class="iwk-sub">规则卡治理 · 影子预测审计 · 盘感校准仪表盘 · 检索打分明细调试
+                    ｜ <a class="iwk-hero-link" href="/instinct">← 返回盘感模拟台</a></div>
+            </div>
+            <span id="iwk-llm-badge" class="iwk-badge iwk-badge-off">LLM 状态检测中…</span>
+        </header>
+
+        <div class="iwk-tabs">
+            <button class="iwk-tab active" data-pane="rules">📜 规则卡治理</button>
+            <button class="iwk-tab" data-pane="audit">🤖 预测审计</button>
+            <button class="iwk-tab" data-pane="dash">📈 校准仪表盘</button>
+            <button class="iwk-tab" data-pane="search">🔍 检索测试</button>
+        </div>
+
+        <!-- ================ 标签1：规则卡治理 ================ -->
+        <div class="iwk-pane active" id="iwk-pane-rules">
+            <div class="iwk-card">
+                <h2>📜 Wiki 规则卡
+                    <span class="iwk-muted" id="iwk-rule-counts"></span>
+                    <span style="float:right;display:flex;gap:8px">
+                        <button class="iwk-btn" id="iwk-btn-distill">🧪 蒸馏复算（只出报告）</button>
+                        <button class="iwk-btn iwk-btn-primary" id="iwk-btn-distill-apply">📥 蒸馏并入库候选</button>
+                    </span></h2>
+                <div class="iwk-hint" style="margin-bottom:10px">
+                    状态机铁律：candidate 不会进入预测 prompt，必须人工「确认生效」→ active；
+                    active 到期（90 天）自动降级回 candidate 待复检；retired 只有再蒸馏命中才复活。
+                </div>
+                <div class="iwk-toolbar">
+                    <div class="iwk-seg" id="iwk-rule-filter">
+                        <button data-f="" class="on">全部</button>
+                        <button data-f="candidate">candidate</button>
+                        <button data-f="active">active</button>
+                        <button data-f="retired">retired</button>
+                    </div>
+                    <input class="iwk-input" id="iwk-rule-search" style="width:200px" placeholder="按关键词过滤规则…">
+                    <button class="iwk-btn" id="iwk-btn-expire">⏰ 执行过期降级检查</button>
+                </div>
+                <table class="iwk-tb"><thead><tr>
+                    <th>状态</th><th>类型</th><th>规则 / 条件 / 证据链</th><th>统计依据</th><th>有效至</th><th>操作</th>
+                </tr></thead><tbody id="iwk-rules-tb"><tr><td colspan="6" class="iwk-muted">加载中…</td></tr></tbody></table>
+                <div id="iwk-distill-out"></div>
+            </div>
+        </div>
+
+        <!-- ================ 标签2：预测审计 ================ -->
+        <div class="iwk-pane" id="iwk-pane-audit">
+            <div class="iwk-card">
+                <h2>🤖 影子预测审计
+                    <span class="iwk-muted">（结算口径与分析记录复盘同源；mock 行为管线自测不展示）</span>
+                    <span style="float:right">
+                        <button class="iwk-btn" id="iwk-btn-settle">🧮 立即结算到期项</button>
+                    </span></h2>
+                <table class="iwk-tb"><thead><tr>
+                    <th>#</th><th>时间</th><th>币种</th><th>模型</th><th>判断</th><th>置信</th>
+                    <th>快照价</th><th>近窗</th><th>远窗</th><th>理由 / 引用</th><th>用户反馈</th>
+                </tr></thead><tbody id="iwk-audit-tb"><tr><td colspan="11" class="iwk-muted">加载中…</td></tr></tbody></table>
+            </div>
+        </div>
+
+        <!-- ================ 标签3：校准仪表盘 ================ -->
+        <div class="iwk-pane" id="iwk-pane-dash">
+            <div class="iwk-card">
+                <h2>📈 盘感校准仪表盘 <span class="iwk-muted">（累计命中率随样本推移；&lt;60 样本只看走势别看结论）</span></h2>
+                <div class="iwk-stat-grid" id="iwk-dash-boxes"></div>
+                <div id="iwk-trend-chart" class="iwk-chart"></div>
+                <div class="iwk-chart-note" id="iwk-trend-note"></div>
+            </div>
+        </div>
+
+        <!-- ================ 标签4：检索测试 ================ -->
+        <div class="iwk-pane" id="iwk-pane-search">
+            <div class="iwk-card">
+                <h2>🔍 语料检索测试 <span class="iwk-muted">（hybrid 打分：3.0×方向形似 + 2.0×ATR分位邻近 + 1.0×周期一致 + 1.5×时间衰减(τ45d)，同币种 ×3.0）</span></h2>
+                <div class="iwk-toolbar">
+                    <div class="iwk-seg" id="iwk-st-mode">
+                        <button data-m="manual" class="on">手工参数</button>
+                        <button data-m="corpus">按语料 id</button>
+                        <button data-m="live">实时快照</button>
+                    </div>
+                    <label class="iwk-muted">topK
+                        <input type="number" class="iwk-input" id="iwk-st-topk" value="6" min="1" max="20" style="width:56px">
+                    </label>
+                    <button class="iwk-btn iwk-btn-primary" id="iwk-btn-search">🔎 检索</button>
+                </div>
+
+                <div id="iwk-st-manual">
+                    <div class="iwk-form-grid">
+                        <div><label>币种 instId（可空=跨币种）</label><input class="iwk-input" id="iwk-q-inst" style="width:100%" placeholder="如 INJ-USDT-SWAP"></div>
+                        <div><label>短周期方向</label><select class="iwk-select" id="iwk-q-sdir" style="width:100%"><option value="">（空）</option><option value="up">up</option><option value="down">down</option><option value="flat">flat</option></select></div>
+                        <div><label>长周期方向</label><select class="iwk-select" id="iwk-q-ldir" style="width:100%"><option value="">（空）</option><option value="up">up</option><option value="down">down</option><option value="flat">flat</option></select></div>
+                        <div><label>长周期刚翻转</label><select class="iwk-select" id="iwk-q-flip" style="width:100%"><option value="0">否</option><option value="1">是</option></select></div>
+                        <div><label>ATR 分位 (0~1，-1=未知)</label><input class="iwk-input" id="iwk-q-atr" value="-1" style="width:100%"></div>
+                        <div><label>短周期</label><select class="iwk-select" id="iwk-q-per" style="width:100%"><option value="">（空）</option><option>5m</option><option>15m</option><option>30m</option><option>1H</option><option>4H</option></select></div>
+                    </div>
+                </div>
+                <div id="iwk-st-corpus" style="display:none">
+                    <div class="iwk-form-grid"><div>
+                        <label>语料行 corpus_id（用该样本"当时快照"检索并排除自身 = leave-one-out）</label>
+                        <input class="iwk-input" id="iwk-q-cid" style="width:100%" placeholder="如 3">
+                    </div></div>
+                </div>
+                <div id="iwk-st-live" style="display:none">
+                    <div class="iwk-form-grid"><div>
+                        <label>币种（拉实盘同源双周期引擎现算快照，约数秒）</label>
+                        <select class="iwk-select" id="iwk-q-linst" style="width:100%"></select>
+                    </div></div>
+                </div>
+
+                <div class="iwk-leak-note iwk-hint">⚠️ 本页展示列带「事后涨跌/命中」注记仅供你人工核对相似度；
+                    LLM 预测的 prompt 走 sanitize 通道，物理上拿不到这些列（防泄漏三层闸门之一）。</div>
+                <div class="iwk-query-echo" id="iwk-q-echo" style="display:none"></div>
+                <table class="iwk-tb"><thead><tr>
+                    <th>总分</th><th>打分明细（条宽=加权分）</th><th>时间</th><th>币种</th>
+                    <th>当时判断</th><th>方向形似</th><th>事后近/远</th>
+                </tr></thead><tbody id="iwk-search-tb"><tr><td colspan="7" class="iwk-muted">填参数后点「检索」</td></tr></tbody></table>
+            </div>
+        </div>
+    </div>
+
+<script>
+(function () {
+    var $ = function (id) { return document.getElementById(id); };
+    var DIRCN = { up: '↑多头', down: '↓空头', flat: '—中性' };
+    var _OC = { up: '涨', down: '跌', flat: '横' };
+    function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+    function get(u) { return fetch(u).then(function (r) { return r.json(); }); }
+    function post(u, b) { return fetch(u, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b || {}) }).then(function (r) { return r.json(); }); }
+    function jcn(j) { return { rise: '看涨', fall: '看跌', watch: '观望' }[j] || j || '—'; }
+    function oc(v) { return v ? ('<span class="' + (v === 'up' ? 'iwk-hit-1' : v === 'down' ? 'iwk-hit-0' : 'iwk-hit-na') + '">' + (_OC[v] || v) + '</span>') : '<span class="iwk-hit-na">—</span>'; }
+
+    /* ---------- 标签切换 ---------- */
+    var PANE_LOAD = { rules: loadRules, audit: loadAudit, dash: loadDash, search: function () {} };
+    document.querySelectorAll('.iwk-tab').forEach(function (t) {
+        t.onclick = function () {
+            document.querySelectorAll('.iwk-tab').forEach(function (x) { x.classList.remove('active'); });
+            document.querySelectorAll('.iwk-pane').forEach(function (x) { x.classList.remove('active'); });
+            t.classList.add('active');
+            $('iwk-pane-' + t.dataset.pane).classList.add('active');
+            PANE_LOAD[t.dataset.pane]();
+        };
+    });
+
+    /* ================= 规则卡治理 ================= */
+    var _rulesCache = [], _ruleFilter = '', _ruleKw = '';
+    function loadRules() {
+        get('/instinct/api/rules').then(function (res) {
+            var d = res.data || { rules: [], counts: {} };
+            _rulesCache = d.rules;
+            $('iwk-rule-counts').textContent = '　' + Object.keys(d.counts).map(function (k) { return k + ' ' + d.counts[k]; }).join(' · ');
+            renderRules();
+            var badge = $('iwk-llm-badge');
+            badge.className = 'iwk-badge ' + (d.llm_configured ? 'iwk-badge-ok' : 'iwk-badge-off');
+            badge.textContent = d.llm_configured ? 'LLM 已配置，影子预测可实跑' : 'LLM 未配置（CRYPTO_LLM_*），预测为禁用态';
+        });
+    }
+    function renderRules() {
+        var rows = _rulesCache.filter(function (r) {
+            return (!_ruleFilter || r.status === _ruleFilter)
+                && (!_ruleKw || (r.statement + r.rule_key + (r.stat_basis || '')).toLowerCase().indexOf(_ruleKw.toLowerCase()) >= 0);
+        });
+        $('iwk-rules-tb').innerHTML = rows.length ? rows.map(function (r) {
+            var ops = r.status === 'candidate'
+                ? '<button class="iwk-btn iwk-btn-ok" onclick="IWKB.rule(' + r.id + ',\'confirm\')">✅ 确认生效</button> <button class="iwk-btn iwk-btn-danger" onclick="IWKB.rule(' + r.id + ',\'retire\')">🚫 否决</button>'
+                : (r.status === 'active' ? '<button class="iwk-btn" onclick="IWKB.rule(' + r.id + ',\'retire\')">⏸ 下线</button>' : '<span class="iwk-muted">—</span>');
+            var ev = (r.evidence_refs || []).slice(0, 50);
+            return '<tr><td><span class="iwk-tag iwk-tag-' + esc(r.status) + '">' + esc(r.status) + '</span></td>' +
+                '<td>' + esc(r.kind) + '<div class="iwk-muted">id=' + r.id + '</div></td>' +
+                '<td class="iwk-rule-st"><b>' + esc(r.statement) + '</b>' +
+                (r.condition && Object.keys(r.condition).length ? '<div class="iwk-rule-cond">条件: ' + esc(JSON.stringify(r.condition)) + '</div>' : '') +
+                (ev.length ? '<details class="iwk-evidence"><summary>证据链 ' + ev.length + ' 条</summary>' + ev.map(esc).join('<br>') + '</details>' : '') +
+                (r.created_by ? '<div class="iwk-muted">created_by=' + esc(r.created_by) + (r.confirmed_by ? ' · confirmed_by=' + esc(r.confirmed_by) : '') + '</div>' : '') + '</td>' +
+                '<td class="iwk-muted" style="max-width:220px">' + esc(r.stat_basis || '') + '</td>' +
+                '<td class="iwk-muted">' + esc((r.valid_until || '').slice(0, 10)) + '</td>' +
+                '<td style="white-space:nowrap">' + ops + '</td></tr>';
+        }).join('') : '<tr><td colspan="6" class="iwk-muted">无匹配规则</td></tr>';
+    }
+    document.querySelectorAll('#iwk-rule-filter button').forEach(function (b) {
+        b.onclick = function () {
+            document.querySelectorAll('#iwk-rule-filter button').forEach(function (x) { x.classList.remove('on'); });
+            b.classList.add('on'); _ruleFilter = b.dataset.f; renderRules();
+        };
+    });
+    $('iwk-rule-search').oninput = function () { _ruleKw = this.value.trim(); renderRules(); };
+    $('iwk-btn-distill').onclick = function () { doDistill(false); };
+    $('iwk-btn-distill-apply').onclick = function () {
+        if (!confirm('蒸馏并把显著候选写入 candidate？（不会自动激活，仍须逐条确认）')) return;
+        doDistill(true);
+    };
+    function doDistill(apply) {
+        var btn = apply ? $('iwk-btn-distill-apply') : $('iwk-btn-distill');
+        btn.disabled = true;
+        post('/instinct/api/distill', { apply: apply }).then(function (r) {
+            btn.disabled = false;
+            if (r.code !== 200) { $('iwk-distill-out').innerHTML = '<div class="iwk-hint">' + esc(r.message) + '</div>'; return; }
+            var d = r.data;
+            $('iwk-distill-out').innerHTML = '<div class="iwk-hint" style="margin-top:10px">样本 ' + d.n_samples +
+                ' 条 → 显著候选 ' + d.candidates.length + ' 条' +
+                (apply ? '（已入库/合并 ' + d.applied.length + ' 条，均为 candidate）' : '（未入库，仅刷新报告）') +
+                '<br>' + d.candidates.map(function (c) { return '· [' + esc(c.kind) + '] ' + esc(c.statement); }).join('<br>') +
+                '<br>报告：' + esc(d.report_path) + '</div>';
+            if (apply) loadRules();
+        }).catch(function (e) { btn.disabled = false; alert('蒸馏失败: ' + e); });
+    }
+    $('iwk-btn-expire').onclick = function () {
+        post('/instinct/api/expire', {}).then(function (r) {
+            alert(r.code === 200 ? ('降级 ' + r.data.degraded + ' 条过期 active 规则') : r.message);
+            loadRules();
+        });
+    };
+
+    /* ================= 预测审计 ================= */
+    function hitCell(v) {
+        return v === null || v === undefined ? '<span class="iwk-hit-na">待结算</span>'
+            : (v ? '<span class="iwk-hit-1">✔</span>' : '<span class="iwk-hit-0">✘</span>');
+    }
+    function loadAudit() {
+        get('/instinct/api/predictions?limit=100').then(function (res) {
+            var items = ((res.data && res.data.items) || []).filter(function (p) { return p.model !== 'mock'; });
+            $('iwk-audit-tb').innerHTML = items.length ? items.map(function (p) {
+                return '<tr><td>' + p.id + '</td><td>' + esc((p.ts || '').slice(0, 16)) + '</td><td>' + esc(p.inst_id) + '</td>' +
+                    '<td class="iwk-muted">' + esc(p.model) + '<br>' + (p.latency_ms || 0) + 'ms</td>' +
+                    '<td>' + esc(jcn(p.judgment)) + '</td><td>' + (p.confidence == null ? '—' : p.confidence) + '</td>' +
+                    '<td>' + (p.price_at_pred || '—') + '</td>' +
+                    '<td>' + hitCell(p.hit_near) + ' ' + oc(p.actual_near) + '</td>' +
+                    '<td>' + hitCell(p.hit_far) + ' ' + oc(p.actual_far) + '</td>' +
+                    '<td class="iwk-reason">' + esc(p.rationale) +
+                    '<div class="iwk-muted">引用规则[' + esc(p.cited_rule_ids || '无') + '] 语料[' + esc(p.cited_corpus_ids || '无') + ']</div></td>' +
+                    '<td style="white-space:nowrap">' +
+                    '<button class="iwk-btn' + (p.user_trusted ? ' iwk-fb-on' : '') + '" style="padding:2px 7px;font-size:12px" onclick="IWKB.fb(' + p.id + ',\'user_trusted\',true)">👍可信</button> ' +
+                    '<button class="iwk-btn' + (p.user_trusted === false ? ' iwk-fb-on' : '') + '" style="padding:2px 7px;font-size:12px" onclick="IWKB.fb(' + p.id + ',\'user_trusted\',false)">👎存疑</button><br>' +
+                    '<button class="iwk-btn' + (p.user_agree ? ' iwk-fb-on' : '') + '" style="padding:2px 7px;font-size:12px" onclick="IWKB.fb(' + p.id + ',\'user_agree\',true)">🤝一致</button> ' +
+                    '<button class="iwk-btn' + (p.user_agree === false ? ' iwk-fb-on' : '') + '" style="padding:2px 7px;font-size:12px" onclick="IWKB.fb(' + p.id + ',\'user_agree\',false)">🙅相反</button>' +
+                    '</td></tr>';
+            }).join('') : '<tr><td colspan="11" class="iwk-muted">暂无真实模型的影子预测（配置 LLM key 后由整点任务或 /instinct 页手动产生）</td></tr>';
+        });
+    }
+    $('iwk-btn-settle').onclick = function () {
+        this.disabled = true;
+        post('/instinct/api/settle', {}).then(function (r) {
+            $('iwk-btn-settle').disabled = false;
+            alert(r.code === 200 ? ('结算完成，回填 ' + r.data.filled + ' 个字段') : r.message);
+            loadAudit();
+        }).catch(function () { $('iwk-btn-settle').disabled = false; });
+    };
+
+    /* ================= 校准仪表盘 ================= */
+    var _trendChart = null;
+    function cumRate(events, key) {
+        var h = 0, n = 0, out = [];
+        events.forEach(function (e) {
+            if (e[key] !== undefined) { n += 1; h += e[key]; out.push([e.ts, n ? +(h / n * 100).toFixed(1) : null, n]); }
+        });
+        return out;
+    }
+    function loadDash() {
+        get('/instinct/api/trend').then(function (res) {
+            var d = res.data || { events: [], llm_events: [] };
+            var ev = d.events, lev = d.llm_events;
+            function last(points) { return points.length ? points[points.length - 1] : null; }
+            function box(t, points) {
+                var v = last(points);
+                return '<div class="iwk-stat-box"><div class="t">' + t + '</div><div class="n">' +
+                    (v ? v[1] + '%' : '—') + '</div><div class="s">n=' + (v ? v[2] : 0) + '</div></div>';
+            }
+            $('iwk-dash-boxes').innerHTML =
+                box('🧑 你 · 近窗', cumRate(ev, 'user_near')) +
+                box('🧑 你 · 远窗', cumRate(ev, 'user_far')) +
+                box('⚙️ 策略 · 近窗', cumRate(ev, 'strat_near')) +
+                box('⚙️ 策略 · 远窗', cumRate(ev, 'strat_far')) +
+                box('🤖 LLM · 近窗', cumRate(lev, 'llm_near')) +
+                box('🤖 LLM · 远窗', cumRate(lev, 'llm_far'));
+            var tsAll = ev.map(function (e) { return e.ts; }).concat(lev.map(function (e) { return e.ts; })).sort();
+            function series(points, name, color) {
+                var m = {}; points.forEach(function (p) { m[p[0]] = p[1]; });
+                return { name: name, type: 'line', connectNulls: true, symbolSize: 4,
+                         lineStyle: { color: color }, itemStyle: { color: color },
+                         data: tsAll.map(function (t) { return m[t] === undefined ? null : m[t]; }) };
+            }
+            if (!_trendChart && window.echarts) _trendChart = echarts.init($('iwk-trend-chart'));
+            if (_trendChart) {
+                _trendChart.setOption({
+                    backgroundColor: 'transparent',
+                    textStyle: { color: '#8b949e' },
+                    legend: { textStyle: { color: '#8b949e' }, top: 0 },
+                    grid: { left: 46, right: 16, top: 34, bottom: 40 },
+                    tooltip: { trigger: 'axis' },
+                    xAxis: { type: 'category', data: tsAll, axisLabel: { color: '#8b949e', rotate: 30, formatter: function (v) { return String(v).slice(5, 10); } } },
+                    yAxis: { type: 'value', min: 0, max: 100, name: '累计命中率%', axisLabel: { color: '#8b949e', formatter: '{value}%' } },
+                    series: [
+                        series(cumRate(ev, 'user_far'), '你·远窗', '#58a6ff'),
+                        series(cumRate(ev, 'strat_far'), '策略·远窗', '#f0883e'),
+                        series(cumRate(ev, 'user_near'), '你·近窗', '#388bfd66'),
+                        series(cumRate(ev, 'strat_near'), '策略·近窗', '#db6d2866'),
+                        series(cumRate(lev, 'llm_far'), 'LLM·远窗', '#3fb950'),
+                        series(cumRate(lev, 'llm_near'), 'LLM·近窗', '#2ea04366')
+                    ]
+                }, true);
+                _trendChart.resize();
+            }
+            $('iwk-trend-note').textContent = '样本：你/策略 ' + ev.length + ' 条事件，LLM scored ' + lev.length +
+                ' 条。' + (lev.length < 60 ? 'LLM 样本不足（<60），曲线仅供观察，不构成结论。' : '已达观察样本量，结论仍以人工复核为准。');
+        });
+    }
+
+    /* ================= 检索测试 ================= */
+    var _stMode = 'manual';
+    document.querySelectorAll('#iwk-st-mode button').forEach(function (b) {
+        b.onclick = function () {
+            document.querySelectorAll('#iwk-st-mode button').forEach(function (x) { x.classList.remove('on'); });
+            b.classList.add('on'); _stMode = b.dataset.m;
+            ['manual', 'corpus', 'live'].forEach(function (m) { $('iwk-st-' + m).style.display = (m === _stMode ? '' : 'none'); });
+        };
+    });
+    get('/instinct/api/currencies').then(function (r) {
+        var items = (r.data && r.data.items) || [];
+        $('iwk-q-linst').innerHTML = items.map(function (i) { return '<option>' + esc(i) + '</option>'; }).join('');
+    });
+    $('iwk-btn-search').onclick = function () {
+        var body = { mode: _stMode, top_k: parseInt($('iwk-st-topk').value) || 6 };
+        if (_stMode === 'manual') {
+            body.ctx = { inst_id: $('iwk-q-inst').value.trim(), short_dir: $('iwk-q-sdir').value,
+                         long_dir: $('iwk-q-ldir').value, flipped: $('iwk-q-flip').value === '1',
+                         atr_pctile: parseFloat($('iwk-q-atr').value), short_period: $('iwk-q-per').value };
+        } else if (_stMode === 'corpus') {
+            body.corpus_id = parseInt($('iwk-q-cid').value) || 0;
+        } else {
+            body.instId = $('iwk-q-linst').value;
+        }
+        $('iwk-search-tb').innerHTML = '<tr><td colspan="7" class="iwk-muted">' + (_stMode === 'live' ? '实时快照计算中（数秒）…' : '检索中…') + '</td></tr>';
+        post('/instinct/api/search_test', body).then(function (r) {
+            if (r.code !== 200) { $('iwk-search-tb').innerHTML = '<tr><td colspan="7" class="iwk-hit-0">' + esc(r.message) + '</td></tr>'; return; }
+            var q = r.data.query;
+            $('iwk-q-echo').style.display = '';
+            $('iwk-q-echo').textContent = '查询快照: ' + JSON.stringify({ inst: q.inst_id, ts: q.ts, short_dir: q.ctx_short_dir, long_dir: q.ctx_long_dir, flipped: q.ctx_dir_flipped, atr_pctile: q.ctx_atr_pctile, period: q.short_period });
+            var MAXW = 12;  // 条形图定标：单维加权分最大理论值 3.0×…取 12 便于同屏比较
+            $('iwk-search-tb').innerHTML = r.data.cases.length ? r.data.cases.map(function (c) {
+                var b = c.breakdown;
+                function bar(v, color) { return '<span class="bar" style="width:' + Math.max(2, v / MAXW * 60).toFixed(0) + 'px;background:' + color + '"></span>'; }
+                return '<tr><td><b>' + c.score.toFixed(2) + '</b>' + (b.boost > 1 ? '<div class="iwk-muted">含同币种×' + b.boost + '</div>' : '') + '</td>' +
+                    '<td class="iwk-bd">' +
+                    bar(b.w_dir, '#58a6ff') + ' dir ' + b.dir_sim + '→' + b.w_dir + '<br>' +
+                    bar(b.w_atr, '#f0883e') + ' atr ' + b.atr_prox + '→' + b.w_atr + '<br>' +
+                    bar(b.w_period, '#3fb950') + ' per ' + b.period + '→' + b.w_period + '<br>' +
+                    bar(b.w_decay, '#a371f7') + ' 衰减 ' + b.decay + '→' + b.w_decay +
+                    '<div class="iwk-muted">base ' + b.base + ' × boost ' + b.boost + ' = ' + b.final + '</div></td>' +
+                    '<td>' + esc(c.ts) + '</td><td>' + esc(c.inst_id) + '</td>' +
+                    '<td>' + esc(jcn(c.judgment)) + '<div class="iwk-muted">' + esc(c.source) + '</div></td>' +
+                    '<td>' + esc(DIRCN[c.ctx_long_dir] || '—') + '</td>' +
+                    '<td>' + oc(c.outcome_near) + ' / ' + oc(c.outcome_far) +
+                    (c.hit_far === null || c.hit_far === undefined ? '' : '<div class="iwk-muted">判断命中远窗:' + (c.hit_far ? '✔' : '✘') + '</div>') + '</td></tr>';
+            }).join('') : '<tr><td colspan="7" class="iwk-muted">语料池为空</td></tr>';
+        }).catch(function (e) { $('iwk-search-tb').innerHTML = '<tr><td colspan="7" class="iwk-hit-0">请求失败: ' + esc(e) + '</td></tr>'; });
+    };
+
+    /* ---------- 全局动作 ---------- */
+    window.IWKB = {
+        rule: function (rid, act) {
+            var reason = '';
+            if (act === 'confirm') { if (!confirm('确认该规则生效？生效后进入预测 prompt（90 天有效，到期自动降级复检）')) return; }
+            else { reason = prompt('下线/否决该规则？可填原因（写进证据链）：') || ''; }
+            post('/instinct/api/rules/' + rid + '/' + act, { reason: reason }).then(function (r) {
+                if (r.code !== 200) alert(r.message);
+                loadRules();
+            });
+        },
+        fb: function (pid, col, val) {
+            var b = {}; b[col] = val;
+            post('/instinct/api/predictions/' + pid + '/feedback', b).then(function (r) {
+                if (r.code !== 200) alert(r.message); else loadAudit();
+            });
+        }
+    };
+
+    loadRules();
+    window.addEventListener('resize', function () { if (_trendChart) _trendChart.resize(); });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>登录 / 注册 · K线训练营</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        body { background: #f4f6fb; margin: 0; }
+        .auth-wrap { max-width: 420px; margin: 48px auto; padding: 0 16px; }
+        .auth-card {
+            background: #fff; border-radius: 14px; padding: 28px 26px 30px;
+            box-shadow: 0 8px 30px rgba(20,40,90,0.10);
+        }
+        .auth-title { font-size: 1.35rem; color: #1a237e; margin: 0 0 4px; }
+        .auth-sub { color: #8a90a0; font-size: 0.85rem; margin: 0 0 20px; }
+        .auth-tabs { display: flex; gap: 6px; margin-bottom: 20px; background: #eef1f7; border-radius: 9px; padding: 4px; }
+        .auth-tab {
+            flex: 1; text-align: center; padding: 9px 0; border-radius: 7px; cursor: pointer;
+            font-size: 0.92rem; color: #667085; border: none; background: transparent;
+        }
+        .auth-tab.active { background: #fff; color: #1a237e; font-weight: 600;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+        .field { margin-bottom: 14px; }
+        .field label { display: block; font-size: 0.82rem; color: #555; margin-bottom: 5px; }
+        .field .req { color: #ef5350; }
+        .field input {
+            width: 100%; box-sizing: border-box; padding: 10px 12px; font-size: 0.95rem;
+            border: 1px solid #d7dce6; border-radius: 8px; outline: none;
+        }
+        .field input:focus { border-color: #1565c0; }
+        .row { display: flex; gap: 8px; }
+        .row input { flex: 1; }
+        .code-btn {
+            white-space: nowrap; padding: 0 12px; border: 1px solid #1565c0; color: #1565c0;
+            background: #fff; border-radius: 8px; cursor: pointer; font-size: 0.82rem;
+        }
+        .code-btn:disabled { border-color: #c4cbd8; color: #9aa0aa; cursor: not-allowed; }
+        .submit-btn {
+            width: 100%; padding: 12px; margin-top: 6px; border: none; border-radius: 9px;
+            background: linear-gradient(135deg, #1a237e, #3949ab); color: #fff;
+            font-size: 1rem; cursor: pointer;
+        }
+        .submit-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+        .auth-msg { min-height: 20px; margin-top: 12px; font-size: 0.85rem; text-align: center; }
+        .auth-msg.err { color: #ef5350; }
+        .auth-msg.ok { color: #26a69a; }
+        .hint { color: #9aa0aa; font-size: 0.78rem; margin: -6px 0 12px; }
+        .pwd-box {
+            display: none; margin-top: 16px; padding: 14px; border-radius: 10px;
+            background: #e8f5e9; border: 1px solid #a5d6a7;
+        }
+        .pwd-box .pw { font-size: 1.2rem; font-weight: 700; letter-spacing: 2px; color: #1b5e20; }
+        .pwd-box p { margin: 4px 0; color: #2e7d32; font-size: 0.82rem; }
+        .auth-foot { text-align: center; margin-top: 18px; font-size: 0.82rem; color: #8a90a0; }
+        .auth-foot a { color: #1565c0; text-decoration: none; cursor: pointer; }
+    </style>
+</head>
+<body>
+    {% include 'nav.html' %}
+{% include 'kline_account_bar.html' %}
+
+    <div class="auth-wrap">
+        <div class="auth-card">
+            <h2 class="auth-title" id="card-title">欢迎回来</h2>
+            <p class="auth-sub">K线训练营 · 好友同题对战</p>
+
+            <div class="auth-tabs">
+                <button class="auth-tab active" data-mode="login">登录</button>
+                <button class="auth-tab" data-mode="register">注册</button>
+            </div>
+
+            <!-- 登录 -->
+            <form id="form-login" onsubmit="return doLogin(event)">
+                <div class="field">
+                    <label>邮箱 / 手机号 / 昵称</label>
+                    <input id="li-identifier" autocomplete="username" placeholder="任一即可">
+                </div>
+                <div class="field">
+                    <label>口令</label>
+                    <input id="li-password" type="password" autocomplete="current-password" placeholder="默认口令为邮箱前缀前6位">
+                </div>
+                <button class="submit-btn" type="submit">登录</button>
+                <div class="auth-foot">
+                    忘记口令？<a onclick="resetByCode()">用邮箱验证码登录</a>
+                </div>
+            </form>
+
+            <!-- 注册 -->
+            <form id="form-register" style="display:none" onsubmit="return doRegister(event)">
+                <div class="field">
+                    <label>邮箱 <span class="req">*</span></label>
+                    <div class="row">
+                        <input id="rg-email" placeholder="用于接收验证码">
+                        <button type="button" class="code-btn" id="rg-code-btn" onclick="sendCode('register','rg-email','rg-code')">获取验证码</button>
+                    </div>
+                </div>
+                <div class="field">
+                    <label>验证码 <span class="req">*</span></label>
+                    <input id="rg-code" placeholder="6位数字" maxlength="6" inputmode="numeric">
+                </div>
+                <div class="field">
+                    <label>昵称 <span class="req">*</span></label>
+                    <input id="rg-nickname" placeholder="其他好友看到的名字">
+                </div>
+                <div class="field">
+                    <label>手机号（选填）</label>
+                    <input id="rg-phone" placeholder="可用于登录" maxlength="11" inputmode="numeric">
+                </div>
+                <p class="hint">注册将自动生成默认口令 = 邮箱前缀前6位字母/数字，登录后随时可修改。</p>
+                <button class="submit-btn" type="submit">注册并登录</button>
+
+                <div class="pwd-box" id="pwd-box">
+                    <p>✅ 注册成功，你的默认登录口令：</p>
+                    <div class="pw" id="pwd-value"></div>
+                    <p>请牢记，登录后需在个人中心修改。</p>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        var NEXT = '{{ next }}';
+        if (!(NEXT && NEXT.charAt(0) === '/')) NEXT = '/kline/pk';
+
+        function msg(el, text, ok) {
+            el.textContent = text || '';
+            el.className = 'auth-msg ' + (text ? (ok ? 'ok' : 'err') : '');
+        }
+        function $(id) { return document.getElementById(id); }
+
+        // ── Tab 切换 ──
+        document.querySelectorAll('.auth-tab').forEach(function (tab) {
+            tab.addEventListener('click', function () {
+                document.querySelectorAll('.auth-tab').forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                var m = tab.dataset.mode;
+                $('form-login').style.display = m === 'login' ? '' : 'none';
+                $('form-register').style.display = m === 'register' ? '' : 'none';
+                $('card-title').textContent = m === 'login' ? '欢迎回来' : '创建账号';
+            });
+        });
+        function switchTab(mode) {
+            document.querySelector('.auth-tab[data-mode="' + mode + '"]').click();
+        }
+
+        // ── 发送验证码 ──
+        function sendCode(purpose, emailId, codeId) {
+            var email = $(emailId).value.trim();
+            var btn = purpose === 'register' ? $('rg-code-btn') : $('rs-code-btn');
+            var box = purpose === 'register' ? $('form-register') : $('form-login');
+            var mEl = box.querySelector('.auth-msg') || ensureMsg(box);
+            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { msg(mEl, '请先填写正确邮箱'); return; }
+            btn.disabled = true;
+            fetch('/kline/api/auth/send-code', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email: email, purpose: purpose })
+            }).then(r => r.json()).then(function (j) {
+                if (j.code !== 200) { msg(mEl, j.message || '发送失败'); btn.disabled = false; return; }
+                if (j.data.dev_code) { $(codeId).value = j.data.dev_code; msg(mEl, j.data.notice, true); }
+                else { msg(mEl, '验证码已发送，请查收邮箱', true); }
+                startCooldown(btn, 60);
+            }).catch(function (e) { msg(mEl, '网络错误: ' + e); btn.disabled = false; });
+        }
+        function ensureMsg(form) {
+            var el = form.querySelector('.auth-msg');
+            if (!el) { el = document.createElement('div'); el.className = 'auth-msg'; form.appendChild(el); }
+            return el;
+        }
+        function startCooldown(btn, sec) {
+            var t = sec; btn.textContent = t + 's';
+            var iv = setInterval(function () {
+                t--; btn.textContent = t > 0 ? (t + 's') : '获取验证码';
+                if (t <= 0) { clearInterval(iv); btn.disabled = false; }
+            }, 1000);
+        }
+
+        // ── 注册 ──
+        function doRegister(ev) {
+            ev.preventDefault();
+            var mEl = ensureMsg($('form-register'));
+            var payload = {
+                email: $('rg-email').value.trim(), code: $('rg-code').value.trim(),
+                nickname: $('rg-nickname').value.trim(), phone: $('rg-phone').value.trim(),
+            };
+            if (!payload.nickname) { msg(mEl, '昵称不能为空'); return false; }
+            var btn = $('form-register').querySelector('.submit-btn'); btn.disabled = true;
+            fetch('/kline/api/auth/register', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            }).then(r => r.json()).then(function (j) {
+                btn.disabled = false;
+                if (j.code !== 200) { msg(mEl, j.message || '注册失败'); return; }
+                msg(mEl, '注册成功，正在进入…', true);
+                $('pwd-box').style.display = 'block';
+                $('pwd-value').textContent = j.data.default_password;
+                setTimeout(function () { location.href = NEXT; }, 1800);
+            }).catch(function (e) { btn.disabled = false; msg(mEl, '网络错误: ' + e); });
+            return false;
+        }
+
+        // ── 登录 ──
+        function doLogin(ev) {
+            ev.preventDefault();
+            var mEl = ensureMsg($('form-login'));
+            var payload;
+            if (window.__codeMode) {
+                payload = { email: $('li-identifier').value.trim(), code: $('li-code').value.trim() };
+            } else {
+                payload = { identifier: $('li-identifier').value.trim(), password: $('li-password').value };
+            }
+            var btn = $('form-login').querySelector('.submit-btn'); btn.disabled = true;
+            fetch('/kline/api/auth/login', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            }).then(r => r.json()).then(function (j) {
+                btn.disabled = false;
+                if (j.code !== 200) { msg(mEl, j.message || '登录失败'); return; }
+                msg(mEl, '登录成功，正在进入…', true);
+                setTimeout(function () { location.href = NEXT; }, 700);
+            }).catch(function (e) { btn.disabled = false; msg(mEl, '网络错误: ' + e); });
+            return false;
+        }
+
+        // ── 忘记口令：邮箱验证码登录 ──
+        function resetByCode() {
+            if (window.__codeMode) return;
+            window.__codeMode = true;
+            var form = $('form-login');
+            var fields = form.querySelectorAll('.field');
+            fields[0].innerHTML =
+                '<label>邮箱 <span class="req">*</span></label>' +
+                '<div class="row"><input id="li-identifier" placeholder="注册邮箱">' +
+                '<button type="button" class="code-btn" id="rs-code-btn" ' +
+                "onclick=\"sendCode('reset','li-identifier','li-code')\">获取验证码</button></div>";
+            fields[1].innerHTML =
+                '<label>验证码</label><input id="li-code" maxlength="6" inputmode="numeric" placeholder="6位数字">';
+            form.querySelector('.submit-btn').textContent = '验证码登录';
+            var foot = form.querySelector('.auth-foot'); if (foot) foot.style.display = 'none';
+        }
+    </script>
+</body>
+</html>

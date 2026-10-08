@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>📈 权益曲线对比 · K线训练营</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        body { background: #f4f6fb; margin: 0; }
+        .cp-wrap { max-width: 980px; margin: 0 auto; padding: 24px 16px 60px; }
+        .card { background: #fff; border-radius: 14px; padding: 22px; box-shadow: 0 6px 24px rgba(20,40,90,0.08); margin-bottom: 18px; }
+        .head { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 8px; }
+        .head .code { font-size: 1.3rem; font-weight: 800; letter-spacing: 2px; color: #4a148c; }
+        .head .st { font-size: 0.8rem; padding: 3px 12px; border-radius: 20px; }
+        .st-finished { background: #e8f5e9; color: #2e7d32; }
+        .st-in-progress { background: #e3f2fd; color: #1565c0; }
+        .st-open { background: #fff3e0; color: #e65100; }
+        .chart-box { width: 100%; overflow: hidden; }
+        svg { width: 100%; height: auto; display: block; }
+        .legend { display: flex; flex-wrap: wrap; gap: 16px; margin: 6px 0 4px; }
+        .lg { display: flex; align-items: center; gap: 7px; font-size: 0.88rem; }
+        .lg .sw { width: 16px; height: 4px; border-radius: 2px; }
+        .lg .rk { color: #9aa0aa; font-size: 0.78rem; }
+        table.cmp { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        table.cmp th, table.cmp td { padding: 10px; text-align: left; border-bottom: 1px solid #eef1f7; font-size: 0.9rem; }
+        table.cmp th { color: #8a90a0; font-weight: 600; font-size: 0.78rem; }
+        table.cmp td.num { text-align: right; font-variant-numeric: tabular-nums; }
+        .ret-pos { color: #26a69a; font-weight: 700; } .ret-neg { color: #ef5350; font-weight: 700; }
+        .actions { display: flex; gap: 10px; margin-top: 6px; }
+        .btn { padding: 9px 16px; border-radius: 9px; text-decoration: none; font-size: 0.9rem; display: inline-block; }
+        .btn.ghost { background: #fff; border: 1px solid #d7dce6; color: #556; }
+        .btn.blue { background: linear-gradient(135deg, #1a237e, #3949ab); color: #fff; }
+        .empty { color: #b0b6c0; text-align: center; padding: 40px 0; }
+        .ax { fill: #9aa0aa; font-size: 11px; }
+        .gl { stroke: #eef1f7; stroke-width: 1; }
+        .axis { stroke: #cfd6e0; stroke-width: 1; }
+    </style>
+</head>
+<body>
+    {% include 'nav.html' %}
+{% include 'kline_account_bar.html' %}
+    <div class="cp-wrap">
+        <div class="card">
+            <div class="head">
+                <div class="code" id="h-code">⚔️ {{ code }}</div>
+                <span class="st" id="h-st">加载中…</span>
+            </div>
+            <div class="chart-box" id="chart"><div class="empty">加载权益曲线…</div></div>
+            <div class="legend" id="legend"></div>
+        </div>
+        <div class="card">
+            <h3 style="margin:0 0 4px;color:#1a237e;font-size:1.02rem">📋 战绩明细</h3>
+            <div id="table"></div>
+            <div class="actions">
+                <a class="btn blue" href="/kline/pk/board/{{ match_id }}">🏆 查看榜单</a>
+                <a class="btn ghost" href="/kline/pk">← 返回大厅</a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const MID = '{{ match_id }}';
+        const PALETTE = ['#7b1fa2', '#1565c0', '#26a69a', '#ef5350', '#f9a825', '#3949ab', '#00897b', '#8e24aa'];
+        function fmtPct(v) { if (v == null || isNaN(v)) return '--'; return (v >= 0 ? '+' : '') + Number(v).toFixed(2) + '%'; }
+        function num(v, d) { return v == null || isNaN(v) ? '--' : Number(v).toFixed(d == null ? 1 : d); }
+        function esc(s) { return (s == null ? '' : String(s)).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c])); }
+        async function getJson(url) {
+            const r = await fetch(url); const j = await r.json();
+            if (j.code === 401) { location.href = '/kline/auth?next=' + encodeURIComponent(location.pathname); throw new Error('请先登录'); }
+            if (j.code !== 200 || !j.data) throw new Error(j.message || ('接口错误 ' + j.code));
+            return j.data;
+        }
+        function stLabel(s) { return { lobby: '等待开始', open: '等待加入', ready: '就绪中', playing: '进行中', 'in-progress': '进行中', paused: '已暂停', finished: '已结束', canceled: '已取消' }[s] || s; }
+
+        function buildSvg(players) {
+            const W = 920, H = 400, padL = 56, padR = 18, padT = 16, padB = 34;
+            let min = Infinity, max = -Infinity, maxN = 1;
+            players.forEach(p => {
+                const eq = p.equity || [];
+                maxN = Math.max(maxN, eq.length);
+                eq.forEach(pt => { min = Math.min(min, pt.equity); max = Math.max(max, pt.equity); });
+            });
+            if (!isFinite(min)) { min = 0; max = 1; }
+            if (min === max) { min -= 1; max += 1; }
+            const pad = (max - min) * 0.08; min -= pad; max += pad;
+            const X = i => padL + (maxN <= 1 ? 0 : (i / (maxN - 1)) * (W - padL - padR));
+            const Y = v => padT + (1 - (v - min) / (max - min)) * (H - padT - padB);
+
+            let g = '';
+            // 网格 + Y 轴刻度
+            for (let t = 0; t <= 4; t++) {
+                const val = min + (max - min) * t / 4, y = Y(val);
+                g += `<line class="gl" x1="${padL}" y1="${y.toFixed(1)}" x2="${W - padR}" y2="${y.toFixed(1)}"/>`;
+                g += `<text class="ax" x="${padL - 6}" y="${(y + 3).toFixed(1)}" text-anchor="end">${val.toFixed(0)}</text>`;
+            }
+            // X 轴进度刻度
+            for (let t = 0; t <= 4; t++) {
+                const frac = t / 4, x = padL + frac * (W - padL - padR);
+                g += `<text class="ax" x="${x.toFixed(1)}" y="${H - 12}" text-anchor="middle">${Math.round(frac * 100)}%</text>`;
+            }
+            g += `<line class="axis" x1="${padL}" y1="${padT}" x2="${padL}" y2="${H - padB}"/>`;
+            g += `<line class="axis" x1="${padL}" y1="${H - padB}" x2="${W - padR}" y2="${H - padB}"/>`;
+            // 各选手曲线
+            players.forEach((p, pi) => {
+                const eq = p.equity || [];
+                if (eq.length < 2) return;
+                const col = PALETTE[pi % PALETTE.length];
+                const pts = eq.map((pt, i) => `${X(i).toFixed(1)},${Y(pt.equity).toFixed(1)}`).join(' ');
+                g += `<polyline fill="none" stroke="${col}" stroke-width="2" points="${pts}"/>`;
+                const last = eq[eq.length - 1];
+                g += `<circle cx="${X(eq.length - 1).toFixed(1)}" cy="${Y(last.equity).toFixed(1)}" r="3.2" fill="${col}"/>`;
+            });
+            return `<svg viewBox="0 0 ${W} ${H}">${g}</svg>`;
+        }
+
+        async function render() {
+            const chart = document.getElementById('chart');
+            let d;
+            try { d = await getJson('/kline/api/pk/' + MID + '/compare'); }
+            catch (e) { chart.innerHTML = `<div class="empty">${esc(e.message)}</div>`; return; }
+            const m = d.match, players = d.players || [];
+            const stEl = document.getElementById('h-st');
+            stEl.textContent = stLabel(m.status);
+            stEl.className = 'st st-' + m.status;
+
+            if (!players.length) {
+                chart.innerHTML = m.status === 'finished'
+                    ? '<div class="empty">暂无已提交成绩，无可对比权益曲线</div>'
+                    : '<div class="empty">🔒 对战尚未结束，权益曲线将在结束后自动公开（自动同步模式无需手动提交）</div>';
+                document.getElementById('table').innerHTML = '';
+                return;
+            }
+            chart.innerHTML = buildSvg(players);
+            document.getElementById('legend').innerHTML = players.map((p, i) =>
+                `<div class="lg"><span class="sw" style="background:${PALETTE[i % PALETTE.length]}"></span>` +
+                `<b>${esc(p.display)}</b> <span class="rk">#${p.rank || '-'}</span>` +
+                `<span class="${p.return_pct >= 0 ? 'ret-pos' : 'ret-neg'}">${fmtPct(p.return_pct)}</span></div>`).join('');
+            document.getElementById('table').innerHTML = `<table class="cmp">
+                <thead><tr><th>名次</th><th>选手</th><th class="num">收益率</th><th class="num">最大回撤</th><th class="num">胜率</th><th class="num">盈亏比</th><th class="num">终值</th><th class="num">交易笔数</th></tr></thead>
+                <tbody>${players.map(p => `<tr>
+                    <td class="rk">#${p.rank || '-'}</td>
+                    <td><b>${esc(p.display)}</b></td>
+                    <td class="num ${p.return_pct >= 0 ? 'ret-pos' : 'ret-neg'}">${fmtPct(p.return_pct)}</td>
+                    <td class="num">${num(p.max_drawdown_pct)}%</td>
+                    <td class="num">${num(p.win_rate, 0)}%</td>
+                    <td class="num">${num(p.profit_loss_ratio, 2)}</td>
+                    <td class="num">${p.final_balance != null ? Number(p.final_balance).toFixed(0) : '--'}</td>
+                    <td class="num">${p.total_trades != null ? p.total_trades : '--'}</td>
+                </tr>`).join('')}</tbody></table>`;
+        }
+        render();
+    </script>
+</body>
+</html>

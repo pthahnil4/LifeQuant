@@ -1,0 +1,15 @@
+{
+  "_meta": {
+    "endpoint": "/stock/hs/kline",
+    "note": "沪深K线（000001.SZ 平安银行，period=60 前复权）。candle 为定长数组，顺序推断：[ts(秒),open,close,high,low,volume,amount,change,changeRate]。恒为最近100根，此处仅首末。",
+    "request": {"code": "000001.SZ", "period": "60", "fuquan": "1", "pageSize": "100"},
+    "captured_at": "2026-09-17"
+  },
+  "data": {
+    "candle": [
+      [1786674600, 11.22, 11.17, 11.23, 11.16, 311706, 348727537, -0.71, 0.62],
+      "... 中间省略 ...",
+      [1789628400, 11.64, 11.61, 11.65, 11.57, 173680, 201565013, -0.26, 0.69]
+    ]
+  }
+}

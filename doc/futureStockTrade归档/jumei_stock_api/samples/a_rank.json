@@ -1,0 +1,14 @@
+{
+  "_meta": {
+    "endpoint": "/stock/a/rank",
+    "note": "A股排行（涨跌幅倒序前3），真实返回节选。请求：market=hs_a,sort=changeRate,asc=0,pageSize=3",
+    "captured_at": "2026-09-17"
+  },
+  "data": {
+    "list": [
+      {"symbol": "sh601091", "name": "N沈鼓", "price": "20.800", "change": "16.41", "changeRate": "373.8041", "open": "13.000", "high": "20.800", "low": "11.730", "preclose": "4.390", "volume": "168125145", "value": "2181187373.000", "amplitude": 206.61, "update_time": 1789630498},
+      {"symbol": "sz300741", "name": "华宝股份", "price": "27.170", "change": "4.53", "changeRate": "20.008834", "open": "23.200", "high": "27.170", "low": "22.080", "preclose": "22.640", "volume": "31779627", "value": "820267736.060", "amplitude": 22.48, "update_time": 1789630500},
+      {"symbol": "sz301390", "name": "经纬股份", "price": "45.000", "change": "7.5", "changeRate": "20", "open": "", "high": "45.000", "low": "45.000", "preclose": "37.500", "volume": "592947", "value": "2668261", "amplitude": 0, "update_time": 1789630530}
+    ]
+  }
+}

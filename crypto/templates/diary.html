@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>日记本 - LifeQuant</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="{{ url_for('static', filename='js/mdialog.js') }}"></script>
+</head>
+<body>
+    {% include 'nav.html' %}
+
+    <div class="diary-page">
+        <!-- ============ 页面标题区 ============ -->
+        <header class="diary-hero">
+            <div class="diary-hero-main">
+                <span class="diary-hero-icon">📔</span>
+                <div>
+                    <h1>日记本</h1>
+                    <p class="diary-hero-desc">按天记录 · 公开或隐私 · 数着日子过一生 🌱</p>
+                </div>
+            </div>
+            <div class="diary-hero-actions">
+                <button class="m-btn" id="diary-btn-export" title="导出整本日记（JSON）">⬇ 导出</button>
+                <button class="m-btn" id="diary-btn-import" title="导入此前导出的 JSON">⬆ 导入</button>
+                <button class="m-btn" id="diary-btn-lock" title="立即上锁（清除解锁状态）" style="display:none;">🔒 上锁</button>
+                <button class="m-btn" id="diary-btn-settings">⚙ 设置</button>
+            </div>
+        </header>
+
+        <!-- ============ 顶部组件：人生计数器 + 目标倒计时 ============ -->
+        <section class="diary-counters" id="diary-counters">
+            <div class="diary-life-card" id="diary-life-card"></div>
+            <div class="diary-goals-card">
+                <div class="dgc-head">
+                    <span>🎯 目标倒计时</span>
+                    <button class="m-btn m-btn-sm" id="diary-btn-add-goal">＋ 新目标</button>
+                </div>
+                <div class="dgc-list" id="diary-goals-list"></div>
+            </div>
+        </section>
+
+        <!-- ============ 锁定横幅（隐私模式未解锁） ============ -->
+        <section class="diary-lock-banner" id="diary-lock-banner" style="display:none;">
+            <div class="dlb-text">
+                <b>🔒 日记本处于隐私模式</b>
+                <span>正文已隐藏，输入访问密码后继续阅读。</span>
+            </div>
+            <form class="dlb-form" id="diary-unlock-form">
+                <input type="password" id="diary-unlock-pwd" class="dlb-input"
+                       placeholder="访问密码" autocomplete="current-password">
+                <button type="submit" class="m-btn m-btn-primary">解锁</button>
+            </form>
+        </section>
+
+        <!-- ============ 主体：左日历 / 右记录 ============ -->
+        <div class="diary-layout" id="diary-layout">
+            <aside class="diary-side">
+                <div class="diary-cal-card">
+                    <div class="dcc-head">
+                        <button class="dcc-nav" id="diary-cal-prev">‹</button>
+                        <span class="dcc-title" id="diary-cal-title">-------年--月</span>
+                        <button class="dcc-nav" id="diary-cal-next">›</button>
+                    </div>
+                    <div class="dcc-weekdays">
+                        <span>一</span><span>二</span><span>三</span><span>四</span>
+                        <span>五</span><span>六</span><span>日</span>
+                    </div>
+                    <div class="dcc-grid" id="diary-cal-grid"></div>
+                    <div class="dcc-legend">
+                        <span class="dcc-dot"></span><span>有日记</span>
+                        <span class="dcc-dot dcc-dot-private"></span><span>隐私</span>
+                    </div>
+                </div>
+                <div class="diary-side-tip">
+                    <span id="diary-side-date"></span>
+                    <button class="m-btn m-btn-sm" id="diary-btn-today" style="display:none;">回到最新</button>
+                </div>
+            </aside>
+
+            <main class="diary-main">
+                <!-- 写日记卡 -->
+                <div class="diary-composer" id="diary-composer">
+                    <div class="dyc-banner" id="diary-link-banner" style="display:none;">
+                        <span>🔗 关联来源：<b id="diary-link-title"></b></span>
+                        <button class="dyc-banner-cancel" id="diary-link-cancel">✕ 取消</button>
+                    </div>
+                    <textarea id="diary-input" class="dyc-input" rows="3"
+                              placeholder="今天发生了什么？写下来再说 📔"></textarea>
+                    <div class="dyc-bar">
+                        <div class="dyc-moods" id="diary-mood-chips"></div>
+                        <div class="dyc-actions">
+                            <span class="dyc-date" id="diary-composer-date"></span>
+                            <label class="dyc-private-switch" title="隐私条目：未解锁时他人看不到这条正文">
+                                <input type="checkbox" id="diary-private-toggle">
+                                <span>隐私</span>
+                            </label>
+                            <span class="dyc-hint">Ctrl + Enter</span>
+                            <button class="m-btn m-btn-primary" id="diary-submit">写入日记</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 时间线（按天分组） -->
+                <div class="diary-feed" id="diary-feed"></div>
+                <div class="diary-feed-foot" id="diary-feed-foot" style="display:none;">
+                    <button class="m-btn" id="diary-btn-more">加载更早的日记</button>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/diary.js') }}"></script>
+</body>
+</html>

@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>导航配置 - LifeQuant</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body class="nvs-body">
+{% include 'nav.html' %}
+<main class="nvs-page">
+    <header class="nvs-head">
+        <h1>导航配置</h1>
+        <p class="nvs-sub">自定义顶部导航的入口、顺序与显隐；保存后全设备同步。删除只影响菜单，不会移除路由或数据。
+            「整理导航」按钮可在顶部栏直接拖拽排序。</p>
+    </header>
+
+    {#- 编辑器骨架：navigation_editor.js 的 mount 会填充以下固定容器，
+        故必须持久存在（缺 .nvs-col-left 会中断渲染）。脚本与 Store 由 nav.html 载入。 -#}
+    <div id="nvsApp">
+        <div class="nvs-toolbar"></div>
+        <div class="nvs-layout">
+            <div class="nvs-col-left"></div>
+            <div class="nvs-col-right">
+                <div class="nvs-detail"></div>
+                <div class="nvs-preview-host"></div>
+            </div>
+        </div>
+        <div class="nvs-statusbar"></div>
+    </div>
+</main>
+
+<script>
+    // navigation.js / navigation_editor.js 由 nav.html 同步载入；Store 在 DOMContentLoaded
+    // 时建立内存默认配置，故编辑器挂载须等其 ready 后执行，避免拿到空配置。
+    (function () {
+        function mount() {
+            var host = document.getElementById('nvsApp');
+            if (!host || host._navEditorMounted) return;
+            if (!window.CryptoNav || !window.CryptoNavEditor || !window.CryptoNav.ready()) return;
+            host._navEditorMounted = true;
+            window.CryptoNavEditor.mount(host);
+        }
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', function () {
+                mount();
+                // 极端情况下 Store 仍晚于本页就绪：借 config 事件补挂一次
+                if (window.CryptoNav) window.CryptoNav.on('config', mount);
+            });
+        } else {
+            mount();
+            if (window.CryptoNav) window.CryptoNav.on('config', mount);
+        }
+    })();
+</script>
+</body>
+</html>

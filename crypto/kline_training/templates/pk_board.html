@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🏆 对战榜单 · K线训练营</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        body { background: #f4f6fb; margin: 0; }
+        .bd-wrap { max-width: 860px; margin: 0 auto; padding: 24px 16px 60px; }
+        .card { background: #fff; border-radius: 14px; padding: 22px; box-shadow: 0 6px 24px rgba(20,40,90,0.08); margin-bottom: 18px; }
+        .head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+        .head .code { font-size: 1.5rem; font-weight: 800; letter-spacing: 3px; color: #4a148c; }
+        .head .st { font-size: 0.8rem; padding: 4px 12px; border-radius: 20px; }
+        .st-open { background: #fff3e0; color: #e65100; }
+        .st-in-progress { background: #e3f2fd; color: #1565c0; }
+        .st-finished { background: #e8f5e9; color: #2e7d32; }
+        .meta { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+        .tag { font-size: 0.8rem; padding: 4px 11px; border-radius: 20px; background: #eef1f7; color: #556; }
+        .tag.blind { background: #ede7f6; color: #4a148c; }
+        .tag.host { background: #fce4ec; color: #c2185b; }
+        .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
+        .btn { padding: 10px 18px; border-radius: 9px; border: none; cursor: pointer; font-size: 0.92rem; text-decoration: none; display: inline-block; }
+        .btn.primary { background: linear-gradient(135deg, #4a148c, #7b1fa2); color: #fff; }
+        .btn.blue { background: linear-gradient(135deg, #1a237e, #3949ab); color: #fff; }
+        .btn.ghost { background: #fff; border: 1px solid #d7dce6; color: #556; }
+        table.board { width: 100%; border-collapse: collapse; margin-top: 6px; }
+        table.board th, table.board td { padding: 11px 10px; text-align: left; border-bottom: 1px solid #eef1f7; font-size: 0.9rem; }
+        table.board th { color: #8a90a0; font-weight: 600; font-size: 0.78rem; }
+        table.board td.num { text-align: right; font-variant-numeric: tabular-nums; }
+        .rk { font-weight: 800; color: #4a148c; font-size: 1.05rem; width: 42px; }
+        .rk.p1 { color: #f9a825; } .rk.p2 { color: #90a4ae; } .rk.p3 { color: #bcaaa4; }
+        .who { font-weight: 600; color: #222; }
+        .me { color: #7b1fa2; font-size: 0.72rem; margin-left: 6px; border: 1px solid #ce93d8; border-radius: 10px; padding: 0 6px; }
+        .ret-pos { color: #26a69a; font-weight: 700; } .ret-neg { color: #ef5350; font-weight: 700; }
+        .pend { color: #b0b6c0; font-style: italic; }
+        .empty { color: #b0b6c0; text-align: center; padding: 30px 0; }
+        h2.t { font-size: 1.05rem; color: #1a237e; margin: 0 0 6px; }
+    </style>
+</head>
+<body>
+    {% include 'nav.html' %}
+{% include 'kline_account_bar.html' %}
+
+    <div class="bd-wrap">
+        <div class="card" id="card">
+            <div class="empty">加载中…</div>
+        </div>
+    </div>
+
+    <script>
+        const MID = '{{ match_id }}';
+        const MY_DISPLAY = '{{ current_user.nickname if current_user else "" }}';
+        function fmtPct(v) { if (v == null || isNaN(v)) return '--'; return (v >= 0 ? '+' : '') + Number(v).toFixed(2) + '%'; }
+        function num(v, d) { return v == null || isNaN(v) ? '--' : Number(v).toFixed(d == null ? 1 : d); }
+        function esc(s) { return (s == null ? '' : String(s)).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c])); }
+        async function getJson(url) {
+            const r = await fetch(url); const j = await r.json();
+            if (j.code === 401) { location.href = '/kline/auth?next=' + encodeURIComponent(location.pathname); throw new Error('请先登录'); }
+            if (j.code !== 200 || !j.data) throw new Error(j.message || ('接口错误 ' + j.code));
+            return j.data;
+        }
+        function stLabel(s) { return { lobby: '等待开始', open: '等待加入', ready: '就绪中', playing: '进行中', 'in-progress': '进行中', paused: '已暂停', finished: '已结束', canceled: '已取消' }[s] || s; }
+
+        async function render() {
+            const box = document.getElementById('card');
+            let v;
+            try { v = await getJson('/kline/api/pk/' + MID); }
+            catch (e) { box.innerHTML = `<div class="empty">${esc(e.message)}</div>`; return; }
+
+            const finished = v.status === 'finished';
+            // 组队进行中：后端隐藏他人指标（reveal=false, board=[]），仅展示进度
+            const membersHtml = (v.members || []).map(mm =>
+                `<span class="tag">${esc(mm.display)}${mm.is_me ? '（我）' : ''} · ${mm.submitted ? '已完成' : '进行中'}</span>`).join('');
+            const title = (v.blind && !finished) ? '🎲 神秘品种' : (esc(v.symbol_name || v.symbol || '—'));
+            const rankRow = (r, i) => {
+                const meTag = (r.nickname && r.nickname === MY_DISPLAY) ? '<span class="me">我</span>' : '';
+                if (!r.completed) {
+                    return `<tr><td class="rk">–</td><td class="who">${esc(r.display)}${meTag}</td>
+                        <td class="num pend" colspan="6">尚未提交成绩（等待其跑完对战）</td></tr>`;
+                }
+                return `<tr>
+                    <td class="rk ${i < 3 ? 'p' + (i + 1) : ''}">${r.rank || '-'}</td>
+                    <td class="who">${esc(r.display)}</td>
+                    <td class="num ${r.return_pct >= 0 ? 'ret-pos' : 'ret-neg'}">${fmtPct(r.return_pct)}</td>
+                    <td class="num">${num(r.max_drawdown_pct)}%</td>
+                    <td class="num">${num(r.win_rate, 0)}%</td>
+                    <td class="num">${num(r.profit_loss_ratio, 2)}</td>
+                    <td class="num">${r.final_balance != null ? Number(r.final_balance).toFixed(0) : '--'}</td>
+                    <td class="num">${r.total_trades != null ? r.total_trades : '--'}</td>
+                </tr>`;
+            };
+            const ranked = v.board.filter(b => b.completed);
+            const table = `<table class="board">
+                <thead><tr><th>名次</th><th>选手</th><th class="num">收益率</th><th class="num">回撤</th><th class="num">胜率</th><th class="num">盈亏比</th><th class="num">终值</th><th class="num">笔数</th></tr></thead>
+                <tbody>${v.board.map((r, i) => rankRow(r, ranked.indexOf(r))).join('')}</tbody></table>`;
+
+            const boardSection = v.reveal
+                ? (v.board.length ? table : '<div class="empty">暂无参与者</div>')
+                : `<div class="empty" style="padding:16px 0">🔒 组队对战进行中，各人成绩与他人操作实时保密；<br>下方仅显示完成进度，结束后自动公开排名与明细。</div>
+                   <div class="meta" style="margin-top:0">${membersHtml || '<span class="tag">暂无成员</span>'}</div>`;
+
+            box.innerHTML = `
+                <div class="head">
+                    <div>
+                        <div class="code">⚔️ ${esc(v.code)}</div>
+                        <div style="color:#9aa0aa;font-size:0.8rem;margin-top:4px">${title} · ${esc(v.category_label)}${v.long_only ? '（仅做多）' : ''}</div>
+                    </div>
+                    <span class="st st-${v.status}">${stLabel(v.status)}</span>
+                </div>
+                <div class="meta">
+                    <span class="tag">周期 ${esc(v.period)}</span>
+                    <span class="tag">K线 ${v.bar_count || '?'} 根</span>
+                    <span class="tag">完成 ${v.completed}/${v.participants}</span>
+                    ${v.blind ? '<span class="tag blind">🎲 盲选</span>' : ''}
+                    ${v.is_host ? '<span class="tag host">我是房主</span>' : ''}
+                    <span class="tag">杠杆 ${v.engine_config.leverage || '-'}x · 本金 ${v.engine_config.baseAmount || '-'}</span>
+                </div>
+                <div class="actions">
+                    ${!finished ? `<a class="btn primary" href="/kline/pk/train/${v.id}">📊 进入对战训练</a>` : ''}
+                    ${ranked.length >= 1 ? `<a class="btn blue" href="/kline/pk/compare/${v.id}">📈 权益曲线对比</a>` : ''}
+                    <a class="btn ghost" href="/kline/pk">← 返回大厅</a>
+                </div>
+                <h2 class="t" style="margin-top:22px">🏆 排行榜</h2>
+                ${boardSection}
+            `;
+        }
+        render();
+    </script>
+</body>
+</html>

@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}运维监控中心{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/layout.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/components.css') }}">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛰️</text></svg>">
+</head>
+<body>
+<div class="app">
+
+  {# ===================== 侧边栏 ===================== #}
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar__brand">
+      <div class="brand__logo">🛰️</div>
+      <div class="brand__text">
+        <span class="brand__name">OpsCenter</span>
+        <span class="brand__sub">量化运维监控中心</span>
+      </div>
+    </div>
+
+    <nav class="sidebar__nav">
+      {% set nav = [
+        ('态势总览', [
+          ('dashboard', '📊', '总览仪表盘', '#', ''),
+        ]),
+        ('系统健康', [
+          ('health', '🩺', '健康检查', '#', ''),
+          ('lifecycle', '♻️', '进程生命周期', '#', ''),
+          ('memory', '🧠', '内存治理', '#', ''),
+        ]),
+        ('日志与调度', [
+          ('logs', '📜', '日志聚合中心', '#', '3'),
+          ('scheduler', '⏰', '任务调度', '#', ''),
+        ]),
+        ('交易运行时', [
+          ('trading', '📈', '实盘监控', '#', ''),
+          ('alerts', '🚨', '告警中心', '#', '5'),
+        ]),
+        ('运维工具箱', [
+          ('smoke', '✅', '冒烟运行器', '#', ''),
+          ('diag', '🔧', '诊断脚本', '#', ''),
+          ('config', '⚙️', '配置总览', '#', ''),
+        ]),
+      ] %}
+      {% for group_label, items in nav %}
+      <div class="nav-group">
+        <div class="nav-group__label">{{ group_label }}</div>
+        {% for key, icon, label, href, badge in items %}
+        <a href="{{ href }}" class="nav-item {% if key == active_page %}is-active{% endif %}">
+          <span class="nav-item__icon">{{ icon }}</span>
+          <span>{{ label }}</span>
+          {% if badge %}<span class="nav-item__badge">{{ badge }}</span>{% endif %}
+        </a>
+        {% endfor %}
+      </div>
+      {% endfor %}
+    </nav>
+
+    <div class="sidebar__footer">
+      <div class="syscard">
+        <div class="syscard__row"><span>🟢</span><span>交易进程</span><span style="margin-left:auto" class="text-mono">6001 运行中</span></div>
+        <div class="syscard__row"><span>🔵</span><span>本演示站</span><span style="margin-left:auto" class="text-mono">{{ demo_port }}</span></div>
+        <div class="syscard__row"><span>⚪</span><span>数据模式</span><span style="margin-left:auto">静态样例</span></div>
+      </div>
+    </div>
+  </aside>
+  <div class="scrim" id="scrim"></div>
+
+  {# ===================== 主区 ===================== #}
+  <div class="main">
+    <header class="topbar">
+      <button class="topbar__toggle" id="navToggle" aria-label="菜单">☰</button>
+      <div class="breadcrumb">
+        <span>{% block crumb_group %}态势总览{% endblock %}</span>
+        <span class="breadcrumb__sep">/</span>
+        <span class="breadcrumb__current">{% block crumb_page %}总览仪表盘{% endblock %}</span>
+      </div>
+
+      <div class="topbar__search">
+        <span class="ico">🔍</span>
+        <input type="text" placeholder="搜索模块、日志、币种…（演示占位）">
+      </div>
+
+      <div class="topbar__actions">
+        <div class="health-pill" title="聚合健康状态">
+          <span class="health-pill__dot"></span> 系统正常
+        </div>
+        <button class="icon-btn" id="refreshBtn" title="刷新">⟳</button>
+        <button class="icon-btn" id="themeToggle" title="切换明暗主题">🌙</button>
+        <button class="icon-btn" title="通知">🔔<span class="icon-btn__dot"></span></button>
+        <div class="avatar" title="管理员">A</div>
+      </div>
+    </header>
+
+    <main class="content">
+      {% block content %}{% endblock %}
+    </main>
+
+    <footer class="footer">
+      <div>OpsCenter Demo · v0.1.0 · 独立演示站，与交易系统（6001）物理隔离，纯静态样例数据</div>
+      <div class="footer__links">
+        <a href="#">设计方案</a>
+        <a href="#">安全边界</a>
+        <a href="#">关于</a>
+      </div>
+    </footer>
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

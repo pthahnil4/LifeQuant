@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>监控台操作手册 - LifeQuant</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        .guide-page { max-width: 1080px; margin: 30px auto; padding: 0 20px 60px; }
+        .guide-page h1 { margin-bottom: 6px; }
+        .guide-desc { color: var(--text-muted); margin-bottom: 20px; font-size: .92rem; }
+        .guide-toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 18px; flex-wrap: wrap; }
+
+        /* 分页标签（复用任务页 task-tab 体系视觉） */
+        .guide-tabs { display: flex; gap: 6px; flex-wrap: wrap; border-bottom: 2px solid var(--border-color); margin-bottom: 20px; }
+        .guide-tab-btn {
+            background: none; border: none; padding: 9px 14px; cursor: pointer;
+            font-size: .9rem; color: #666; border-bottom: 3px solid transparent; margin-bottom: -2px;
+        }
+        .guide-tab-btn:hover { color: var(--primary-color); }
+        .guide-tab-btn.active { color: var(--primary-color); border-bottom-color: var(--primary-color); font-weight: 700; }
+        .guide-tab-content { display: none; }
+        .guide-tab-content.active { display: block; }
+
+        .guide-intro {
+            background: var(--card-bg); border: 1px solid var(--border-color);
+            border-radius: 10px; padding: 14px 18px; margin-bottom: 18px; font-size: .9rem; line-height: 1.7;
+        }
+        .guide-intro h4 { margin: 0 0 6px; font-size: .95rem; }
+
+        /* 按钮说明书卡片：图标+名称 / 功能 / 场景 / 注意 */
+        .fn-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; margin-bottom: 22px; }
+        .fn-card {
+            background: var(--card-bg); border: 1px solid var(--border-color);
+            border-radius: 10px; padding: 14px 16px; font-size: .86rem; line-height: 1.65;
+        }
+        .fn-card .fn-name { font-weight: 700; font-size: .95rem; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+        .fn-card .fn-ico { font-size: 1.15rem; }
+        .fn-card dl { margin: 0; }
+        .fn-card dt { float: left; clear: both; width: 4.5em; color: var(--text-muted); font-weight: 600; }
+        .fn-card dd { margin: 0 0 4px 4.5em; }
+        .fn-card .warn { color: #e67e22; }
+        .flow-steps { counter-reset: step; list-style: none; padding: 0; margin: 8px 0 0; }
+        .flow-steps li { counter-increment: step; padding: 4px 0 4px 2.2em; position: relative; }
+        .flow-steps li::before {
+            content: counter(step); position: absolute; left: 0; top: 5px;
+            width: 1.5em; height: 1.5em; border-radius: 50%; background: var(--primary-color);
+            color: #fff; font-size: .75rem; display: flex; align-items: center; justify-content: center;
+        }
+        .guide-h2 { font-size: 1.05rem; margin: 22px 0 10px; padding-left: 9px; border-left: 4px solid var(--primary-color); }
+        .jump-list { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+        .jump-list a {
+            font-size: .8rem; text-decoration: none; padding: 4px 10px; border-radius: 999px;
+            border: 1px solid var(--border-color); color: #555; background: #fff;
+        }
+        .jump-list a:hover { border-color: var(--primary-color); color: var(--primary-color); }
+
+        @media (max-width: 640px) {
+            .fn-grid { grid-template-columns: 1fr; }
+            .guide-tab-btn { padding: 8px 9px; font-size: .82rem; }
+        }
+        @media print {
+            .main-nav, .guide-toolbar, .guide-tabs { display: none !important; }
+            .guide-tab-content { display: block !important; page-break-after: always; }
+            .fn-card { break-inside: avoid; box-shadow: none; }
+            body { background: #fff; }
+        }
+    </style>
+</head>
+<body>
+    {% include 'nav.html' %}
+    <div class="guide-page">
+        <h1>📚 监控台操作手册</h1>
+        <p class="guide-desc">LifeQuant · 策略监控台（首页 <code>/</code>）全部按钮与功能模块的分页说明。每页聚焦一个模块，支持顶栏直达与打印导出。</p>
+
+        <div class="guide-toolbar">
+            <button class="m-btn m-btn-primary m-btn-sm" onclick="window.print()">🖨️ 打印 / 导出 PDF</button>
+            <span style="font-size:.78rem;color:var(--text-muted)">导出 PDF：打印对话框选「另存为 PDF」；打印时自动展开全部章节</span>
+        </div>
+
+        <div class="guide-tabs" id="guide-tabs">
+            <button class="guide-tab-btn active" data-tab="overview">🏠 总览与快速上手</button>
+            <button class="guide-tab-btn" data-tab="coins">🎯 币种选择与管理</button>
+            <button class="guide-tab-btn" data-tab="cards">📟 行情卡片与刷新</button>
+            <button class="guide-tab-btn" data-tab="batch">📊 批量趋势分析</button>
+            <button class="guide-tab-btn" data-tab="filter">🔍 筛选与排序</button>
+            <button class="guide-tab-btn" data-tab="float">🚀 浮动币种与趋势扫描</button>
+            <button class="guide-tab-btn" data-tab="pool">💰 固定池与市值维护</button>
+        </div>
+
+        <!-- ============ 总览 ============ -->
+        <div class="guide-tab-content active" id="gt-overview">
+            <div class="guide-intro">
+                <h4>页面结构</h4>
+                监控台自上而下分为四区：① <b>监控币种选择面板</b>（标签墙 + 高级筛选 + 币种管理按钮）；② <b>行情卡片区</b>（选中币种的实时策略数据，含查看详情/多周期总览入口）；③ <b>刷新控制区</b>（手动刷新 + 自动刷新间隔）；④ <b>批量多周期趋势分析面板</b>（全币种库 15m/1H/4H/1D 四周期指标表格）。
+            </div>
+            <div class="guide-intro">
+                <h4>典型工作流</h4>
+                <ol class="flow-steps">
+                    <li>点「🚀 批量更新趋势数据」刷新全币种库指标（约 1~3 分钟，含新增币种）；</li>
+                    <li>用高级筛选（趋势/ADX/ATR/ER）圈出「趋势强且波动大」的候选币；</li>
+                    <li>勾选候选币 → 点「保存选择」，卡片区开始实时监控这些币种；</li>
+                    <li>需要临时观察趋势扫描页发现的币 → 添加为浮动币种，满意后「⬆ 提升为固定」；</li>
+                    <li>市值排名变化后 → 到交易配置页点「🔄 更新市值列表」重建市值 Top50 池。</li>
+                </ol>
+            </div>
+            <h3 class="guide-h2">章节直达</h3>
+            <div class="guide-intro">
+                <div class="jump-list">
+                    <a href="#coins" onclick="jumpTab('coins');return false;">🎯 币种选择与管理</a>
+                    <a href="#cards" onclick="jumpTab('cards');return false;">📟 行情卡片与刷新</a>
+                    <a href="#batch" onclick="jumpTab('batch');return false;">📊 批量趋势分析</a>
+                    <a href="#filter" onclick="jumpTab('filter');return false;">🔍 筛选与排序</a>
+                    <a href="#float" onclick="jumpTab('float');return false;">🚀 浮动币种与趋势扫描</a>
+                    <a href="#pool" onclick="jumpTab('pool');return false;">💰 固定池与市值维护</a>
+                </div>
+            </div>
+        </div>
+
+        <!-- ============ 币种选择与管理 ============ -->
+        <div class="guide-tab-content" id="gt-coins">
+            <div class="guide-intro">
+                <h4>固定池 / 浮动池 / 宇宙 三个概念</h4>
+                <b>固定币种</b>=市值 Top50 稳定监控池（config 的 all_coins，按市值降序展示）；<b>浮动币种</b>=从趋势扫描页临时加入的观察对象；<b>币种库(宇宙)</b>=crypto_coins 表/CSV，是批量趋势分析的输入清单。移除固定币会同步删宇宙，提升为固定会同步写宇宙，三者始终保持一致。
+            </div>
+            <div class="fn-grid">
+                <div class="fn-card"><div class="fn-name"><span class="fn-ico">☑</span>全选所有</div>
+                    <dl><dt>功能</dt><dd>选中币种墙上的全部币种（固定+浮动）。</dd>
+                    <dt>场景</dt><dd>需要盯全池时一键勾满。</dd>
+                    <dt class="warn">注意</dt><dd class="warn">币种多时卡片刷新变慢，建议优先用筛选后再批量选。</dd></dl></div>
+                <div class="fn-card"><div class="fn-name"><span class="fn-ico">✖</span>重置选择</div>
+                    <dl><dt>功能</dt><dd>取消所有「选中(激活)」标签，不动星标/固定属性。</dd>
+                    <dt>场景</dt><dd>快速清空当前监控卡片列表。</dd></dl></div>
+                <div class="fn-card"><div class="fn-name"><span class="fn-ico">★</span>全选星标 / ☆ 重置星标</div>
+                    <dl><dt>功能</dt><dd>把所有已星标币设为选中 / 清除全部星标。</dd>
+                    <dt>场景</dt><dd>星标=你的重点观察清单，每天开盘一键召回。</dd></dl></div>
+                <div class="fn-card"><div class="fn-name"><span class="fn-ico">🔄</span>同步（CSV）</div>
+                    <dl><dt>功能</dt><dd>把币种库中的币合并进可用列表（保留手动添加项）。</dd>
+                    <dt>场景</dt><dd>币种库有更新、页面还没反映时。</dd></dl></div>
+                <div class="fn-card"><div class="fn-name"><span class="fn-ico">➖</span>移除选中</div>
+                    <dl><dt>功能</dt><dd>把选中的<b>固定</b>币种移出监控池，并同步从币种库(DB+CSV)删除。</dd>
+                    <dt>场景</dt><dd>清理已下架/失去关注度的币。</dd>
+                    <dt class="warn">注意</dt><dd class="warn">不可恢复（除非重新提升/入库）；至少保留 1 个固定币；「CSV同步固定」不会让被移除的币复活。</dd></dl></div>
+                <div class="fn-card"><div class="fn-name"><span class="fn-ico">⬆</span>提升为固定</div>
+                    <dl><dt>功能</dt><dd>把选中的<b>浮动</b>币种转为固定币，同时写入币种库。</dd>
+                    <dt>场景</dt><dd>趋势扫描发现好币，先浮动观察、确认后转正。</dd>
+                    <dt class="warn">注意</dt><dd class="warn">新转正币的指标列为空，需再跑一次批量更新。</dd></dl></div>
+                <div class="fn-card"><div class="fn-name"><span class="fn-ico">📥</span>CSV同步固定</div>
+                    <dl><dt>功能</dt><dd>以币种库为准整体覆盖固定列表（库序），浮动池不受影响。</dd>
+                    <dt>场景</dt><dd>固定列表与币种库出现漂移时对齐。</dd></dl></div>
+                <div class="fn-card"><div class="fn-name"><span class="fn-ico">🗑️</span>清空浮动币种</div>
+                    <dl><dt>功能</dt><dd>一次性移除全部浮动观察币（固定池不动）。</dd>
+                    <dt>场景</dt><dd>复盘结束、清场。</dd></dl></div>
+                <div class="fn-card"><div class="fn-name"><span class="fn-ico">保存选择</span></div>
+                    <dl><dt>功能</dt><dd>把当前「选中」的币种集合持久化为默认监控列表（default_selected）。</dd>
+                    <dt>场景</dt><dd>筛选组合满意后固化，下次开页即恢复。</dd>
+                    <dt class="warn">注意</dt><dd class="warn">只能保存可用列表内的币；全部无效时自动回退前 3 个。</dd></dl></div>
+            </div>
+        </div>
+
+        <!-- ============ 行情卡片与刷新 ============ -->
+        <div class="guide-tab-content" id="gt-cards">
+            <div class="fn-grid">
+                <div class="fn-card"><div class="fn-name"><span class="fn-ico">🔄</span>手动刷新数据</div>
+                    <dl><dt>功能</dt><dd>立即重算所有<b>选中</b>币种的策略数据并刷新卡片。</dd>
+                    <dt>场景</dt><dd>行情剧烈波动时按把刷新。</dd></dl></div>
+                <div class="fn-card"><div class="fn-name"><span class="fn-ico">⏱</span>自动刷新间隔 + 应用</div>
+                    <dl><dt>功能</dt><dd>设置轮询周期（分钟，0=关闭），点「应用」生效。</dd>
+                    <dt>场景</dt><dd>白天 1 分钟轮询，深夜设 0 停轮询减负。</dd>
+                    <dt class="warn">注意</dt><dd class="warn">每次刷新会实调 OKX 行情接口，间隔过小会触发限频。</dd></dl></div>
+                <div class="fn-card"><div class="fn-name"><span class="fn-ico">📊</span>查看详情 →（卡片底部）</div>
+                    <dl><dt>功能</dt><dd>跳转该币详情页：历史交易 + 策略回测。</dd></dl></div>
+                <div class="fn-card"><div class="fn-name"><span class="fn-ico">🔍</span>多周期总览 →（卡片底部）</div>
+                    <dl><dt>功能</dt><dd>跳转多周期方向总览页：四个周期趋势对比。</dd></dl></div>
+                <div class="fn-card"><div class="fn-name"><span class="fn-ico">🧭</span>综合行情判断</div>
+                    <dl><dt>功能</dt><dd>对当前选中币种集合的市场状态聚合判读（普涨/分化/普跌）。</dd></dl></div>
+                <div class="fn-card"><div class="fn-name"><span class="fn-ico">🗂</span>周期选择器（bar-selector）</div>
+                    <dl><dt>功能</dt><dd>切换卡片主策略计算所用周期。</dd>
+                    <dt class="warn">注意</dt><dd class="warn">影响卡片数值与「查看详情」页口径，不改批量分析表格。</dd></dl></div>
+            </div>
+        </div>
+
+        <!-- ============ 批量趋势分析 ============ -->
+        <div class="guide-tab-content" id="gt-batch">
+            <div class="guide-intro">
+                <h4>面板定位</h4>
+                对<b>币种库（宇宙）全量币</b>逐周期跑 Pro3 策略，产出趋势方向、交易价、盈亏%、MACD/DIF/ADX/ATR%/SAR/ER 指标表。核心列（趋势/交易价/盈亏%/MACD）常显；指标列（DIF/ADX/ATR/SAR/ER/时间）可通过开关整体显隐，默认<b>全部展开</b>。ER 为 Kaufman 效率系数（0~1，越大越单边），与 ADX（趋势强度）、ATR%（10 倍杠杆口径波动）搭配可筛「趋势强且波动大」。
+            </div>
+            <div class="fn-grid">
+                <div class="fn-card"><div class="fn-name"><span class="fn-ico">🚀</span>批量更新趋势数据</div>
+                    <dl><dt>功能</dt><dd>后台并发扫描全宇宙（15m/1H/4H/1D），进度条实时更新，结果双写 DB+CSV。</dd>
+                    <dt>场景</dt><dd>每天开工先跑一轮；新增币种后必跑（否则指标为空）。</dd>
+                    <dt class="warn">注意</dt><dd class="warn">55 币约 1~3 分钟；期间避免重复点击，OKX 限频时个别币可能留空，再跑一轮补齐。</dd></dl></div>
+                <div class="fn-card"><div class="fn-name"><span class="fn-ico">🙈</span>隐藏指标 / 🔍 显示指标</div>
+                    <dl><dt>功能</dt><dd>整表指标列显隐开关（偏好已记住，默认显示）。</dd>
+                    <dt>场景</dt><dd>窄屏只想看核心四列时收缩。</dd></dl></div>
+                <div class="fn-card"><div class="fn-name"><span class="fn-ico">📋</span>简洁视图 / 📊 详细视图</div>
+                    <dl><dt>功能</dt><dd>与上钮同源的另一入口（历史遗留按钮），二者状态始终同步。</dd></dl></div>
+                <div class="fn-card"><div class="fn-name"><span class="fn-ico">⛶</span>全屏</div>
+                    <dl><dt>功能</dt><dd>面板铺满视口，方便横向滚动看全 40+ 列。</dd>
+                    <dt class="warn">注意</dt><dd class="warn">Esc 或再点退出。</dd></dl></div>
+                <div class="fn-card"><div class="fn-name"><span class="fn-ico">⭐</span>勾选星标</div>
+                    <dl><dt>功能</dt><dd>把表格行首复选框勾中的币批量加星标。</dd>
+                    <dt>场景</dt><dd>筛完候选币就地收藏，回到币种墙「★ 全选星标」直接开工。</dd></dl></div>
+                <div class="fn-card"><div class="fn-name"><span class="fn-ico">📅</span>周期显示 15m/1H/4H/1D + 全选</div>
+                    <dl><dt>功能</dt><dd>控制表格按周期整列显隐（默认 15m+4H），与指标开关相互独立。</dd></dl></div>
+                <div class="fn-card"><div class="fn-name"><span class="fn-ico">🏷</span>完整CSV数据表格 / 一致性筛选（Tab）</div>
+                    <dl><dt>功能</dt><dd>全量视图与「4H、1D 双周期同向」精简视图切换，徽标显示各自条数。</dd>
+                    <dt>场景</dt><dd>一致性视图直接给出可顺势开单的币。</dd></dl></div>
+                <div class="fn-card"><div class="fn-name"><span class="fn-ico">↕</span>表头排序</div>
+                    <dl><dt>功能</dt><dd>点击任意列表头按该列升/降序（数字列按数值比较）。</dd></dl></div>
+            </div>
+        </div>
+
+        <!-- ============ 筛选与排序 ============ -->
+        <div class="guide-tab-content" id="gt-filter">
+            <div class="guide-intro">
+                <h4>两套筛选，各管各的对象</h4>
+                ① 币种墙<b>高级筛选</b>（面板顶部「🔽 筛选」展开）：作用于<b>币种标签墙</b>，不匹配的标签变暗，用于圈选监控对象；② 批量面板<b>筛选区</b>：作用于<b>趋势表格行</b>，用于分析视角过滤。两者互不影响。
+            </div>
+            <div class="fn-grid">
+                <div class="fn-card"><div class="fn-name"><span class="fn-ico">🔽</span>筛选（展开/收起）</div>
+                    <dl><dt>功能</dt><dd>展开币种墙高级筛选面板：趋势(1H/4H/1D↑↓)、组合(4H+1D双涨/双跌)、盈亏(各周期盈/亏)、指标阈值(ADX/ATR%&gt;)、排序下拉。</dd>
+                    <dt class="warn">注意</dt><dd class="warn">条件基于最近一轮批量分析结果；未跑过批量更新时无数据可筛。</dd></dl></div>
+                <div class="fn-card"><div class="fn-name"><span class="fn-ico">🔍</span>应用筛选 / ✖ 清除</div>
+                    <dl><dt>功能</dt><dd>按当前条件过滤标签墙（指标类为 AND 关系），或还原。「默认(市值)」排序即按固定池市值降序原序。</dd></dl></div>
+                <div class="fn-card"><div class="fn-name"><span class="fn-ico">⭐</span>批量星标</div>
+                    <dl><dt>功能</dt><dd>把<b>筛选命中</b>的全部币种一次加星标。</dd>
+                    <dt>场景</dt><dd>「4H↑+1D↑ &amp; ADX_4H&gt;25 &amp; ATR_4H%&gt;20」一轮圈住强趋势币。</dd></dl></div>
+                <div class="fn-card"><div class="fn-name"><span class="fn-ico">🧮</span>指标阈值默认值</div>
+                    <dl><dt>功能</dt><dd>ADX&gt;25、ATR_1H%&gt;10 / ATR_4H%&gt;20 / ATR_1D%&gt;30（ATR% 为 10 倍杠杆口径，非裸波动）。</dd>
+                    <dt class="warn">注意</dt><dd class="warn">清空输入框=该条件不参与筛选。</dd></dl></div>
+                <div class="fn-card"><div class="fn-name"><span class="fn-ico">📉</span>表格筛选区（周期趋势/MACD/ADX）</div>
+                    <dl><dt>功能</dt><dd>批量面板内按趋势、MACD 柱区间、ADX 区间过滤表格行，「应用筛选/清除筛选」控制。</dd></dl></div>
+            </div>
+        </div>
+
+        <!-- ============ 浮动币种与趋势扫描 ============ -->
+        <div class="guide-tab-content" id="gt-float">
+            <div class="guide-intro">
+                <h4>浮动币种从哪来</h4>
+                顶栏「🚀 趋势扫描」页对全市场做涨幅/跌幅/成交额三大榜与趋势扫描，看中的币可「添加监控」——即加入<b>浮动池</b>（标签墙橙色区分）。浮动币参与卡片监控与筛选，但不属于稳定池；转正走「⬆ 提升为固定」，放弃用行内 ✖ 或「🗑️ 清空浮动币种」。
+            </div>
+            <div class="guide-intro">
+                <h4>与批量分析的关系</h4>
+                批量趋势分析的输入是<b>币种库（宇宙）</b>，不是固定池：提升为固定会同时入宇宙，所以新币立刻可被批量分析覆盖；仅加浮动的币若不在宇宙中，表格无其行，需先「⬆ 提升为固定」或手动入库。
+            </div>
+        </div>
+
+        <!-- ============ 固定池与市值维护 ============ -->
+        <div class="guide-tab-content" id="gt-pool">
+            <div class="guide-intro">
+                <h4>市值 Top50 池的维护入口（位于 ⏰定时任务 → 交易配置 Tab）</h4>
+                固定池应始终覆盖<b>当前</b>市值前 50 的热门币。入口在交易配置页「币种与周期配置」区块右上角。
+                <div class="jump-list" style="margin-top:10px">
+                    <a href="/top-coins">🪙 打开 Top50 币种导览页（实时行情+简介）</a>
+                    <a href="/task">⏰ 去交易配置页维护池子</a>
+                </div>
+            </div>
+            <div class="fn-grid">
+                <div class="fn-card"><div class="fn-name"><span class="fn-ico">🔄</span>更新市值列表（交易配置页）</div>
+                    <dl><dt>功能</dt><dd>拉取 CoinGecko 实时市值榜 → 剔除稳定币/包装资产 → 校验 OKX USDT 线性永续 → 取前 50 <b>整体替换</b>固定池，并同步 config(DB+文件) 与币种库宇宙；记录每币市值排名供全站排序。</dd>
+                    <dt>场景</dt><dd>市值榜变化明显后（约每周一次）重建池子。</dd>
+                    <dt class="warn">注意</dt><dd class="warn">① 外网不可达时直接失败、零改动（不会写坏配置）；② 浮动池不受影响；③ 替换后到监控台点一次「🚀 批量更新趋势数据」补齐新币指标。</dd></dl></div>
+                <div class="fn-card"><div class="fn-name"><span class="fn-ico">💰</span>固定币种详情面板（监控台首页）</div>
+                    <dl><dt>功能</dt><dd>位于监控台「自动刷新间隔」下方，表格展示每个固定币的市值排名/价格/24H涨跌/成交额/流通市值/流动性(成交额÷市值)，右上角「🔄 刷新数据」强制重拉 CoinGecko（平时 120 秒缓存）。</dd>
+                    <dt>场景</dt><dd>开单前核对池内标的流动性与市场热度。</dd>
+                    <dt class="warn">注意</dt><dd class="warn">未进市值榜前 100 的手动提升币显示「未入榜」，属正常。</dd></dl></div>
+                <div class="fn-card"><div class="fn-name"><span class="fn-ico">⬇</span>命令行版（等效入口）</div>
+                    <dl><dt>功能</dt><dd><code>python data/update_fixed_coins_top50.py</code>（加 <code>--dry-run</code> 只预演），与页面按钮共用同一模块 market_cap_updater，口径完全一致。</dd></dl></div>
+                <div class="fn-card"><div class="fn-name"><span class="fn-ico">🔢</span>市值降序展示规则</div>
+                    <dl><dt>功能</dt><dd>监控台标签墙、详情页下拉、分析记录筛选等所有固定币展示位统一按市值排名降序（后端排序，前端同源）。</dd>
+                    <dt class="warn">注意</dt><dd class="warn">手动提升入池的币暂无市值排名，排在池尾；下次「更新市值列表」或跑过详情接口后归位。交易配置的<b>币种列表</b>顺序是调度执行顺序（可拖拽），不受市值排序影响。</dd></dl></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    (function () {
+        function activate(name) {
+            document.querySelectorAll('.guide-tab-btn').forEach(function (b) {
+                b.classList.toggle('active', b.dataset.tab === name);
+            });
+            document.querySelectorAll('.guide-tab-content').forEach(function (c) {
+                c.classList.toggle('active', c.id === 'gt-' + name);
+            });
+            try { history.replaceState(null, '', '#' + name); } catch (e) {}
+            window.scrollTo(0, 0);
+        }
+        document.querySelectorAll('.guide-tab-btn').forEach(function (b) {
+            b.addEventListener('click', function () { activate(b.dataset.tab); });
+        });
+        window.jumpTab = function (name) { activate(name); };
+        // 支持 /monitor-guide#batch 直达某页
+        var init = (location.hash || '').replace('#', '');
+        if (init && document.getElementById('gt-' + init)) activate(init);
+    })();
+    </script>
+</body>
+</html>

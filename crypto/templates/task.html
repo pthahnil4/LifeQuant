@@ -1,0 +1,3259 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>定时任务 - LifeQuant</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="{{ url_for('static', filename='js/mdialog.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/echarts.min.js') }}"></script>
+    <style>
+        .task-page { max-width: 1100px; margin: 30px auto; padding: 0 20px; }
+        .task-page h1 { margin-bottom: 8px; }
+        .task-desc { color: var(--text-muted); margin-bottom: 24px; }
+        .scheduler-status-card {
+            background: var(--card-bg); border-radius: 8px; padding: 16px 20px;
+            margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            display: flex; align-items: center; gap: 16px;
+        }
+        .status-dot { width: 12px; height: 12px; border-radius: 50%; background: #ccc; flex-shrink: 0; }
+        .status-dot.running { background: var(--success-color); box-shadow: 0 0 6px rgba(40,167,69,0.5); }
+        .status-dot.stopped { background: var(--danger-color); }
+        .status-info { flex: 1; }
+        .status-info span { color: var(--text-muted); font-size: 0.85rem; margin-left: 12px; }
+        .task-actions { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+        .btn { padding: 8px 18px; border: none; border-radius: 6px; cursor: pointer; font-size: 0.9rem; transition: opacity 0.2s; }
+        .btn:hover { opacity: 0.85; }
+        .btn-sm { padding: 4px 10px; font-size: 0.78rem; border-radius: 4px; }
+        .task-table-wrap { background: var(--card-bg); border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); overflow: hidden; }
+        .task-table { width: 100%; border-collapse: collapse; }
+        .task-table th, .task-table td { padding: 12px 16px; text-align: left; border-bottom: 1px solid var(--border-color); }
+        .task-table th { background: #f8f9fa; font-weight: 600; font-size: 0.85rem; color: var(--text-muted); }
+        .task-table tr:last-child td { border-bottom: none; }
+        .task-table tr:hover { background: #f8fbff; }
+        .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 0.75rem; font-weight: 600; }
+        .badge-active { background: #d4edda; color: #155724; }
+        .badge-inactive { background: #f8d7da; color: #721c24; }
+        .badge-interval { background: #d1ecf1; color: #0c5460; }
+        .badge-cron { background: #e2d5f1; color: #4a235a; }
+        .empty-state { text-align: center; padding: 40px 20px; color: var(--text-muted); }
+        .empty-state .icon { font-size: 2.5rem; margin-bottom: 10px; }
+        .action-btns { display: flex; gap: 6px; }
+
+        /* 日志查看器样式 */
+        .log-viewer-wrap {
+            background: var(--card-bg); border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            overflow: hidden; margin-top: 16px;
+        }
+        .log-viewer-header {
+            padding: 10px 16px; background: #f8f9fa; border-bottom: 1px solid var(--border-color);
+            display: flex; justify-content: space-between; align-items: center;
+            font-weight: 600; font-size: 0.85rem;
+        }
+        .log-viewer {
+            height: 500px; overflow-y: auto; padding: 12px 16px;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 0.78rem; line-height: 1.6; background: #1e1e2e; color: #cdd6f4;
+        }
+        .log-viewer::-webkit-scrollbar { width: 8px; }
+        .log-viewer::-webkit-scrollbar-track { background: #313244; }
+        .log-viewer::-webkit-scrollbar-thumb { background: #585b70; border-radius: 4px; }
+        .log-viewer::-webkit-scrollbar-thumb:hover { background: #6c7086; }
+        .log-line { padding: 2px 0; white-space: pre-wrap; word-break: break-all; }
+        .log-line:hover { background: rgba(255,255,255,0.05); }
+        .log-line.log-error { color: #f38ba8; }
+        .log-line.log-warning { color: #fab387; }
+        .log-line.log-success { color: #a6e3a1; }
+        .log-line.log-info { color: #89b4fa; }
+        .log-line.log-run-id { color: #cba6f7; font-weight: 600; }
+        .log-line.log-summary { color: #94e2d5; }
+        .log-line.log-summary-head { color: #94e2d5; font-weight: 600; border-top: 1px dashed #45475a; margin-top: 8px; padding-top: 8px; }
+        .log-line.log-separator { color: #585b70; border-top: 1px dashed #45475a; margin-top: 8px; padding-top: 8px; }
+        .log-loading { text-align: center; color: #6c7086; padding: 40px; }
+
+        /* 实盘对比 Tab */
+        .compare-filter { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+        .compare-filter label { display: flex; align-items: center; gap: 6px; font-size: 0.85rem; color: #555; }
+        .compare-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin: 16px 0; }
+        .compare-card { background: var(--card-bg); border-radius: 8px; padding: 12px 16px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        .compare-card .cc-label { font-size: 0.75rem; color: var(--text-muted); margin-bottom: 6px; }
+        .compare-card .cc-value { font-size: 1.25rem; font-weight: 700; }
+        .cc-green { color: #28a745; } .cc-red { color: #dc3545; }
+        .cc-blue { color: #2c7be5; } .cc-orange { color: #fd7e14; }
+        .compare-chart-wrap { background: var(--card-bg); border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); overflow: hidden; }
+        .badge-matched { background: #d4edda; color: #155724; }
+        .badge-missed { background: #fff3cd; color: #856404; }
+        .badge-extra { background: #d1ecf1; color: #0c5460; }
+
+        /* 分析记录 Tab */
+        .ana-snapshot-box { margin-top: 14px; border: 1px dashed var(--border-color); border-radius: 8px; padding: 14px 16px; background: #fbfcfe; }
+        .ana-snap-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-bottom: 12px; }
+        .ana-snap-item { background: var(--card-bg); border-radius: 6px; padding: 8px 12px; border: 1px solid var(--border-color); }
+        .ana-snap-item .as-label { font-size: 0.72rem; color: var(--text-muted); margin-bottom: 4px; }
+        .ana-snap-item .as-value { font-size: 1.05rem; font-weight: 700; }
+        .ana-judgment-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 10px; font-size: 0.88rem; }
+        .ana-judgment-row label { display: flex; align-items: center; gap: 4px; cursor: pointer; }
+        .ana-reason-input { width: 100%; min-height: 60px; padding: 8px 10px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 0.85rem; resize: vertical; box-sizing: border-box; font-family: inherit; }
+        .badge-long { background: #d4edda; color: #155724; }
+        .badge-short { background: #f8d7da; color: #721c24; }
+        .badge-watch { background: #e2e3e5; color: #383d41; }
+        .ana-reason-cell { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #666; font-size: 0.8rem; }
+        .ana-review-cell { font-size: 0.8rem; line-height: 1.5; white-space: nowrap; }
+        .ana-hit { color: #28a745; font-weight: 600; }
+        .ana-miss { color: #dc3545; font-weight: 600; }
+        .ana-pending { color: #999; }
+        .ana-open { color: #b8860b; font-weight: 600; }
+
+        /* 全局通用配置模式 */
+        .global-apply-banner {
+            width: 100%; background: #fff7e6; border: 1px solid #ffd591; color: #ad6800;
+            border-radius: 6px; padding: 10px 14px; font-size: 0.85rem; line-height: 1.7;
+        }
+        #btn-global-apply.global-apply-active {
+            background: var(--warning-color); color: #fff;
+        }
+
+        /* 币种列表自定义下拉（点击切换 + 拖拽排序 + 观察模式着色） */
+        .currency-dd { position: relative; flex: 1; min-width: 200px; }
+        .currency-dd-trigger {
+            display: flex; align-items: center; gap: 8px;
+            padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px;
+            font-size: 0.85rem; color: #333; background: #fafafa;
+            cursor: pointer; user-select: none;
+        }
+        .currency-dd.open .currency-dd-trigger { border-color: var(--primary-color); background: #fff; }
+        .currency-dd-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .currency-dd-arrow { color: var(--text-muted); font-size: 0.7rem; }
+        .badge-coin-watch { background: #fff3e0; color: #e67e22; border: 1px solid #ffd8a8; flex-shrink: 0; }
+        .currency-dd-panel {
+            position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 1000;
+            background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 6px;
+            box-shadow: 0 4px 14px rgba(0,0,0,0.12); max-height: 300px; overflow-y: auto; padding: 4px;
+        }
+        .currency-dd-empty { padding: 10px 12px; color: var(--text-muted); font-size: 0.85rem; }
+        .currency-dd-item {
+            display: flex; align-items: center; gap: 8px;
+            padding: 7px 10px; border-radius: 4px; cursor: pointer;
+            font-size: 0.85rem; border: 1px solid transparent;
+        }
+        .currency-dd-item:hover { background: #f0f6ff; }
+        .currency-dd-item.active { background: #e7f1ff; border-color: #b6d4fe; font-weight: 600; }
+        .currency-dd-item.watch { background: #fff3e0; color: #e67e22; }
+        .currency-dd-item.watch:hover { background: #ffeacc; }
+        .currency-dd-item.watch.active { border-color: #ffb74d; }
+        .currency-dd-item .coin-drag { cursor: grab; color: #bbb; font-size: 0.9rem; line-height: 1; }
+        .currency-dd-item.watch .coin-drag { color: #e6a86b; }
+        .currency-dd-item .coin-order { color: var(--text-muted); font-size: 0.75rem; min-width: 16px; text-align: right; }
+        .currency-dd-item.watch .coin-order { color: #e6a05c; }
+        .currency-dd-item .coin-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .currency-dd-item .coin-watch-tag { flex-shrink: 0; font-size: 0.75rem; }
+        .currency-dd-item.dragging { opacity: 0.45; }
+        .currency-dd-item.drag-over-top { box-shadow: inset 0 2px 0 var(--primary-color); }
+        .currency-dd-item.drag-over-bottom { box-shadow: inset 0 -2px 0 var(--primary-color); }
+        .currency-dd-disabled .currency-dd-trigger { opacity: 0.6; cursor: not-allowed; background: #f0f0f0; }
+
+        /* ============ 持仓看板（Tab 7） ============ */
+        /* 两个分区限宽居中，避免卡片稀疏时整块被拉宽、与其他 Tab 视觉失衡 */
+        #tab-positions .config-section { max-width: 940px; margin-left: auto; margin-right: auto; }
+        .pos-toolbar { display: flex; align-items: center; gap: 16px; margin-bottom: 14px; flex-wrap: wrap; }
+        .pos-toolbar .pos-account { font-size: 0.85rem; color: #666; }
+        /* 自适应填充（同监控台/趋势扫描思路）：卡片最小 240，按容器宽度自动排列，币种少时不产生留白 */
+        .pos-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+        .pos-card {
+            background: var(--card-bg); border-radius: 12px;
+            border: 1px solid #e9edf3; border-left: 3px solid #cbd5e1;
+            box-shadow: 0 1px 2px rgba(16,24,40,0.05);
+            padding: 10px 12px 12px; display: flex; flex-direction: column;
+            transition: box-shadow .2s ease, border-color .2s ease, transform .1s ease;
+        }
+        /* hover 反馈与趋势扫描 .ms-card 保持一致：阴影加深 + 上浮 2px */
+        .pos-card:hover { box-shadow: 0 8px 20px rgba(16,24,40,0.10); transform: translateY(-2px); }
+        /* 方向色带：左侧竖条 + 卡顶柔和渐变，多单翡翠绿 / 空单玫瑰红 */
+        .pos-card.pc-long { border-left-color: #10b981;
+            background: linear-gradient(180deg, #f4fcf8 0%, #ffffff 46%); }
+        .pos-card.pc-short { border-left-color: #f43f5e;
+            background: linear-gradient(180deg, #fff4f6 0%, #ffffff 46%); }
+        .pos-card.pc-empty { border-left-color: #cbd5e1; opacity: .95; }
+        .pos-card-head { display: flex; justify-content: space-between; align-items: center; gap: 8px;
+            border-bottom: 1px solid #f1f4f8; padding-bottom: 7px; margin-bottom: 8px; }
+        .pos-card-head h3 { margin: 0; font-size: 0.98rem; color: #111827; letter-spacing: .2px;
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .pos-dir-badge { font-size: 0.7rem; font-weight: 700; padding: 2px 9px; border-radius: 10px; white-space: nowrap; flex-shrink: 0; }
+        .dir-long { background: #d1fae5; color: #047857; }
+        .dir-short { background: #ffe4e6; color: #be123c; }
+        .dir-none { background: #f1f5f9; color: #64748b; }
+        /* 卡片数据区：两列紧凑布局，提高信息密度 */
+        .pos-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 3px 12px; flex: 1; }
+        .pos-f { display: flex; justify-content: space-between; align-items: baseline; gap: 8px;
+            font-size: 0.78rem; padding: 1px 0; min-width: 0; }
+        .pos-f .k { color: #94a3b8; white-space: nowrap; flex-shrink: 0; }
+        .pos-f .v { font-weight: 600; color: #1e293b; text-align: right; font-variant-numeric: tabular-nums;
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        /* 浮动盈亏：占满整行的圆角色带（盈=淡绿底 / 亏=淡红底）作为视觉主指标 */
+        .pos-upl { grid-column: 1 / -1; margin-top: 6px; padding: 6px 10px; border-radius: 8px;
+            background: #f8fafc;
+            display: flex; justify-content: space-between; align-items: baseline; }
+        .pos-upl.up { background: #ecfdf5; }
+        .pos-upl.down { background: #fff1f2; }
+        .pos-upl .k { color: #64748b; font-size: 0.78rem; }
+        .pos-upl .v { font-size: 0.95rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+        .pos-f.liq .k, .pos-f.liq .v { color: #e11d48; }
+        .pos-baskets { font-size: 0.75rem; color: #64748b; background: #f8fafc;
+            border: 1px dashed #e2e8f0; border-radius: 6px; padding: 5px 8px; margin-top: 8px;
+            line-height: 1.5; word-break: break-all; }
+        .pos-card-foot { margin-top: 10px; text-align: right; }
+        .pos-empty-body { color: #94a3b8; font-size: 0.85rem; text-align: center; padding: 8px 0; }
+        .val-green { color: #059669; } .val-red { color: #e11d48; }
+        /* 极窄屏幕：双列数据降为单列，避免挤压换行混乱 */
+        @media (max-width: 360px) {
+            .pos-fields { grid-template-columns: 1fr; }
+        }
+
+        /* 历史持仓弹窗 */
+        .ph-modal-mask { position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 9998;
+            display: flex; align-items: center; justify-content: center; }
+        .ph-modal { background: var(--card-bg); border-radius: 10px; width: min(880px, 94vw);
+            max-height: 86vh; display: flex; flex-direction: column; overflow: hidden;
+            box-shadow: 0 8px 30px rgba(0,0,0,0.25); }
+        .ph-modal-head { padding: 12px 18px; border-bottom: 1px solid var(--border-color);
+            display: flex; justify-content: space-between; align-items: center; }
+        .ph-modal-body { padding: 12px 18px; overflow-y: auto; }
+        .ph-stats { display: flex; gap: 18px; flex-wrap: wrap; margin-bottom: 10px; font-size: 0.85rem; }
+        .ph-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+        .ph-table th, .ph-table td { padding: 6px 8px; border-bottom: 1px solid var(--border-color);
+            text-align: right; white-space: nowrap; }
+        .ph-table th:first-child, .ph-table td:first-child { text-align: left; }
+        .ph-table th { background: #f8f9fa; }
+
+        /* 历史币种库 */
+        .lib-toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 4px 0 14px; }
+        .lib-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+        .lib-chip { background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 8px;
+            padding: 10px 12px; display: flex; flex-direction: column; gap: 4px;
+            transition: box-shadow .2s ease, border-color .2s ease; }
+        .lib-chip:hover { box-shadow: 0 4px 10px rgba(0,0,0,0.08); }
+        .lib-chip.lib-inactive { border-style: dashed; }
+        .lib-chip.lib-checked { border-color: #2c7be5; box-shadow: 0 0 0 1px #2c7be5; }
+        .lib-chip-head { display: flex; align-items: center; gap: 8px; }
+        .lib-chip-head .lib-name { font-weight: 600; font-size: 0.9rem; flex: 1; overflow: hidden;
+            text-overflow: ellipsis; white-space: nowrap; }
+        .lib-meta { font-size: 0.72rem; color: var(--text-muted); }
+        .lib-badge { font-size: 0.7rem; padding: 1px 6px; border-radius: 8px; }
+        .lib-badge-active { background: #d1fae5; color: #047857; }
+        .lib-badge-inactive { background: #f1f5f9; color: #64748b; }
+    </style>
+</head>
+<body>
+    {% include 'nav.html' %}
+
+    <div class="task-page">
+        <h1>⏰ 定时任务管理</h1>
+        <p class="task-desc">查看和管理所有定时任务的运行状态、交易配置和邮件通知设置</p>
+
+        <!-- Tab 导航 -->
+        <div class="task-tab-nav">
+            <button class="task-tab-btn active" onclick="switchTab('control')">任务控制</button>
+            <button class="task-tab-btn" onclick="switchTab('trading')">交易配置</button>
+            <button class="task-tab-btn" onclick="switchTab('email')">邮件通知</button>
+            <button class="task-tab-btn" onclick="switchTab('logs')">日志查看</button>
+            <button class="task-tab-btn" onclick="switchTab('compare')">📈 实盘对比</button>
+            <button class="task-tab-btn" onclick="switchTab('analysis')">📝 分析记录</button>
+            <button class="task-tab-btn" onclick="switchTab('positions')">📊 持仓看板</button>
+        </div>
+
+        <!-- ========================================================= -->
+        <!-- Tab 1: 任务控制面板 -->
+        <!-- ========================================================= -->
+        <div id="tab-control" class="task-tab-content active">
+
+            <!-- APScheduler 状态 -->
+            <div class="scheduler-status-card">
+                <div class="status-dot" id="status-dot"></div>
+                <div class="status-info">
+                    <strong id="status-text">加载中...</strong>
+                    <span id="job-count-text"></span>
+                </div>
+                <button class="m-btn m-btn-primary m-btn-sm" onclick="refreshStatus()">🔄 刷新</button>
+            </div>
+
+            <div class="task-actions">
+                <button class="m-btn m-btn-success" onclick="startScheduler()">▶ 启动调度器</button>
+                <button class="m-btn m-btn-danger" onclick="stopScheduler()">⏹ 停止调度器</button>
+                <label style="display:inline-flex;align-items:center;gap:6px;margin-left:16px;cursor:pointer;vertical-align:middle;">
+                    <input type="checkbox" id="global-task-switch" onchange="toggleGlobalTasks(this)">
+                    <span>定时任务全局开关</span>
+                </label>
+                <span id="global-task-switch-note" style="color:#999;font-size:.85rem;margin-left:6px;"></span>
+            </div>
+
+            <!-- 实盘交易调度器 -->
+            <div class="trading-control-card" id="trading-card">
+                <div class="trading-control-header">
+                    <div class="status-dot" id="trading-dot"></div>
+                    <span class="trading-control-title">实盘交易调度器</span>
+                    <span id="trading-status-text" style="font-size:0.85rem;color:#999">加载中...</span>
+                    <div class="trading-control-actions">
+                        <label style="font-size:0.85rem;color:#555;display:flex;align-items:center;gap:6px">
+                            账号
+                            <select id="trading-account" class="m-select" onchange="onTradingAccountChange()" style="padding:4px 8px;border:1px solid #ddd;border-radius:6px;font-size:0.85rem">
+                                <option value="">加载中...</option>
+                            </select>
+                        </label>
+                        <label style="font-size:0.82rem;color:#777;display:flex;align-items:center;gap:4px;cursor:pointer"
+                               title="进程重启（含内存监控严限自愈退出）后自动恢复实盘调度；仅当最后一次操作是「启动交易」时才会拉起，手动停止会清除该期望状态">
+                            <input type="checkbox" id="auto-resume-switch" onchange="toggleAutoResume(this)">
+                            重启自动拉起
+                        </label>
+                        <button class="m-btn m-btn-success m-btn-sm" onclick="startTrading()">▶ 启动交易</button>
+                        <button class="m-btn m-btn-danger m-btn-sm" onclick="stopTrading()">⏹ 停止交易</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 任务列表 -->
+            <div class="task-table-wrap">
+                <table class="task-table">
+                    <thead>
+                        <tr>
+                            <th>任务名称</th>
+                            <th>触发方式</th>
+                            <th>触发参数</th>
+                            <th>下次执行</th>
+                            <th>状态</th>
+                            <th>开关</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="task-tbody">
+                        <tr><td colspan="7"><div class="empty-state"><div class="icon">⏳</div><p>正在加载任务列表...</p></div></td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- ========================================================= -->
+        <!-- Tab 2: 交易配置管理 -->
+        <!-- ========================================================= -->
+        <div id="tab-trading" class="task-tab-content">
+
+            <!-- 币种配置 -->
+            <div class="config-section">
+                <div class="config-section-header">
+                    <div>
+                        <h3 class="config-section-title">币种与周期配置</h3>
+                        <p class="config-section-desc">设置交易合约、双周期组合与公共参数（全仓=多头，逐仓=空头；仓位张数在下方两个仓位中分别配置）</p>
+                    </div>
+                    <div style="display:flex;gap:8px">
+                        <button class="m-btn m-btn-primary m-btn-sm" onclick="saveTradingConfig()">💾 保存</button>
+                        <button class="m-btn m-btn-success m-btn-sm" onclick="quickApplyToAll()" title="将当前币种的完整配置同步应用到所有其他币种">🚀 一键应用</button>
+                        <button class="m-btn m-btn-info m-btn-sm" id="btn-refresh-marketcap" onclick="refreshFixedMarketcap()" title="拉取 CoinGecko 实时市值榜，筛选 OKX 有 USDT 线性永续的市值前50热门币，整体替换固定币种池并同步币种库(DB/CSV)；失败不做任何改动">🔄 更新市值列表</button>
+                        <button class="m-btn m-btn-secondary m-btn-xs m-btn-outline m-btn-pill" onclick="showQuickApplyHelp()" title="查看一键应用说明" style="width:26px;height:26px;padding:0;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:.8rem;">?</button>
+                    </div>
+                </div>
+
+                <div class="config-grid">
+                <div class="config-row">
+                    <label class="config-label">币种列表</label>
+                    <div class="currency-dd" id="cfg-currency-dd">
+                        <div class="currency-dd-trigger" onclick="toggleCurrencyDropdown(event)">
+                            <span class="currency-dd-label" id="cfg-currency-dd-label">(未配置币种)</span>
+                            <span class="badge badge-coin-watch" id="cfg-coin-watch-badge" style="display:none">观察模式</span>
+                            <span class="currency-dd-arrow">▾</span>
+                        </div>
+                        <div class="currency-dd-panel" id="cfg-currency-dd-panel" style="display:none"></div>
+                    </div>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap">
+                        <button class="m-btn m-btn-primary m-btn-sm" onclick="addCurrency()">➕ 添加币种</button>
+                        <button class="m-btn m-btn-danger m-btn-sm" onclick="removeCurrency()">🗑 删除当前</button>
+                        <button class="m-btn m-btn-danger m-btn-sm" onclick="clearAllCurrencies()" title="清空所有已配置的币种">🗑 清空全部</button>
+                        <button class="m-btn m-btn-sm" onclick="importFromStarMarket()" title="从监控台收藏币种批量导入">📥 从监控台导入</button>
+                    </div>
+                    <span class="config-hint">支持多个合约，每个合约独立配置策略组合（趋势仓/区间仓）与参数；删除后已有持仓不会被自动平仓，仅停止调度器对该币种的管理；列表顺序可拖动调整（即调度执行顺序），点击「保存」后生效</span>
+                </div>
+                <div class="config-row">
+                    <label class="config-label">全局通用配置</label>
+                    <div style="display:flex;gap:8px">
+                        <button class="m-btn m-btn-warning m-btn-sm" id="btn-global-apply" onclick="toggleGlobalApplyMode()">🌐 应用至所有币种</button>
+                    </div>
+                    <span class="config-hint">开启「全局通用配置」模式后点击保存，将把当前页面的双周期/杠杆/信号算法/开平仓价格/止盈止损/双仓位参数批量同步覆盖到全部币种；各币种自身的合约 ID 与人工干预方向保持不变</span>
+                </div>
+                <div class="config-row config-row-full" id="global-apply-banner-row" style="display:none">
+                    <div class="global-apply-banner">
+                        ⚠️ 当前处于「全局通用配置」模式：点击任意“保存”都会将当前配置同步覆盖到全部 <b id="global-apply-count">0</b> 个币种，请确认各币种无需保留个性化设置；再次点击「🌐 应用至所有币种」可退出该模式
+                    </div>
+                </div>
+                <div class="config-row">
+                    <label class="config-label">合约 ID</label>
+                    <input type="text" class="config-input" id="cfg-instId" placeholder="如 NEAR-USDT-SWAP">
+                </div>
+                <div class="config-row">
+                    <label class="config-label">短周期 (开仓时机)</label>
+                    <select class="config-select" id="cfg-short-period">
+                        <option value="1m" selected>1m</option>
+                        <option value="5m">5m</option>
+                        <option value="15m">15m</option>
+                        <option value="1H">1H</option>
+                        <option value="4H">4H</option>
+                    </select>
+                </div>
+                <div class="config-row">
+                    <label class="config-label">长周期 (持仓方向)</label>
+                    <select class="config-select" id="cfg-long-period">
+                        <option value="5m">5m</option>
+                        <option value="15m" selected>15m</option>
+                        <option value="1H">1H</option>
+                        <option value="4H">4H</option>
+                        <option value="1D">1D</option>
+                        <option value="1W">1W</option>
+                    </select>
+                </div>
+                <div class="config-row">
+                    <label class="config-label">杠杆倍数</label>
+                    <input type="number" class="config-input" id="cfg-leverage" step="1" min="1" placeholder="如 10" oninput="onLeverageInput()">
+                    <span class="config-hint" id="cfg-leverage-hint">下单前自动设置全仓/逐仓杠杆</span>
+                </div>
+                <div class="config-row">
+                    <label class="config-label">挂单生命周期日志</label>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="cfg-verbose-lifecycle">
+                        <span class="toggle-slider"></span>
+                    </label>
+                    <span class="config-hint">开启后记录每笔挂单的下单/改单/撤单/成交明细</span>
+                </div>
+                <div class="config-row">
+                    <label class="config-label">信号算法</label>
+                    <select class="config-select" id="cfg-signal-algo">
+                        <option value="diff" selected>灵敏模式 (平滑差)</option>
+                        <option value="hybrid">稳定模式 (状态机)</option>
+                    </select>
+                    <span class="config-hint">短周期信号算法，影响开平仓时机</span>
+                </div>
+                <div class="config-row">
+                    <label class="config-label">开仓价格</label>
+                    <select class="config-select" id="cfg-entry-price">
+                        <option value="close" selected>收盘价 (close)</option>
+                        <option value="open">开盘价 (open)</option>
+                    </select>
+                    <span class="config-hint">趋势跟踪仓位的限价开仓取值（反转bar的 open/close）</span>
+                </div>
+                <div class="config-row">
+                    <label class="config-label">平仓价格</label>
+                    <select class="config-select" id="cfg-exit-price">
+                        <option value="open" selected>开盘价 (open)</option>
+                        <option value="close">收盘价 (close)</option>
+                    </select>
+                    <span class="config-hint">趋势跟踪仓位的限价平仓取值（反转bar的 open/close）</span>
+                </div>
+                </div>
+            </div>
+
+            <!-- 固定币种详情面板已迁移至监控台首页（index.html #fixed-coin-detail-section），本页仅保留「🔄 更新市值列表」维护入口 -->
+
+            <!-- 趋势跟踪仓位 -->
+            <div class="config-section">
+                <div class="config-section-header">
+                    <div>
+                        <h3 class="config-section-title">仓位A · 趋势跟踪</h3>
+                        <p class="config-section-desc">按趋势策略信号，在反转bar的 open/close 价挂限价单开平仓；不追价，未成交则等下次反转信号撤单重挂</p>
+                    </div>
+                    <button class="m-btn m-btn-primary m-btn-sm" onclick="saveTradingConfig()">💾 保存</button>
+                </div>
+
+                <div class="config-grid">
+                <div class="config-row">
+                    <label class="config-label">启用趋势跟踪</label>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="cfg-trend-enabled">
+                        <span class="toggle-slider"></span>
+                    </label>
+                    <span class="config-hint">关闭后本仓位不再开新仓（已有持仓仍受止盈止损保护）</span>
+                </div>
+                <div class="config-row">
+                    <label class="config-label">持仓模式</label>
+                    <select class="config-select" id="cfg-trend-mode">
+                        <option value="dual" selected>双周期单向 (dual)</option>
+                        <option value="single">单周期双向 (single)</option>
+                    </select>
+                    <span class="config-hint">dual=只做长周期方向，沿用三时段窗口；single=多空都做，短周期方向翻转即平旧开新</span>
+                </div>
+                <div class="config-row">
+                    <label class="config-label">开仓数量</label>
+                    <select class="config-select" id="cfg-trend-size-mode" style="max-width:150px" onchange="onSizeModeChange('trend')">
+                        <option value="contracts">按张数</option>
+                        <option value="usd" selected>按金额(USDT)</option>
+                    </select>
+                    <input type="number" class="config-input" id="cfg-trend-contracts" step="0.1" min="0" style="max-width:120px" placeholder="如 20" oninput="onSizeInput('trend')">
+                    <input type="number" class="config-input" id="cfg-trend-usd" step="1" min="0" style="max-width:150px;display:none" placeholder="保证金预算 USDT" oninput="onSizeInput('trend')">
+                    <span class="config-hint" id="cfg-trend-size-hint">本仓位独立下单量，与区间波动仓位互不影响</span>
+                </div>
+                <div class="config-row">
+                    <label class="config-label">交易所兜底委托</label>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="cfg-trend-algo-backup">
+                        <span class="toggle-slider"></span>
+                    </label>
+                    <span class="config-hint">开启后同步一张交易所侧止盈止损委托，程序失联时仍能保护持仓</span>
+                </div>
+                </div>
+            </div>
+
+            <!-- 区间波动仓位 -->
+            <div class="config-section">
+                <div class="config-section-header">
+                    <div>
+                        <h3 class="config-section-title">仓位B · 区间波动</h3>
+                        <p class="config-section-desc">固定双周期单向：在长周期方向一侧的 BOLL 边界挂限价开仓（价格变动自动改单追价），成交后立即在对侧边界挂平仓单，平仓成交后无限循环下一轮</p>
+                    </div>
+                    <button class="m-btn m-btn-primary m-btn-sm" onclick="saveTradingConfig()">💾 保存</button>
+                </div>
+
+                <div class="config-grid">
+                <div class="config-row">
+                    <label class="config-label">启用区间波动</label>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="cfg-range-enabled">
+                        <span class="toggle-slider"></span>
+                    </label>
+                    <span class="config-hint">长周期反转时：未成交开仓单撤销换向重挂，已有持仓直接强平</span>
+                </div>
+                <div class="config-row">
+                    <label class="config-label">BOLL 参数</label>
+                    <input type="number" class="config-input" id="cfg-range-boll-period" step="1" min="2" style="max-width:100px" placeholder="period 20">
+                    <input type="number" class="config-input" id="cfg-range-boll-dev" step="0.1" min="0.1" style="max-width:100px" placeholder="dev 2.0">
+                    <span class="config-hint">短周期布林带 period / dev，决定上下轨挂单价</span>
+                </div>
+                <div class="config-row">
+                    <label class="config-label">区间策略引擎</label>
+                    <select class="config-select" id="cfg-range-strategy" style="max-width:280px" onchange="onRangeStrategyChange()">
+                        <option value="keltner_boll" selected>Keltner×BOLL（ATR外扩+趋势方向过滤）</option>
+                        <option value="boll">纯布林带（存量）</option>
+                    </select>
+                    <span class="config-hint">keltner_boll=默认引擎，在 BOLL 边界外再按 ATR 外扩挂单价，并用长周期趋势方法确认方向；boll=存量纯布林带边界</span>
+                </div>
+                <div class="config-row kb-only">
+                    <label class="config-label">方向来源</label>
+                    <select class="config-select" id="cfg-range-direction-source" style="max-width:340px" onchange="onRangeDirectionSourceChange()">
+                        <option value="pro3" selected>Pro3长周期方向（存量：keltner仅外扩边界+闸门）</option>
+                        <option value="keltner">keltner_boll独立方向（与回测同源信号引擎）</option>
+                    </select>
+                    <span class="config-hint">pro3=B跟随Pro3长周期方向，keltner仅外扩边界并做开仓闸门；keltner=B完全独立信号引擎，方向/边界/开平价与详情页回测同源（脱离Pro3，反转清理与反向守卫同步解耦）</span>
+                </div>
+                <div class="config-row kb-only">
+                    <label class="config-label">长周期趋势方法</label>
+                    <select class="config-select" id="cfg-range-trend-indicator" style="max-width:200px"></select>
+                    <span class="config-hint" id="cfg-range-trend-indicator-hint">用于方向确认过滤的长周期趋势判断方法（keltner / rsi_mid / vote3 …），选项由后端注册表动态加载</span>
+                </div>
+                <div class="config-row kb-only">
+                    <label class="config-label">ATR 外扩倍数</label>
+                    <input type="number" class="config-input" id="cfg-range-entry-atr-mult" step="0.1" min="0" style="max-width:110px" placeholder="开仓 0.0">
+                    <input type="number" class="config-input" id="cfg-range-exit-atr-mult" step="0.1" min="0" style="max-width:110px" placeholder="平仓 0.0">
+                    <input type="number" class="config-input" id="cfg-range-atr-period" step="1" min="1" style="max-width:90px" placeholder="ATR周期 14">
+                    <span class="config-hint">开仓轨外扩 A×ATR / 平仓轨外扩 B×ATR / ATR 周期（0=贴合 BOLL 边界，等价存量行为）</span>
+                </div>
+                <div class="config-row kb-only kb-pro3-only" id="row-range-direction-filter">
+                    <label class="config-label">方向确认过滤</label>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="cfg-range-direction-filter" checked>
+                        <span class="toggle-slider"></span>
+                    </label>
+                    <span class="config-hint">开启后：长周期趋势方法方向与持仓方向明确冲突时，本轮暂停区间开仓（平仓/撤单照常）；中性不拦</span>
+                </div>
+                <div class="config-row">
+                    <label class="config-label">开仓数量</label>
+                    <select class="config-select" id="cfg-range-size-mode" style="max-width:150px" onchange="onSizeModeChange('range')">
+                        <option value="contracts">按张数</option>
+                        <option value="usd" selected>按金额(USDT)</option>
+                    </select>
+                    <input type="number" class="config-input" id="cfg-range-contracts" step="0.1" min="0" style="max-width:120px" placeholder="如 10" oninput="onSizeInput('range')">
+                    <input type="number" class="config-input" id="cfg-range-usd" step="1" min="0" style="max-width:150px;display:none" placeholder="保证金预算 USDT" oninput="onSizeInput('range')">
+                    <span class="config-hint" id="cfg-range-size-hint">本仓位独立下单量，每轮固定此数量</span>
+                </div>
+                <div class="config-row">
+                    <label class="config-label">改单最小幅度 (%)</label>
+                    <input type="number" class="config-input" id="cfg-range-amend-pct" step="0.05" min="0" max="99" placeholder="如 0.1">
+                    <span class="config-hint">边界价变动超过此幅度才改单追价，避免频繁改单</span>
+                </div>
+                <div class="config-row">
+                    <label class="config-label">独立风险退出</label>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="cfg-range-risk-enabled">
+                        <span class="toggle-slider"></span>
+                    </label>
+                    <span class="config-hint">硬止损 + 时间退出 + 连续破位，与 BOLL 循环止盈不冲突</span>
+                </div>
+                <div class="config-row">
+                    <label class="config-label">硬止损 (×ATR0)</label>
+                    <input type="number" class="config-input" id="cfg-range-hardstop-mult" step="0.1" min="0" style="max-width:100px" placeholder="0">
+                    <span class="config-hint">多：下轨−N×ATR0；空：上轨+N×ATR0；0=不启用</span>
+                </div>
+                <div class="config-row">
+                    <label class="config-label">最大持仓 (K线根数)</label>
+                    <input type="number" class="config-input" id="cfg-range-maxbars" step="1" min="0" style="max-width:100px" placeholder="12">
+                    <span class="config-hint">0=不限制，否则持仓超时全平 B 仓</span>
+                </div>
+                <div class="config-row">
+                    <label class="config-label">连续破位 (轮)</label>
+                    <input type="number" class="config-input" id="cfg-range-breakdown-rounds" step="1" min="0" style="max-width:100px" placeholder="3">
+                    <span class="config-hint">连续多少轮价在冻结入入场轨外→全平，0=不启用</span>
+                </div>
+                <div class="config-row">
+                    <label class="config-label">风险退出冷却 (K线)</label>
+                    <input type="number" class="config-input" id="cfg-range-cooldown-bars" step="1" min="0" style="max-width:100px" placeholder="3">
+                    <span class="config-hint">风险退出后暂停 B 入场的根数，0=不冷却</span>
+                </div>
+                </div>
+            </div>
+
+            <!-- 人工干预 -->
+            <div class="config-section">
+                <div class="config-section-header">
+                    <div>
+                        <h3 class="config-section-title">人工干预</h3>
+                        <p class="config-section-desc">手动覆盖策略信号方向或执行强制平仓</p>
+                    </div>
+                    <button class="m-btn m-btn-primary m-btn-sm" onclick="saveTradingConfig()">💾 保存</button>
+                </div>
+
+                <div class="config-grid">
+                <div class="config-row">
+                    <label class="config-label">开启自动交易</label>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="cfg-trade-enabled" checked>
+                        <span class="toggle-slider"></span>
+                    </label>
+                    <span class="config-hint">关闭后进入观察者模式：仅分析和邮件预警，禁止买卖、撤单、改单及强制平仓（进入首轮也不撤单）。邮件保留原有标题和完整明细，仅在标题末尾及正文页脚加“（观察者模式）”。已有挂单与兜底委托保持原样，仍可能由交易所撮合或触发，请自行评估处理。</span>
+                </div>
+                <div class="config-row">
+                    <label class="config-label">方向控制</label>
+                    <div class="radio-group">
+                        <label><input type="radio" name="cfg-manual-dir" value="auto" checked> 自动 (auto)</label>
+                        <label><input type="radio" name="cfg-manual-dir" value="long"> 锁定做多 (long)</label>
+                        <label><input type="radio" name="cfg-manual-dir" value="short"> 锁定做空 (short)</label>
+                    </div>
+                    <span class="config-hint">锁定=只允许该方向仓位、绝不反向开仓，但开仓仍需等真实信号共振窗口（反向信号窗口期不开仓也不反向）；自动=完全按双周期信号多空双向交易</span>
+                </div>
+                <div class="config-row">
+                    <label class="config-label">强制平仓</label>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap">
+                        <button class="m-btn m-btn-danger m-btn-sm" onclick="forceClose('all')">⚠️ 全部平仓</button>
+                        <button class="m-btn m-btn-warning m-btn-sm" onclick="forceClose('long')">平全仓多头</button>
+                        <button class="m-btn m-btn-warning m-btn-sm" onclick="forceClose('short')">平逐仓空头</button>
+                    </div>
+                    <span class="config-hint">立即执行，需交易调度器运行中</span>
+                </div>
+                </div>
+            </div>
+
+            <!-- 止盈止损配置 -->
+            <div class="config-section">
+                <div class="config-section-header">
+                    <div>
+                        <h3 class="config-section-title">止盈止损配置（仅趋势跟踪仓位）</h3>
+                        <p class="config-section-desc">止盈止损只作用于趋势跟踪仓位；区间波动仓位自带对侧 BOLL 边界止盈，不受此处影响</p>
+                    </div>
+                    <button class="m-btn m-btn-primary m-btn-sm" onclick="saveTradingConfig()">💾 保存</button>
+                </div>
+
+                <div class="config-grid">
+                <div class="config-row">
+                    <label class="config-label">启用止盈</label>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="cfg-tp-enabled">
+                        <span class="toggle-slider"></span>
+                    </label>
+                    <span class="config-hint">总开关：开启后主止盈/时间兜底才生效（止损独立不受影响）</span>
+                </div>
+                <div class="config-row">
+                    <label class="config-label">主止盈方式</label>
+                    <select class="config-select" id="cfg-tp-category" onchange="updateTpPanels()">
+                        <option value="none" selected>不启用</option>
+                        <option value="fixed_target">固定目标止盈</option>
+                        <option value="trailing">追踪止盈</option>
+                        <option value="momentum">动能衰竭止盈</option>
+                        <option value="channel">通道边界止盈</option>
+                        <option value="ladder">分批止盈</option>
+                        <option value="combo">组合出场（棘轮+吊灯+一次部分止盈）</option>
+                    </select>
+                    <span class="config-hint">七选一（互斥），时间止盈为独立兜底可共存</span>
+                </div>
+
+                <!-- 组合出场（棘轮+吊灯+一次部分止盈，双仓位风控增强） -->
+                <div id="tp-panel-combo" class="config-grid" style="display:none">
+                    <div class="config-row">
+                        <label class="config-label">R0 倍数 (×ATR0)</label>
+                        <input type="number" class="config-input" id="cfg-tp-cb-initr" step="0.1" min="0.5" placeholder="2.0">
+                        <span class="config-hint">锁定风险 R0 = 倍数 × 首观察时 ATR，后续不放宽</span>
+                    </div>
+                    <div class="config-row">
+                        <label class="config-label">激活 MFE (R)</label>
+                        <input type="number" class="config-input" id="cfg-tp-cb-activate" step="0.1" min="0" placeholder="1.5">
+                        <span class="config-hint">最大有利变动 ≥ 此值后才启动棘轮与吊灯</span>
+                    </div>
+                    <div class="config-row">
+                        <label class="config-label">吊灯 ATR 倍数</label>
+                        <input type="number" class="config-input" id="cfg-tp-cb-chatr" step="0.1" min="0.5" placeholder="3.0">
+                        <span class="config-hint">峰值−N×ATR，与棘轮取 max/min，不拉回</span>
+                    </div>
+                    <div class="config-row">
+                        <label class="config-label">部分止盈触发 (R)</label>
+                        <input type="number" class="config-input" id="cfg-tp-cb-partial-r" step="0.1" min="0" placeholder="2.0">
+                        <span class="config-hint">一次触发，平 Q0×比例；0 代表不拆仓</span>
+                    </div>
+                    <div class="config-row">
+                        <label class="config-label">部分止盈比例 (0–1)</label>
+                        <input type="number" class="config-input" id="cfg-tp-cb-partial-ratio" step="0.05" min="0" max="1" placeholder="0.30">
+                        <span class="config-hint">相对 Q0 的比例，非相对当前仓位；成交后本周期禁止补回</span>
+                    </div>
+                    <div class="config-row">
+                        <label class="config-label">保本价缓冲 (%)</label>
+                        <input type="number" class="config-input" id="cfg-tp-cb-bepct" step="0.01" min="0" placeholder="0.10">
+                        <span class="config-hint">lock_r=0 那一档保本价上浮/下浮此比例，涵盖手续费与滑点</span>
+                    </div>
+                    <div class="config-row config-row-full">
+                        <label class="config-label">棘轮台阶</label>
+                        <input type="text" class="config-input" id="cfg-tp-cb-locksteps" placeholder="1.5:0, 2.5:1, 4:2">
+                        <span class="config-hint">reach_r:lock_r 逗号分隔，lock_r=0 代表保本</span>
+                    </div>
+                </div>
+                </div>
+                
+                <!-- 固定目标止盈 -->
+                <div id="tp-panel-fixed_target" class="config-grid" style="display:none">
+                    <div class="config-row">
+                        <label class="config-label">目标模式</label>
+                        <select class="config-select" id="cfg-tp-ft-mode">
+                            <option value="pct" selected>百分比</option>
+                            <option value="r_multiple">R倍数</option>
+                            <option value="atr_multiple">ATR倍数</option>
+                        </select>
+                        <span class="config-hint">R=止损距离（止损未启用时 1R=1ATR）</span>
+                    </div>
+                    <div class="config-row">
+                        <label class="config-label">止盈百分比 (%)</label>
+                        <input type="number" class="config-input" id="cfg-tp-ft-pct" step="0.5" min="0.1" placeholder="如 5.0">
+                        <span class="config-hint">盈利达到此百分比平仓（百分比模式）</span>
+                    </div>
+                    <div class="config-row">
+                        <label class="config-label">R 倍数</label>
+                        <input type="number" class="config-input" id="cfg-tp-ft-r" step="0.5" min="0.5" placeholder="如 2.0">
+                        <span class="config-hint">盈利距离达 N 倍止损距离平仓（R倍数模式）</span>
+                    </div>
+                    <div class="config-row">
+                        <label class="config-label">ATR 倍数</label>
+                        <input type="number" class="config-input" id="cfg-tp-ft-atr" step="0.5" min="0.5" placeholder="如 3.0">
+                        <span class="config-hint">盈利距离达 N 倍 ATR 平仓（ATR模式）</span>
+                    </div>
+                </div>
+
+                <!-- 追踪止盈 -->
+                <div id="tp-panel-trailing" class="config-grid" style="display:none">
+                    <div class="config-row">
+                        <label class="config-label">追踪模式</label>
+                        <select class="config-select" id="cfg-tp-tr-mode">
+                            <option value="pullback_pct" selected>回撤百分比</option>
+                            <option value="chandelier">吊灯 ATR</option>
+                            <option value="r_ladder">R乘数阶梯</option>
+                        </select>
+                    </div>
+                    <div class="config-row">
+                        <label class="config-label">启动盈利 (%)</label>
+                        <input type="number" class="config-input" id="cfg-tp-tr-activate" step="0.5" min="0" placeholder="如 1.0">
+                        <span class="config-hint">盈利达此值后才启动追踪（回撤%模式）</span>
+                    </div>
+                    <div class="config-row">
+                        <label class="config-label">回撤幅度 (%)</label>
+                        <input type="number" class="config-input" id="cfg-tp-tr-pullback" step="0.5" min="0.1" placeholder="如 2.0">
+                        <span class="config-hint">从峰值回撤此幅度平仓（回撤%模式）</span>
+                    </div>
+                    <div class="config-row">
+                        <label class="config-label">吊灯 ATR 倍数</label>
+                        <input type="number" class="config-input" id="cfg-tp-tr-chatr" step="0.5" min="0.5" placeholder="如 3.0">
+                        <span class="config-hint">从峰值回撤 N 倍 ATR 平仓（吊灯模式）</span>
+                    </div>
+                    <div class="config-row">
+                        <label class="config-label">R 阶梯</label>
+                        <input type="text" class="config-input" id="cfg-tp-tr-rlevels" placeholder="如 1:0, 2:1, 3:2">
+                        <span class="config-hint">reach_r:lock_r 逗号分隔；盈利达 reach_r 倍R后锁利线抬到 lock_r 倍R</span>
+                    </div>
+                </div>
+
+                <!-- 动能衰竭止盈 -->
+                <div id="tp-panel-momentum" class="config-grid" style="display:none">
+                    <div class="config-row">
+                        <label class="config-label">动能模式</label>
+                        <select class="config-select" id="cfg-tp-mo-mode">
+                            <option value="hist_decay" selected>MACD柱衰减</option>
+                            <option value="divergence">MACD背离</option>
+                        </select>
+                    </div>
+                    <div class="config-row">
+                        <label class="config-label">衰减根数</label>
+                        <input type="number" class="config-input" id="cfg-tp-mo-decay" step="1" min="2" placeholder="如 3">
+                        <span class="config-hint">MACD柱同向连续收缩 N 根触发（衰减模式）</span>
+                    </div>
+                    <div class="config-row">
+                        <label class="config-label">背离回溯窗口</label>
+                        <input type="number" class="config-input" id="cfg-tp-mo-lookback" step="5" min="10" placeholder="如 30">
+                        <span class="config-hint">背离判定的K线回溯根数（背离模式）</span>
+                    </div>
+                    <div class="config-row">
+                        <label class="config-label">最小盈利 (%)</label>
+                        <input type="number" class="config-input" id="cfg-tp-mo-minprofit" step="0.1" min="0" placeholder="如 0.5">
+                        <span class="config-hint">盈利低于此值不触发（避免刚开仓就被震出）</span>
+                    </div>
+                </div>
+
+                <!-- 通道边界止盈 -->
+                <div id="tp-panel-channel" class="config-grid" style="display:none">
+                    <div class="config-row">
+                        <label class="config-label">通道模式</label>
+                        <select class="config-select" id="cfg-tp-ch-mode">
+                            <option value="outer" selected>碰BOLL外轨</option>
+                            <option value="middle">跌破BOLL中轨</option>
+                        </select>
+                        <span class="config-hint">多头碰上轨/跌破中轨，空头镜像</span>
+                    </div>
+                    <div class="config-row">
+                        <label class="config-label">最小盈利 (%)</label>
+                        <input type="number" class="config-input" id="cfg-tp-ch-minprofit" step="0.1" min="0" placeholder="如 0">
+                        <span class="config-hint">中轨模式盈利阈值（外轨模式只需处于盈利）</span>
+                    </div>
+                </div>
+
+                <!-- 分批止盈 -->
+                <div id="tp-panel-ladder" class="config-grid" style="display:none">
+                    <div class="config-row config-row-full">
+                        <label class="config-label">阶梯档位</label>
+                        <input type="text" class="config-input" id="cfg-tp-ld-levels" placeholder="如 2:33, 4:50, 6:100">
+                        <span class="config-hint">盈利%:平仓% 逗号分隔，末档平仓%必须为100（清仓）；如 2:33 = 盈利2%时平当前仓位的33%</span>
+                    </div>
+                </div>
+
+                <!-- 时间止盈（独立兜底，可与任意主止盈共存） -->
+                <div class="config-grid config-divider">
+                <div class="config-subtitle">⏱ 时间止盈兜底（独立开关，可与任意主止盈共存）</div>
+                <div class="config-row">
+                    <label class="config-label">时间止盈兜底</label>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="cfg-tp-ts-enabled">
+                        <span class="toggle-slider"></span>
+                    </label>
+                    <span class="config-hint">持仓超时且盈利不达标 → 平仓（专治僵尸单）</span>
+                </div>
+                <div class="config-row">
+                    <label class="config-label">最大持仓 (K线根数)</label>
+                    <input type="number" class="config-input" id="cfg-tp-ts-maxbars" step="1" min="1" placeholder="如 24">
+                    <span class="config-hint">按短周期K线折算</span>
+                </div>
+                <div class="config-row">
+                    <label class="config-label">达标盈利 (%)</label>
+                    <input type="number" class="config-input" id="cfg-tp-ts-minprofit" step="0.5" min="0" placeholder="如 1.0">
+                    <span class="config-hint">超时时盈利仍低于此值才平仓</span>
+                </div>
+                </div>
+
+                <details style="margin:8px 0;font-size:12px;color:var(--text-secondary,#888)">
+                    <summary style="cursor:pointer">📖 六类止盈规则说明（点击展开）</summary>
+                    <div style="padding:8px 12px;line-height:1.8">
+                        <b>优先级</b>：止损 → 时间兜底 → 主止盈；主止盈六选一互斥，时间止盈可与任意主止盈共存。<br>
+                        <b>1. 固定目标</b>：盈利达阈值即平。适合震荡市吃一口就跑。例：均价3.00 百分比5% → 涨到3.15平。R倍数=盈亏比恒定（止损3%+止盈2R → 盈利达6%平）。<br>
+                        <b>2. 追踪止盈</b>：记录持仓峰值，回撤平仓，让利润奔跑。适合趋势市。例：吊灯3ATR，峰值3.50、ATR=0.05 → 跌到3.35平。峰值重启后不丢失（已持久化）。<br>
+                        <b>3. 动能衰竭</b>：MACD柱连续收缩/背离时提前下车。适合波段顶部预判。例：多头MACD柱连续3根变短且盈利≥0.5% → 平。<br>
+                        <b>4. 通道边界</b>：碰BOLL外轨（激进锁利）或跌破中轨（趋势转弱）平仓。适合均值回归行情。<br>
+                        <b>5. 分批止盈</b>：分档逐步落袋，兼顾胜率与利润。例：2:33/4:50/6:100 → 盈利2%平33%，4%再平剩余50%，6%清仓；已触发档不重复。<br>
+                        <b>6. 时间止盈</b>：持仓超N根K线盈利仍不达标即平，专治僵尸单。例：5m周期挂24根=2小时，盈利<1%则平。<br>
+                        <b>搭配建议</b>：震荡市→固定目标/分批；趋势市→追踪；拿不准→分批+时间兜底。追踪类与分批类功能重叠，已通过单选互斥。
+                    </div>
+                </details>
+
+                <div class="config-grid config-divider">
+                <div class="config-subtitle">🛑 止损（独立于止盈，永远最先检查）</div>
+                <div class="config-row">
+                    <label class="config-label">启用止损</label>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="cfg-sl-enabled">
+                        <span class="toggle-slider"></span>
+                    </label>
+                    <span class="config-hint">开启后亏损达到阈值自动平仓</span>
+                </div>
+                <div class="config-row">
+                    <label class="config-label">止损方式</label>
+                    <select class="config-select" id="cfg-sl-type">
+                        <option value="fixed" selected>固定百分比</option>
+                        <option value="atr">ATR 倍数</option>
+                    </select>
+                </div>
+                <div class="config-row">
+                    <label class="config-label">固定止损 (%)</label>
+                    <input type="number" class="config-input" id="cfg-sl-fixed-pct" step="0.5" min="0.5" placeholder="如 3.0">
+                    <span class="config-hint">亏损达到此百分比时止损</span>
+                </div>
+                <div class="config-row">
+                    <label class="config-label">ATR止损 (倍数)</label>
+                    <input type="number" class="config-input" id="cfg-sl-atr-multiple" step="0.5" min="0.5" placeholder="如 1.5">
+                    <span class="config-hint">亏损达到 N 倍 ATR 时止损</span>
+                </div>
+                </div>
+            </div>
+
+            <!-- 风控参数 -->
+            <div class="config-section">
+                <div class="config-section-header">
+                    <div>
+                        <h3 class="config-section-title">风控参数</h3>
+                        <p class="config-section-desc">设置仓位上限、紧急停止、睡眠时段强平与反向持仓风控</p>
+                    </div>
+                    <button class="m-btn m-btn-primary m-btn-sm" onclick="saveTradingConfig()">💾 保存</button>
+                </div>
+
+                <div class="config-grid">
+                <div class="config-row">
+                    <label class="config-label">单币种最大持仓 (张)</label>
+                    <input type="number" class="config-input" id="cfg-max-per-currency" step="1" min="0" placeholder="如 100">
+                </div>
+                <div class="config-row">
+                    <label class="config-label">单币种最大持仓 (USDT)</label>
+                    <input type="number" class="config-input" id="cfg-max-per-currency-usd" step="1" min="0" placeholder="0=不启用">
+                    <span class="config-hint">USD口径上限，每轮按现价折算张数后与张数口径取更严者；0=不启用</span>
+                </div>
+                <div class="config-row">
+                    <label class="config-label">总最大持仓 (张)</label>
+                    <input type="number" class="config-input" id="cfg-max-total" step="1" min="0" placeholder="如 500">
+                </div>
+                <div class="config-row">
+                    <label class="config-label">紧急停止</label>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="cfg-emergency-stop">
+                        <span class="toggle-slider"></span>
+                    </label>
+                    <span class="config-hint">启用后策略不执行任何交易</span>
+                </div>
+                <div class="config-row">
+                    <label class="config-label">睡眠时段强平</label>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="cfg-nfc-enabled">
+                        <span class="toggle-slider"></span>
+                    </label>
+                    <span class="config-hint">长周期反转时若处于下方时段（东八区），趋势仓单向模式直接强平而非仅发邮件</span>
+                </div>
+                <div class="config-row">
+                    <label class="config-label">强平时段 (东八区整点)</label>
+                    <input type="number" class="config-input" id="cfg-nfc-start" step="1" min="0" max="23" style="max-width:100px" placeholder="起 0">
+                    <input type="number" class="config-input" id="cfg-nfc-end" step="1" min="0" max="23" style="max-width:100px" placeholder="止 6">
+                    <span class="config-hint">如 0 ~ 6 表示凌晨0点至6点，支持跨零点区间</span>
+                </div>
+                <div class="config-row">
+                    <label class="config-label">反向持仓风控</label>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="cfg-rg-enabled">
+                        <span class="toggle-slider"></span>
+                    </label>
+                    <span class="config-hint">仅趋势仓为双周期单向(dual)时生效，单周期双向模式自动关闭</span>
+                </div>
+                <div class="config-row">
+                    <label class="config-label">风控宽限期 (分钟)</label>
+                    <input type="number" class="config-input" id="cfg-rg-grace" step="1" min="1" placeholder="如 10">
+                    <span class="config-hint">发现反向持仓（程序旧方向残留或人工反向单）后先预警，超过此时长仍存在则强平</span>
+                </div>
+                </div>
+            </div>
+
+            <!-- 全局设置 -->
+            <div class="config-section">
+                <div class="config-section-header">
+                    <div>
+                        <h3 class="config-section-title">全局设置</h3>
+                        <p class="config-section-desc">策略启用状态、执行频率和通知设置</p>
+                    </div>
+                    <button class="m-btn m-btn-primary m-btn-sm" onclick="saveTradingConfig()">💾 保存</button>
+                </div>
+
+                <div class="config-grid">
+                <div class="config-row">
+                    <label class="config-label">策略启用</label>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="cfg-enabled" checked>
+                        <span class="toggle-slider"></span>
+                    </label>
+                    <span class="config-hint">关闭后策略不执行任何交易</span>
+                </div>
+                <div class="config-row">
+                    <label class="config-label">邮件通知</label>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="cfg-email-notifications" checked>
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                <div class="config-row">
+                    <label class="config-label">执行间隔 (秒)</label>
+                    <input type="number" class="config-input" id="cfg-exec-interval" step="1" min="10" max="3600" value="60">
+                    <span class="config-hint">每轮策略执行后的等待时间</span>
+                </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ========================================================= -->
+        <!-- Tab 3: 邮件通知配置 -->
+        <!-- ========================================================= -->
+        <div id="tab-email" class="task-tab-content">
+
+            <div class="config-section">
+                <div class="config-section-header">
+                    <div>
+                        <h3 class="config-section-title">收件人配置</h3>
+                        <p class="config-section-desc">设置通知邮件的发送和接收地址</p>
+                    </div>
+                    <button class="m-btn m-btn-info m-btn-sm" onclick="saveEmailConfig()">💾 保存</button>
+                </div>
+
+                <div class="config-grid">
+                <div class="config-row">
+                    <label class="config-label">发件人邮箱</label>
+                    <input type="email" class="config-input" id="email-from" placeholder="如 xxx@qq.com">
+                </div>
+                <div class="config-row">
+                    <label class="config-label">收件人邮箱</label>
+                    <input type="email" class="config-input" id="email-to" placeholder="如 xxx@qq.com">
+                </div>
+                <div class="config-row">
+                    <label class="config-label">SMTP 授权码</label>
+                    <input type="password" class="config-input" id="email-password" placeholder="留空或 **** 表示不修改">
+                    <span class="config-hint">QQ邮箱授权码（非登录密码）</span>
+                </div>
+                </div>
+            </div>
+
+            <div class="config-section">
+                <div class="config-section-header">
+                    <div>
+                        <h3 class="config-section-title">通知频率与冷却</h3>
+                        <p class="config-section-desc">控制邮件通知的频率和冷却时间</p>
+                    </div>
+                    <button class="m-btn m-btn-info m-btn-sm" onclick="saveEmailSettings()">💾 保存</button>
+                </div>
+
+                <div class="config-grid">
+                <div class="config-row">
+                    <label class="config-label">每小时最大通知数</label>
+                    <input type="number" class="config-input" id="cfg-max-notifications" step="1" min="1" max="100" value="30">
+                    <span class="config-hint">超过此数量将不再发送通知</span>
+                </div>
+                <div class="config-row">
+                    <label class="config-label">冷却时间 (分钟)</label>
+                    <input type="number" class="config-input" id="cfg-cooldown" step="1" min="1" max="1440" value="30">
+                    <span class="config-hint">同类事件在此时间间隔内最多通知一次，范围 1~1440 分钟，保存后无需重启即可生效</span>
+                </div>
+                </div>
+            </div>
+
+            <div class="config-section">
+                <div class="config-section-header">
+                    <div>
+                        <h3 class="config-section-title">发送测试邮件</h3>
+                        <p class="config-section-desc">验证 SMTP 配置是否正确</p>
+                    </div>
+                    <button class="m-btn m-btn-success m-btn-sm" onclick="sendTestEmail()">📧 发送测试邮件</button>
+                </div>
+                <div class="config-grid">
+                <div class="config-row">
+                    <label class="config-label">收件地址</label>
+                    <input type="email" class="config-input" id="test-email-to" placeholder="留空则使用默认收件人">
+                    <span class="config-hint">留空将发送到配置的默认收件人邮箱</span>
+                </div>
+                </div>
+            </div>
+
+            <div class="config-section">
+                <div class="config-section-header">
+                    <div>
+                        <h3 class="config-section-title">SMTP 服务器配置</h3>
+                        <p class="config-section-desc">设置 SMTP 服务器连接参数</p>
+                    </div>
+                    <button class="m-btn m-btn-info m-btn-sm" onclick="saveEmailConfig()">💾 保存</button>
+                </div>
+
+                <div class="config-grid">
+                <div class="config-row">
+                    <label class="config-label">SMTP 服务器</label>
+                    <input type="text" class="config-input" id="email-smtp-host" value="smtp.qq.com">
+                </div>
+                <div class="config-row">
+                    <label class="config-label">SMTP 端口</label>
+                    <select class="config-select" id="email-smtp-port">
+                        <option value="465" selected>465 (SSL)</option>
+                        <option value="587">587 (TLS)</option>
+                        <option value="25">25 (普通)</option>
+                    </select>
+                </div>
+                <div class="config-row">
+                    <label class="config-label">使用 SSL</label>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="email-use-ssl" checked>
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ========================================================= -->
+        <!-- Tab 4: 日志查看 -->
+        <!-- ========================================================= -->
+        <div id="tab-logs" class="task-tab-content">
+
+            <div class="config-section">
+                <div class="config-section-header">
+                    <div>
+                        <h3 class="config-section-title">日志查看器</h3>
+                        <p class="config-section-desc">查看定时任务执行日志和实盘交易操作日志，支持关键字搜索和时间过滤</p>
+                    </div>
+                    <button class="m-btn m-btn-primary m-btn-sm" onclick="refreshLogs()">🔄 刷新</button>
+                </div>
+
+                <div class="config-grid">
+                <!-- 日志文件选择 -->
+                <div class="config-row">
+                    <label class="config-label">日志文件</label>
+                    <div class="radio-group">
+                        <label><input type="radio" name="log-file" value="task_scheduler" checked onchange="refreshLogs()"> 定时任务日志</label>
+                        <label><input type="radio" name="log-file" value="trade_operations" onchange="refreshLogs()"> 交易操作日志</label>
+                    </div>
+                </div>
+
+                <!-- 搜索过滤 -->
+                <div class="config-row">
+                    <label class="config-label">关键字搜索</label>
+                    <input type="text" class="config-input" id="log-keyword" placeholder="输入关键字搜索，如 NEAR、开多、失败">
+                </div>
+
+                <div class="config-row config-row-full" style="display:flex;gap:10px;align-items:center">
+                    <label class="config-label" style="white-space:nowrap">时间范围</label>
+                    <input type="datetime-local" id="log-start-time" class="config-input" style="flex:1">
+                    <span style="color:#999">至</span>
+                    <input type="datetime-local" id="log-end-time" class="config-input" style="flex:1">
+                </div>
+
+                <div class="config-row config-row-full" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+                    <label class="config-label" style="white-space:nowrap">快捷过滤</label>
+                    <button class="btn" style="background:#eef2ff;color:#334" onclick="quickFilter('本轮摘要')">📋 本轮摘要</button>
+                    <button class="btn" style="background:#eef2ff;color:#334" onclick="quickFilter('成交')">✅ 成交记录</button>
+                    <button class="btn" style="background:#eef2ff;color:#334" onclick="quickFilter('止盈')">🎯 止盈</button>
+                    <button class="btn" style="background:#eef2ff;color:#334" onclick="quickFilter('止损')">🛑 止损</button>
+                    <button class="btn" style="background:#eef2ff;color:#334" onclick="quickFilter('反向持仓')">🛡️ 反向持仓风控</button>
+                    <button class="btn" style="background:#eef2ff;color:#334" onclick="quickFilter('长周期反转')">🔄 方向反转</button>
+                    <button class="btn" style="background:#ffecec;color:#a33" onclick="quickFilter('失败')">❌ 失败</button>
+                </div>
+
+                <div class="config-row config-row-full" style="display:flex;gap:10px;flex-wrap:wrap">
+                    <button class="btn btn-primary" onclick="searchLogs()">🔍 搜索</button>
+                    <button class="btn btn-warning" onclick="clearLogFilters()">清除过滤</button>
+                    <button class="btn btn-success" onclick="downloadLog()">⬇️ 下载日志</button>
+                    <button class="btn" style="background:#e64569;color:#fff" onclick="clearLogFile('task_scheduler')">🗑️ 清除定时任务日志</button>
+                    <button class="btn" style="background:#e64569;color:#fff" onclick="clearLogFile('trade_operations')">🗑️ 清除交易操作日志</button>
+                </div>
+                </div>
+            </div>
+
+            <!-- 日志显示区 -->
+            <div class="log-viewer-wrap">
+                <div class="log-viewer-header">
+                    <span id="log-file-label">定时任务日志</span>
+                    <span id="log-stats" style="color:#999;font-size:0.8rem"></span>
+                </div>
+                <div class="log-viewer" id="log-viewer">
+                    <div class="log-loading">加载中...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ========================================================= -->
+        <!-- Tab 5: 实盘对比（理论信号 vs 实际成交） -->
+        <!-- ========================================================= -->
+        <div id="tab-compare" class="task-tab-content">
+
+            <div class="config-section">
+                <div class="config-section-header">
+                    <div>
+                        <h3 class="config-section-title">实盘 vs 理论对比</h3>
+                        <p class="config-section-desc">同一时间段内，趋势策略理论信号与实盘成交流水的逐笔对比与归因（matched=正常执行 / missed=未成交 / extra=计划外）</p>
+                    </div>
+                    <button class="m-btn m-btn-primary m-btn-sm" onclick="loadCompare()">🔄 刷新</button>
+                </div>
+
+                <div class="compare-filter">
+                    <label>币种
+                        <select id="cmp-inst" class="config-input" style="width:auto">
+                            <option value="">加载中...</option>
+                        </select>
+                    </label>
+                    <label>时间范围
+                        <select id="cmp-days" class="config-input" style="width:auto">
+                            <option value="1">近 1 天</option>
+                            <option value="3" selected>近 3 天</option>
+                            <option value="7">近 7 天</option>
+                        </select>
+                    </label>
+                    <button class="btn btn-primary" onclick="loadCompare()">🔍 查询</button>
+                    <span id="cmp-coverage" style="color:#999;font-size:0.8rem"></span>
+                </div>
+            </div>
+
+            <!-- 汇总卡片行 -->
+            <div class="compare-cards" id="cmp-cards"></div>
+
+            <!-- 双曲线叠加图 -->
+            <div class="compare-chart-wrap">
+                <div class="log-viewer-header">
+                    <span>累计收益曲线（理论 vs 实盘，含杠杆%）</span>
+                    <span id="cmp-chart-hint" style="color:#999;font-size:0.8rem;font-weight:400">每个点 = 一次平仓结算</span>
+                </div>
+                <div id="cmp-chart" style="width:100%;height:360px"></div>
+            </div>
+
+            <!-- 逐笔对比表 -->
+            <div class="task-table-wrap" style="margin-top:16px">
+                <table class="task-table">
+                    <thead>
+                        <tr>
+                            <th>信号时间</th><th>动作</th><th>方向</th><th>状态</th>
+                            <th>理论价</th><th>实际价</th><th>滑点%</th><th>数量</th><th>归因</th><th>备注</th>
+                        </tr>
+                    </thead>
+                    <tbody id="cmp-tbody">
+                        <tr><td colspan="10" class="empty-state">点击「查询」加载对比数据</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- ========================================================= -->
+        <!-- Tab 6: 分析记录（手动快照 + 个人判断 + 复盘统计） -->
+        <!-- ========================================================= -->
+        <div id="tab-analysis" class="task-tab-content">
+
+            <div class="config-section">
+                <div class="config-section-header">
+                    <div>
+                        <h3 class="config-section-title">实盘分析记录</h3>
+                        <p class="config-section-desc">手动快照币种实时价格与长短周期方向，记录个人涨跌判断与分析原因；记录满「N×短周期」后自动回填近/远窗口价格用于命中率复盘</p>
+                    </div>
+                    <button class="m-btn m-btn-primary m-btn-sm" onclick="loadAnalysisRecords()" title="重新拉取分析记录列表，并顺带回填已到期的近/远窗口复盘价格（不影响币种下拉，币种每次进入已自动同步）">🔄 刷新记录</button>
+                </div>
+
+                <div class="compare-filter">
+                    <label>币种
+                        <select id="ana-inst" class="config-input" style="width:auto">
+                            <option value="">加载中...</option>
+                        </select>
+                    </label>
+                    <button id="ana-snap-btn" class="btn btn-primary" onclick="genAnalysisSnapshot()">📸 生成快照</button>
+                    <button id="ana-batch-btn" class="btn btn-primary" onclick="genBatchSnapshot(this)">🚀 一键批量快照</button>
+                    <span id="ana-snap-ts" style="color:#999;font-size:0.8rem"></span>
+                </div>
+
+                <!-- 快照展示与录入区 -->
+                <div id="ana-snapshot-box" class="ana-snapshot-box" style="display:none">
+                    <div class="ana-snap-grid" id="ana-snap-grid"></div>
+                    <div class="ana-judgment-row">
+                        <span style="color:#555">个人判断：</span>
+                        <label><input type="radio" name="ana-judgment" value="rise"> 涨</label>
+                        <label><input type="radio" name="ana-judgment" value="fall"> 跌</label>
+                        <label><input type="radio" name="ana-judgment" value="watch" checked> 观望</label>
+                    </div>
+                    <div class="ana-judgment-row">
+                        <span style="color:#555">结构价计划(可选)：</span>
+                        <label>目标 <input type="number" id="ana-target" class="config-input" step="any" min="0" style="width:110px" placeholder="目标价"></label>
+                        <label>失效 <input type="number" id="ana-invalid" class="config-input" step="any" min="0" style="width:110px" placeholder="失效价"></label>
+                        <button type="button" class="m-btn m-btn-secondary m-btn-sm" onclick="anaPrefillPlan('boll')" title="按当前判断预填：看涨=上轨目标/下轨失效，看跌反之">BOLL轨</button>
+                        <button type="button" class="m-btn m-btn-secondary m-btn-sm" onclick="anaPrefillPlan('theta')" title="按 快照价±θ(0.3×ATR，地板0.1%) 预填噪声带">±θ预填</button>
+                        <span style="font-size:0.74rem;color:#999">仅涨/跌可挂；先触目标=win(+R)、先触失效=loss，不受时间窗约束</span>
+                    </div>
+                    <textarea id="ana-reason" class="ana-reason-input" placeholder="分析原因（可选）：为什么这样判断？趋势结构 / 指标信号 / 消息面 ..."></textarea>
+                    <div style="margin-top:10px">
+                        <button class="m-btn m-btn-success m-btn-sm" onclick="saveAnalysisRecord()">💾 保存记录</button>
+                        <button class="m-btn m-btn-secondary m-btn-sm" onclick="hideAnalysisSnapshot()">取消</button>
+                    </div>
+                </div>
+
+                <!-- 批量快照矩阵：一键生成全部币种快照 → 逐行填判断 → 一次性提交 -->
+                <div id="ana-batch-box" class="ana-snapshot-box" style="display:none">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px;flex-wrap:wrap">
+                        <strong>🚀 批量快照矩阵（共 <span id="ana-batch-count">0</span> 币）</strong>
+                        <div style="font-size:0.82rem">
+                            <button class="m-btn m-btn-primary m-btn-sm" onclick="toggleAllBatchRows(true)">全选</button>
+                            <button class="m-btn m-btn-secondary m-btn-sm" onclick="toggleAllBatchRows(false)">全不选</button>
+                        </div>
+                    </div>
+                    <div class="task-table-wrap" style="max-height:60vh;overflow-y:auto">
+                        <table class="task-table">
+                            <thead>
+                                <tr>
+                                    <th style="width:42px">保存</th>
+                                    <th>币种</th>
+                                    <th>实时价</th>
+                                    <th>短周期</th>
+                                    <th>长周期</th>
+                                    <th>ATR%</th>
+                                    <th>BOLL 上/中/下</th>
+                                    <th>个人判断</th>
+                                    <th>分析原因</th>
+                                </tr>
+                            </thead>
+                            <tbody id="ana-batch-tbody"></tbody>
+                        </table>
+                    </div>
+                    <div style="margin-top:10px;display:flex;align-items:center;gap:8px">
+                        <span id="ana-batch-msg" style="color:#999;font-size:0.8rem;flex:1"></span>
+                        <button class="m-btn m-btn-success m-btn-sm" onclick="saveBatchSnapshots()">💾 批量保存勾选行</button>
+                        <button class="m-btn m-btn-secondary m-btn-sm" onclick="hideBatchSnapshot()">关闭</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 命中率统计卡片 + 判断混淆矩阵 -->
+            <div class="compare-cards" id="ana-stats"></div>
+            <div id="ana-confusion" style="margin-top:14px"></div>
+
+            <!-- 筛选栏 -->
+            <div class="compare-filter" style="margin-bottom:12px">
+                <label>币种
+                    <select id="ana-filter-inst" class="config-input" style="width:auto">
+                        <option value="">全部</option>
+                    </select>
+                </label>
+                <label>判断
+                    <select id="ana-filter-judgment" class="config-input" style="width:auto">
+                        <option value="">全部</option>
+                        <option value="rise">涨</option>
+                        <option value="fall">跌</option>
+                        <option value="watch">观望</option>
+                    </select>
+                </label>
+                <label>开始 <input type="date" id="ana-filter-start" class="config-input" style="width:auto"></label>
+                <label>结束 <input type="date" id="ana-filter-end" class="config-input" style="width:auto"></label>
+                <button class="btn btn-primary" onclick="loadAnalysisRecords()">🔍 查询</button>
+                <button class="m-btn m-btn-danger m-btn-sm" style="margin-left:auto" onclick="batchDeleteAnalysisRecords(this)" title="删除列表里已勾选的分析记录（配合表头复选框全选）">🗑 批量删除</button>
+            </div>
+
+            <!-- 记录列表 -->
+            <div class="task-table-wrap">
+                <table class="task-table">
+                    <thead>
+                        <tr>
+                            <th style="width:36px;text-align:center"><input type="checkbox" id="ana-check-all" onclick="toggleAllAnaRows(this)" title="全选/全不选"></th>
+                            <th>时间</th><th>币种</th><th>快照价</th><th>短周期</th><th>长周期</th>
+                            <th>个人判断</th><th>分析原因</th><th id="ana-th-near">近窗口后</th><th id="ana-th-far">远窗口后</th><th title="窗口内K线路径谁先触 P0±θ 带（计分主口径）；◔=横盘/双触未兑现">先触碰</th><th title="结构价计划：先触目标=win(+R)/先触失效=loss(-1R)，无时间窗约束">结构价</th><th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="ana-tbody">
+                        <tr><td colspan="13" class="empty-state">点击「查询」加载分析记录</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================================= -->
+    <!-- Tab 7: 持仓看板（实时持仓卡片 + 历史持仓查询 + 历史币种库） -->
+    <!-- ========================================================= -->
+    <div id="tab-positions" class="task-tab-content">
+
+        <!-- 分区一：当前持仓卡片 -->
+        <div class="config-section">
+            <div class="config-section-header">
+                <div>
+                    <h3 class="config-section-title">实时持仓卡片</h3>
+                    <p class="config-section-desc">定时任务配置币种的实盘持仓展示（数据来源：交易调度器账号，未运行时用默认账号；净持仓下趋势/区间两篮子合并展示，拆分见本地账本）</p>
+                </div>
+                <button class="m-btn m-btn-primary m-btn-sm" onclick="loadPositionCards()">🔄 刷新</button>
+            </div>
+            <div class="pos-toolbar">
+                <span class="pos-account" id="pos-account-label">账号：-</span>
+                <span class="pos-account" id="pos-holding-label">持仓 0 / 0</span>
+            </div>
+            <div class="pos-grid" id="pos-grid">
+                <div class="empty-state">正在加载...</div>
+            </div>
+        </div>
+
+        <!-- 分区二：历史币种库 -->
+        <div class="config-section" style="margin-top: 24px">
+            <div class="config-section-header">
+                <div>
+                    <h3 class="config-section-title">📚 历史币种库</h3>
+                    <p class="config-section-desc">留存所有曾添加到定时任务的币种（每次保存交易配置时自动建档）；从配置移除后变为「已停用」，可勾选后删除留存记录</p>
+                </div>
+                <button class="m-btn m-btn-primary m-btn-sm" onclick="loadCoinLibrary()">🔄 刷新</button>
+            </div>
+            <div class="lib-toolbar">
+                <button class="m-btn m-btn-warning m-btn-sm" onclick="libAutoSelectInactive()">⚡ 自动选择已停用</button>
+                <button class="m-btn m-btn-danger m-btn-sm" onclick="libDeleteSelected()">🗑️ 删除选中</button>
+                <span class="lib-meta" id="lib-summary"></span>
+            </div>
+            <div class="lib-grid" id="lib-grid">
+                <div class="empty-state">正在加载...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 历史持仓弹窗 -->
+    <div id="ph-modal-mask" class="ph-modal-mask" style="display:none" onclick="if(event.target===this)closePosHistory()">
+        <div class="ph-modal">
+            <div class="ph-modal-head">
+                <strong id="ph-modal-title">📜 历史持仓</strong>
+                <button class="m-btn m-btn-secondary m-btn-sm" onclick="closePosHistory()">✖ 关闭</button>
+            </div>
+            <div class="ph-modal-body">
+                <div class="ph-stats" id="ph-stats"></div>
+                <div class="task-table-wrap" style="margin-top:0">
+                    <table class="ph-table">
+                        <thead>
+                            <tr>
+                                <th>平仓时间</th><th>方向</th><th>张数</th><th>开仓均价</th><th>平仓均价</th>
+                                <th>盈亏</th><th>手续费</th><th>资金费</th><th>平仓类型</th>
+                            </tr>
+                        </thead>
+                        <tbody id="ph-tbody">
+                            <tr><td colspan="9" class="empty-state">加载中...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div style="text-align:center; margin-top:12px">
+                    <button class="m-btn m-btn-secondary m-btn-sm" id="ph-load-more" onclick="loadPosHistoryMore()" style="display:none">⏬ 加载更早记录</button>
+                    <p class="lib-meta" style="margin-top:8px">注：OKX 历史持仓仅保留近约 3 个月记录</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast 提示 -->
+    <div class="task-toast" id="toast"></div>
+
+    <script>
+    // =================================================================
+    // 工具函数
+    // =================================================================
+    function showToast(msg, type) {
+        const t = document.getElementById('toast');
+        t.textContent = msg;
+        t.className = 'task-toast toast-' + (type || 'info') + ' show';
+        setTimeout(() => { t.classList.remove('show'); }, 3500);
+    }
+
+    function switchTab(tab) {
+        document.querySelectorAll('.task-tab-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.task-tab-content').forEach(c => c.classList.remove('active'));
+        document.getElementById('tab-' + tab).classList.add('active');
+        event.target.classList.add('active');
+
+        // 离开交易配置 Tab 时退出全局通用配置模式，避免其他 Tab 的保存误触发批量同步
+        if (_globalApplyMode) { _globalApplyMode = false; refreshGlobalApplyUI(); }
+
+        if (tab === 'trading') { loadRangeStrategyOptions(); loadTradingConfig(); }
+        if (tab === 'email') { loadEmailConfig(); loadTradingConfig(); }
+        if (tab === 'logs') refreshLogs();
+        if (tab === 'compare') initCompareTab();
+        if (tab === 'analysis') initAnalysisTab();
+        if (tab === 'positions') initPositionsTab();
+    }
+
+    // =================================================================
+    // Tab 1: 任务控制
+    // =================================================================
+    function refreshStatus() {
+        fetch('/api/task/status').then(r => r.json()).then(res => {
+            if (res.code !== 200) return;
+            const d = res.data;
+            const dot = document.getElementById('status-dot');
+            const text = document.getElementById('status-text');
+            const count = document.getElementById('job-count-text');
+            dot.className = d.running ? 'status-dot running' : 'status-dot stopped';
+            text.textContent = d.running ? '调度器运行中' : '调度器已停止';
+            count.textContent = '共 ' + d.job_count + ' 个任务';
+            const sw = d.switches || {};
+            const gEl = document.getElementById('global-task-switch');
+            if (gEl) { gEl.checked = sw.enabled !== false; gEl.disabled = !!sw.file_global_kill; }
+            const gNote = document.getElementById('global-task-switch-note');
+            if (gNote) gNote.textContent = sw.file_kill
+                ? ('⚠ config.json 文件级急停生效中'
+                   + (sw.file_global_kill ? '（task_switches.enabled=false，全部任务）'
+                                          : '（' + (sw.file_killed_jobs || []).join('、') + '）')
+                   + '，网页打开不会生效，需改回文件') : '';
+            renderJobs(d.jobs || [], sw, (sw.file_killed_jobs) || []);
+
+            // 实盘交易调度器状态
+            const ts = d.trading_scheduler || {};
+            const tdot = document.getElementById('trading-dot');
+            const ttext = document.getElementById('trading-status-text');
+            const tcard = document.getElementById('trading-card');
+            tdot.className = ts.running ? 'status-dot running'
+                : (ts.finishing ? 'status-dot' : 'status-dot stopped');
+            const acctName = ts.account_name ? ('｜账号: ' + ts.account_name) : '';
+            // finishing：已发停止指令但旧线程还在收尾，不能当成「已停止」，
+            // 否则用户会以为安全了直接重新点启动，撞上两个 trader 并发下单
+            ttext.textContent = ts.running
+                ? ((ts.thread_alive ? '线程运行中' : '线程异常') + acctName)
+                : (ts.finishing ? '收尾中：旧线程仍在跑，请稍后再启动' : '未启动');
+            // 运行中锁定账号选择，并同步当前交易账号
+            const acctSel = document.getElementById('trading-account');
+            if (acctSel) {
+                acctSel.disabled = !!ts.running;
+                if (ts.running && ts.account) acctSel.value = ts.account;
+            }
+            tcard.className = 'trading-control-card ' + (ts.running ? 'trading-running' : 'trading-stopped');
+        }).catch(() => {});
+    }
+
+    function renderJobs(jobs, sw, fileKilled) {
+        sw = sw || {};
+        fileKilled = fileKilled || [];
+        const tbody = document.getElementById('task-tbody');
+        if (!jobs.length) {
+            tbody.innerHTML = '<tr><td colspan="7"><div class="empty-state"><div class="icon">📭</div><p>暂无定时任务</p></div></td></tr>';
+            return;
+        }
+        tbody.innerHTML = jobs.map(job => {
+            const trigger = job.trigger === 'interval' ? '<span class="badge badge-interval">间隔</span>' :
+                            job.trigger === 'cron' ? '<span class="badge badge-cron">定时</span>' : '<span class="badge">一次性</span>';
+            const status = job.active ? '<span class="badge badge-active">运行中</span>' :
+                (job.paused ? '<span class="badge badge-inactive">已暂停</span>' : '<span class="badge badge-inactive">已停止</span>');
+            const kwargs = Object.entries(job.trigger_kwargs || {}).map(([k,v]) => k+'='+v).join(', ');
+            // 开关列：实盘交易不参与（已有启停按钮）；文件级急停置灰不许网页覆盖
+            let swCell;
+            if (!job.switchable) {
+                swCell = '<span style="color:#999;font-size:.8rem">手动启停</span>';
+            } else if (sw.file_global_kill || fileKilled.indexOf(job.id) >= 0) {
+                swCell = '<input type="checkbox" disabled title="config.json task_switches 已把它急停，改回文件里的 true 才能恢复">';
+            } else {
+                swCell = '<input type="checkbox"' + (job.switch_on !== false ? ' checked' : '') +
+                    ' onchange="toggleJobSwitch(\'' + job.id + '\', this.checked, this)" title="关闭后任务停止自动执行，重启也不恢复">';
+            }
+            return '<tr><td><strong>'+job.name+'</strong><br><small style="color:#999">'+job.func_name+'</small></td><td>'+trigger+'</td><td><code style="font-size:0.8rem">'+kwargs+'</code></td><td>'+(job.next_run_time||'-')+'</td><td>'+status+'</td><td>'+swCell+'</td><td><div class="action-btns"><button class="btn btn-sm btn-warning" onclick="removeJob(\''+job.id+'\')">移除</button></div></td></tr>';
+        }).join('');
+    }
+
+    function toggleJobSwitch(id, enabled, el) {
+        if (el) el.disabled = true;   // 请求期间锁住，避免连点把开关状态点反
+        fetch('/api/task/job/' + id + '/switch', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({enabled: enabled})
+        }).then(r=>r.json()).then(res => {
+            showToast(res.message, res.code===200?'success':'error');
+            refreshStatus();
+        }).catch(e => { showToast('开关操作失败: ' + e, 'error'); refreshStatus(); });
+    }
+
+    function toggleGlobalTasks(el) {
+        el.disabled = true;
+        fetch('/api/task/switches/global', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({enabled: el.checked})
+        }).then(r=>r.json()).then(res => {
+            showToast(res.message, res.code===200?'success':'error');
+            refreshStatus();
+        }).catch(e => { showToast('全局开关操作失败: ' + e, 'error'); refreshStatus(); });
+    }
+
+    function startScheduler() {
+        fetch('/api/task/start', {method:'POST'}).then(r=>r.json()).then(res => { showToast(res.message, res.code===200?'success':'error'); refreshStatus(); });
+    }
+    function stopScheduler() {
+        MDialog.confirm('确定要停止调度器吗？', function() {
+            fetch('/api/task/stop', {method:'POST'}).then(r=>r.json()).then(res => { showToast(res.message, res.code===200?'success':'error'); refreshStatus(); });
+        });
+    }
+    function removeJob(id) {
+        MDialog.confirm('确定要移除任务 "'+id+'" 吗？', function() {
+            fetch('/api/task/job/'+id, {method:'DELETE'}).then(r=>r.json()).then(res => { showToast(res.message, res.code===200?'success':'error'); refreshStatus(); });
+        });
+    }
+    function loadTradingAccounts() {
+        fetch('/api/task/trading/accounts').then(r=>r.json()).then(res => {
+            const sel = document.getElementById('trading-account');
+            if (!sel) return;
+            if (res.code !== 200 || !Array.isArray(res.data)) { sel.innerHTML = '<option value="">加载失败</option>'; return; }
+            sel.innerHTML = res.data.map(a => '<option value="'+a.key+'"'+(a.is_default?' selected':'')+'>'+a.name+'</option>').join('');
+            // 账号下拉就绪后按当前选定账号加载其独立配置（各账号仓位/杠杆互不串味）
+            loadTradingConfig();
+        }).catch(() => {});
+    }
+    // 切换账号 → 重新加载该账号的独立交易配置（本地测试账号与实盘主账号各一份）
+    function onTradingAccountChange() {
+        loadTradingConfig();
+    }
+    function startTrading() {
+        const sel = document.getElementById('trading-account');
+        const account = sel ? sel.value : '';
+        const label = (sel && sel.selectedOptions.length) ? sel.selectedOptions[0].textContent : account;
+        MDialog.confirm('确定要使用账号「'+label+'」启动实盘交易调度器吗？将按配置执行真实交易。', function() {
+            fetch('/api/task/trading/start', {
+                method:'POST',
+                headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({account: account})
+            }).then(r=>r.json()).then(res => { showToast(res.message, res.code===200?'success':'error'); refreshStatus(); });
+        });
+    }
+    function stopTrading() {
+        MDialog.confirm('确定要停止实盘交易调度器吗？', function() {
+            fetch('/api/task/trading/stop', {method:'POST'}).then(r=>r.json()).then(res => {
+                // 收尾中（线程未退出）当警告提示，不能当成已经安全停止
+                showToast(res.message, res.code===200 ? (res.message && res.message.indexOf('收尾') >= 0 ? 'warning' : 'success') : 'error');
+                refreshStatus();
+            });
+        });
+    }
+
+    // 重启自动拉起开关（存 kv_store，只在页面加载时读一次，不进轮询热路径）
+    function loadTradingRuntime() {
+        fetch('/api/task/trading/runtime').then(r=>r.json()).then(res => {
+            const cb = document.getElementById('auto-resume-switch');
+            if (cb && res.code === 200 && res.data) cb.checked = !!res.data.auto_resume;
+        }).catch(() => {});
+    }
+    function toggleAutoResume(cb) {
+        fetch('/api/task/trading/runtime/auto-resume', {
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({enabled: cb.checked})
+        }).then(r=>r.json()).then(res => {
+            showToast(res.message, res.code===200?'success':'error');
+            if (res.code !== 200) cb.checked = !cb.checked;   // 失败回滚勾选态
+        }).catch(e => {
+            showToast('保存开关失败：' + e, 'error');
+            cb.checked = !cb.checked;
+        });
+    }
+
+    // =================================================================
+    // Tab 2: 交易配置
+    // =================================================================
+    let _tradingConfig = null;
+    let _currentCoinIdx = 0;   // 当前正在编辑的币种索引（多币种配置）
+    let _globalApplyMode = false;   // 全局通用配置模式：保存时将当前配置批量同步到所有币种
+
+    // 全局同步字段：双周期/杠杆/日志/信号/价格 + 双仓位全部参数；
+    // 各币种的合约 ID（instId）、人工干预方向（manual_direction）与自动交易开关
+    // （trade_enabled）不参与同步，防止全局模板批量覆盖各币种开关
+    const GLOBAL_SYNC_KEYS = ['short_period', 'long_period', 'leverage', 'verbose_lifecycle',
+                              'signal_algo', 'entry_price_type', 'exit_price_type'];
+
+    // 切换“全局通用配置”模式
+    function toggleGlobalApplyMode() {
+        if (!_globalApplyMode) {
+            const list = (_tradingConfig && _tradingConfig.currencies) || [];
+            if (!list.length) { showToast('请先添加币种，再使用全局通用配置', 'error'); return; }
+            _globalApplyMode = true;
+            showToast('已进入全局通用配置模式：当前表单作为通用模板，修改后保存将同步到所有币种', 'info');
+        } else {
+            _globalApplyMode = false;
+            showToast('已退出全局通用配置模式', 'info');
+        }
+        refreshGlobalApplyUI();
+    }
+
+    // 刷新全局模式 UI：按钮文案、警示横幅、币种列表锁定（锁定后不可切换/拖拽）
+    function refreshGlobalApplyUI() {
+        const btn = document.getElementById('btn-global-apply');
+        const bannerRow = document.getElementById('global-apply-banner-row');
+        const dd = document.getElementById('cfg-currency-dd');
+        const list = (_tradingConfig && _tradingConfig.currencies) || [];
+        if (btn) {
+            btn.textContent = _globalApplyMode ? '🌐 退出全局模式' : '🌐 应用至所有币种';
+            btn.classList.toggle('global-apply-active', _globalApplyMode);
+        }
+        if (bannerRow) {
+            bannerRow.style.display = _globalApplyMode ? '' : 'none';
+            const cnt = document.getElementById('global-apply-count');
+            if (cnt) cnt.textContent = String(list.length);
+        }
+        if (dd) {
+            dd.classList.toggle('currency-dd-disabled', _globalApplyMode);
+            if (_globalApplyMode) closeCurrencyDropdown();
+        }
+    }
+
+    // 以当前币种表单值为模板，批量覆盖写入所有币种配置
+    // 保留各币种自身的 instId / manual_direction / trade_enabled 及界面未暴露的隐藏字段
+    function applyGlobalConfigToAll() {
+        const list = (_tradingConfig && _tradingConfig.currencies) || [];
+        const tpl = list[_currentCoinIdx] || {};
+        const tposTpl = JSON.parse(JSON.stringify(tpl.trend_position || {}));
+        const rposTpl = JSON.parse(JSON.stringify(tpl.range_position || {}));
+        list.forEach(c => {
+            if (c === tpl) return;   // 模板币种本身已由表单采集完成
+            GLOBAL_SYNC_KEYS.forEach(k => { c[k] = tpl[k]; });
+            // 就地合并双仓位参数，保留配置文件中界面未暴露的字段
+            const tpos = (c.trend_position && typeof c.trend_position === 'object') ? c.trend_position : (c.trend_position = {});
+            Object.assign(tpos, tposTpl);
+            const rpos = (c.range_position && typeof c.range_position === 'object') ? c.range_position : (c.range_position = {});
+            Object.assign(rpos, rposTpl);
+        });
+    }
+
+    // 币种列表自定义下拉：触发按钮显示当前币种，面板项点击切换、拖拽排序；
+    // 观察模式（trade_enabled===false）币种琥珀色着色 +【观察】标记，一眼可辨
+    function renderCurrencySelector() {
+        const dd = document.getElementById('cfg-currency-dd');
+        if (!dd) return;
+        const list = (_tradingConfig && _tradingConfig.currencies) || [];
+        if (_currentCoinIdx >= list.length) _currentCoinIdx = list.length - 1;
+        if (_currentCoinIdx < 0) _currentCoinIdx = 0;
+
+        // 触发按钮：当前币种名 + 观察模式徽标（收起状态也能看出当前币种是否观察中）
+        const cur = list[_currentCoinIdx] || null;
+        const label = document.getElementById('cfg-currency-dd-label');
+        const badge = document.getElementById('cfg-coin-watch-badge');
+        if (label) label.textContent = cur ? (cur.instId || `(币种${_currentCoinIdx + 1})`) : '(未配置币种)';
+        if (badge) badge.style.display = (cur && cur.trade_enabled === false) ? '' : 'none';
+
+        // 面板列表：序号 + 合约名 + 观察标记；点击切换、拖拽排序（全局模式下禁用）
+        const panel = document.getElementById('cfg-currency-dd-panel');
+        if (!panel) return;
+        panel.innerHTML = '';
+        if (!list.length) {
+            const tip = document.createElement('div');
+            tip.className = 'currency-dd-empty';
+            tip.textContent = '(未配置币种)';
+            panel.appendChild(tip);
+            return;
+        }
+        list.forEach((c, i) => {
+            const item = document.createElement('div');
+            item.className = 'currency-dd-item'
+                + (i === _currentCoinIdx ? ' active' : '')
+                + (c.trade_enabled === false ? ' watch' : '');
+            item.innerHTML = '<span class="coin-drag" title="拖动调整顺序">⠿</span>'
+                + '<span class="coin-order">' + (i + 1) + '</span>'
+                + '<span class="coin-name">' + escapeHtml(c.instId || `(币种${i + 1})`) + '</span>'
+                + (c.trade_enabled === false ? '<span class="coin-watch-tag">【观察】</span>' : '');
+            item.addEventListener('click', () => switchCurrency(i));
+            if (!_globalApplyMode) {
+                item.draggable = true;
+                item.addEventListener('dragstart', e => _onCoinDragStart(e, i, item));
+                item.addEventListener('dragover', e => _onCoinDragOver(e, item));
+                item.addEventListener('dragleave', () => item.classList.remove('drag-over-top', 'drag-over-bottom'));
+                item.addEventListener('drop', e => _onCoinDrop(e, i, item));
+                item.addEventListener('dragend', _onCoinDragEnd);
+            }
+            panel.appendChild(item);
+        });
+    }
+
+    // ---- 下拉展开/收起 ----
+    function toggleCurrencyDropdown(e) {
+        if (e) e.stopPropagation();
+        const dd = document.getElementById('cfg-currency-dd');
+        const panel = document.getElementById('cfg-currency-dd-panel');
+        if (!dd || !panel || dd.classList.contains('currency-dd-disabled')) return;
+        const willOpen = panel.style.display === 'none';
+        panel.style.display = willOpen ? '' : 'none';
+        dd.classList.toggle('open', willOpen);
+    }
+    function closeCurrencyDropdown() {
+        const panel = document.getElementById('cfg-currency-dd-panel');
+        const dd = document.getElementById('cfg-currency-dd');
+        if (panel) panel.style.display = 'none';
+        if (dd) dd.classList.remove('open');
+    }
+    // 点击下拉面板外部自动收起（面板/触发按钮内部点击由 contains 判断排除）
+    document.addEventListener('click', function(e) {
+        const dd = document.getElementById('cfg-currency-dd');
+        if (dd && !dd.contains(e.target)) closeCurrencyDropdown();
+    });
+
+    // ---- 币种列表拖拽排序（原生 HTML5 Drag & Drop，顺序即调度执行顺序）----
+    let _coinDragIdx = null;   // 正在拖动的币种下标
+
+    function _onCoinDragStart(e, idx, item) {
+        _coinDragIdx = idx;
+        item.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+        try { e.dataTransfer.setData('text/plain', String(idx)); } catch (_) {}
+    }
+
+    function _onCoinDragOver(e, item) {
+        if (_coinDragIdx === null) return;
+        e.preventDefault();   // 必须阻止默认才允许 drop
+        e.dataTransfer.dropEffect = 'move';
+        // 按光标在目标项的上/下半区显示插入位置指示线
+        const rect = item.getBoundingClientRect();
+        const before = (e.clientY - rect.top) < rect.height / 2;
+        item.classList.toggle('drag-over-top', before);
+        item.classList.toggle('drag-over-bottom', !before);
+    }
+
+    function _onCoinDrop(e, idx, item) {
+        e.preventDefault();
+        if (_coinDragIdx === null) return;
+        const rect = item.getBoundingClientRect();
+        const before = (e.clientY - rect.top) < rect.height / 2;
+        _reorderCurrency(_coinDragIdx, before ? idx : idx + 1);
+    }
+
+    function _onCoinDragEnd() {
+        _coinDragIdx = null;
+        document.querySelectorAll('.currency-dd-item').forEach(el => {
+            el.classList.remove('dragging', 'drag-over-top', 'drag-over-bottom');
+        });
+    }
+
+    // 将 from 处币种移动到 to 位置（0~list.length）；仅改前端内存中的数组顺序，
+    // 随「保存」整体提交持久化；按对象引用找回当前编辑币种的新下标，保证表单不串数据
+    function _reorderCurrency(from, to) {
+        const list = (_tradingConfig && _tradingConfig.currencies) || [];
+        if (!list.length || from < 0 || from >= list.length) return;
+        to = Math.max(0, Math.min(to, list.length));
+        if (to === from || to === from + 1) return;   // 原位放下，无需移动
+        const currentObj = list[_currentCoinIdx];
+        const moved = list.splice(from, 1)[0];
+        list.splice(to > from ? to - 1 : to, 0, moved);
+        _currentCoinIdx = Math.max(0, list.indexOf(currentObj));
+        renderCurrencySelector();
+    }
+
+    function fillCurrencyForm(cur) {
+        cur = cur || {};
+        document.getElementById('cfg-instId').value = cur.instId || '';
+        document.getElementById('cfg-short-period').value = cur.short_period || '1m';
+        document.getElementById('cfg-long-period').value = cur.long_period || '15m';
+        document.getElementById('cfg-leverage').value = cur.leverage || 10;
+        document.getElementById('cfg-verbose-lifecycle').checked = cur.verbose_lifecycle !== false;
+
+        // 信号算法与价格配置
+        document.getElementById('cfg-signal-algo').value = cur.signal_algo || 'diff';
+        document.getElementById('cfg-entry-price').value = cur.entry_price_type || 'close';
+        document.getElementById('cfg-exit-price').value = cur.exit_price_type || 'open';
+
+        // 双仓位配置：止盈止损归属趋势跟踪仓位，区间波动仓自带对侧边界止盈
+        const tpos = cur.trend_position || {};
+        const rpos = cur.range_position || {};
+        const tp = tpos.take_profit || {};
+        const sl = tpos.stop_loss || {};
+        fillTpControls(tp);
+        document.getElementById('cfg-sl-enabled').checked = !!sl.enabled;
+        document.getElementById('cfg-sl-type').value = sl.type || 'fixed';
+        document.getElementById('cfg-sl-fixed-pct').value = sl.fixed_pct != null ? sl.fixed_pct : 3.0;
+        document.getElementById('cfg-sl-atr-multiple').value = sl.atr_multiple != null ? sl.atr_multiple : 1.5;
+
+        // 自动交易开关（缺失视为开启；关闭=观察模式只发邮件不交易）
+        document.getElementById('cfg-trade-enabled').checked = cur.trade_enabled !== false;
+
+        // 人工干预（每个币种独立设置）
+        document.querySelectorAll('input[name="cfg-manual-dir"]').forEach(r => {
+            r.checked = (r.value === (cur.manual_direction || 'auto'));
+        });
+
+        // 仓位A 趋势跟踪
+        document.getElementById('cfg-trend-enabled').checked = !!tpos.enabled;
+        document.getElementById('cfg-trend-mode').value = tpos.period_mode || 'dual';
+        document.getElementById('cfg-trend-size-mode').value = tpos.size_mode || 'usd';
+        document.getElementById('cfg-trend-contracts').value = tpos.contracts != null ? tpos.contracts : 0.2;
+        document.getElementById('cfg-trend-usd').value = tpos.notional_usd != null ? tpos.notional_usd : 0.2;
+        onSizeModeChange('trend');
+        document.getElementById('cfg-trend-algo-backup').checked = tpos.exchange_algo_backup !== false;
+
+        // 仓位B 区间波动（改单幅度配置存比例，界面用百分数）
+        document.getElementById('cfg-range-enabled').checked = !!rpos.enabled;
+        document.getElementById('cfg-range-size-mode').value = rpos.size_mode || 'usd';
+        document.getElementById('cfg-range-contracts').value = rpos.contracts != null ? rpos.contracts : 0.2;
+        document.getElementById('cfg-range-usd').value = rpos.notional_usd != null ? rpos.notional_usd : 0.2;
+        onSizeModeChange('range');
+        document.getElementById('cfg-range-boll-period').value = rpos.boll_period != null ? rpos.boll_period : 20;
+        document.getElementById('cfg-range-boll-dev').value = rpos.boll_dev != null ? rpos.boll_dev : 2.0;
+        document.getElementById('cfg-range-amend-pct').value =
+            ((rpos.boll_amend_min_pct != null ? rpos.boll_amend_min_pct : 0.001) * 100).toFixed(2);
+
+        // 仓位B 策略引擎（keltner_boll 默认 / boll 存量）
+        document.getElementById('cfg-range-strategy').value = rpos.strategy || 'keltner_boll';
+        document.getElementById('cfg-range-direction-source').value = rpos.direction_source || 'pro3';
+        setRangeTrendIndicator(rpos.trend_indicator || 'keltner');
+        document.getElementById('cfg-range-entry-atr-mult').value = rpos.entry_atr_mult != null ? rpos.entry_atr_mult : 0.0;
+        document.getElementById('cfg-range-exit-atr-mult').value = rpos.exit_atr_mult != null ? rpos.exit_atr_mult : 0.0;
+        document.getElementById('cfg-range-atr-period').value = rpos.atr_period != null ? rpos.atr_period : 14;
+        document.getElementById('cfg-range-direction-filter').checked = rpos.direction_filter !== false;
+        onRangeStrategyChange();
+
+        const rr = rpos.risk || {};
+        document.getElementById('cfg-range-risk-enabled').checked = rr.enabled === true;
+        document.getElementById('cfg-range-hardstop-mult').value = rr.hard_stop_atr_mult != null ? rr.hard_stop_atr_mult : 0;
+        document.getElementById('cfg-range-maxbars').value = rr.max_hold_bars != null ? rr.max_hold_bars : 0;
+        document.getElementById('cfg-range-breakdown-rounds').value = rr.breakdown_rounds != null ? rr.breakdown_rounds : 0;
+        document.getElementById('cfg-range-cooldown-bars').value = rr.cooldown_bars != null ? rr.cooldown_bars : 0;
+    }
+
+    function switchCurrency(idx) {
+        if (_globalApplyMode) { showToast('全局通用配置模式下不可切换币种，请先退出', 'warning'); return; }
+        const list = (_tradingConfig && _tradingConfig.currencies) || [];
+        if (!list.length) return;
+        _currentCoinIdx = Math.max(0, Math.min(parseInt(idx) || 0, list.length - 1));
+        fillCurrencyForm(list[_currentCoinIdx]);
+        closeCurrencyDropdown();
+        renderCurrencySelector();   // 刷新选中态/触发按钮文案/观察徽标
+    }
+
+    // ---- 下单量双模式（张数 / USDT金额）----
+    // 金额模式输入为占用保证金预算，张数由后端按 张数=floor(金额×杠杆÷(ctVal×现价)) 每轮实时折算，界面只做预览
+    const _SIZE_BASE_HINT = {
+        trend: '本仓位独立下单量，与区间波动仓位互不影响',
+        range: '本仓位独立下单量，每轮固定此数量'
+    };
+    const _sizeHintTimer = {};
+
+    function onSizeModeChange(prefix) {
+        const mode = document.getElementById('cfg-' + prefix + '-size-mode').value;
+        document.getElementById('cfg-' + prefix + '-contracts').style.display = (mode === 'usd') ? 'none' : '';
+        document.getElementById('cfg-' + prefix + '-usd').style.display = (mode === 'usd') ? '' : 'none';
+        refreshSizeHint(prefix);
+    }
+
+    function onSizeInput(prefix) {
+        clearTimeout(_sizeHintTimer[prefix]);
+        _sizeHintTimer[prefix] = setTimeout(() => refreshSizeHint(prefix), 400);
+    }
+
+    // ---- 仓位B 策略引擎（keltner_boll）：趋势方法下拉动态加载 + 显隐联动 ----
+    let _rangeTrendIndicators = ['keltner'];  // 兜底默认，随后由后端注册表覆盖
+
+    function loadRangeStrategyOptions() {
+        fetch('/api/task/range-strategy-options')
+            .then(r => r.json())
+            .then(res => {
+                if (res && res.code === 200 && res.data
+                        && Array.isArray(res.data.trend_indicators)
+                        && res.data.trend_indicators.length) {
+                    _rangeTrendIndicators = res.data.trend_indicators;
+                    const cur = document.getElementById('cfg-range-trend-indicator').value;
+                    setRangeTrendIndicator(cur || res.data.default_trend_indicator || 'keltner');
+                }
+            })
+            .catch(() => { /* 保持兜底默认，不阻断配置页 */ });
+    }
+
+    function setRangeTrendIndicator(val) {
+        const sel = document.getElementById('cfg-range-trend-indicator');
+        if (!sel) return;
+        if (_rangeTrendIndicators.indexOf(val) < 0 && val) {
+            _rangeTrendIndicators = _rangeTrendIndicators.concat([val]);
+        }
+        sel.innerHTML = _rangeTrendIndicators
+            .map(k => '<option value="' + k + '">' + k + '</option>').join('');
+        sel.value = val || 'keltner';
+    }
+
+    function onRangeStrategyChange() {
+        const isKb = document.getElementById('cfg-range-strategy').value === 'keltner_boll';
+        document.querySelectorAll('.kb-only').forEach(el => {
+            el.style.display = isKb ? '' : 'none';
+        });
+        onRangeDirectionSourceChange();
+    }
+
+    // 方向来源联动：keltner 独立模式下方向即 keltner，“方向确认过滤”（pro3 模式的
+    // 开仓闸门）失去意义 → 隐藏；pro3 模式下显示。仅在 keltner_boll 引擎时本区可见。
+    function onRangeDirectionSourceChange() {
+        const isKb = document.getElementById('cfg-range-strategy').value === 'keltner_boll';
+        const srcEl = document.getElementById('cfg-range-direction-source');
+        const isKeltner = srcEl && srcEl.value === 'keltner';
+        document.querySelectorAll('.kb-pro3-only').forEach(el => {
+            el.style.display = (isKb && !isKeltner) ? '' : 'none';
+        });
+        const tiHint = document.getElementById('cfg-range-trend-indicator-hint');
+        if (tiHint) {
+            tiHint.textContent = isKeltner
+                ? '独立模式：该长周期趋势方法直接决定区间仓方向（与详情页回测同源）'
+                : '用于方向确认过滤的长周期趋势判断方法（keltner / rsi_mid / vote3 …），选项由后端注册表动态加载';
+        }
+    }
+
+    // ---- 杠杆上限动态校验：根据合约最大杠杆自动提示 ----
+    let _maxLeverCache = {};  // instId -> max_lever
+    const _leverageTimer = {};
+
+    function onLeverageInput() {
+        // 输入时即时校验，提示超限
+        clearTimeout(_leverageTimer._t);
+        _leverageTimer._t = setTimeout(() => _checkLeverage(), 300);
+    }
+
+    function _checkLeverage() {
+        const hint = document.getElementById('cfg-leverage-hint');
+        if (!hint) return;
+        const instId = (document.getElementById('cfg-instId').value || '').trim();
+        const lev = parseInt(document.getElementById('cfg-leverage').value) || 0;
+        const baseText = '下单前自动设置全仓/逐仓杠杆';
+        if (!instId || !lev) { hint.textContent = baseText; hint.style.color = ''; return; }
+        const maxLev = _maxLeverCache[instId] || 0;
+        if (maxLev > 0 && lev > maxLev) {
+            hint.textContent = '⚠ 该合约最大支持 ' + maxLev + 'x 杠杆，超出将被交易所拒单';
+            hint.style.color = '#e74c3c';
+        } else if (maxLev > 0) {
+            hint.textContent = baseText + '（该合约最大 ' + maxLev + 'x）';
+            hint.style.color = '';
+        } else {
+            hint.textContent = baseText;
+            hint.style.color = '';
+        }
+    }
+
+    function refreshSizeHint(prefix) {
+        const hint = document.getElementById('cfg-' + prefix + '-size-hint');
+        if (!hint) return;
+        const baseText = _SIZE_BASE_HINT[prefix] || '';
+        const instId = (document.getElementById('cfg-instId').value || '').trim();
+        if (!instId) { hint.textContent = baseText; return; }
+        const mode = document.getElementById('cfg-' + prefix + '-size-mode').value;
+        const lev = parseInt(document.getElementById('cfg-leverage').value) || 1;
+        let qs = 'instId=' + encodeURIComponent(instId) + '&leverage=' + lev;
+        if (mode === 'usd') {
+            qs += '&usd=' + (parseFloat(document.getElementById('cfg-' + prefix + '-usd').value) || 0);
+        } else {
+            qs += '&contracts=' + (parseFloat(document.getElementById('cfg-' + prefix + '-contracts').value) || 0);
+        }
+        fetch('/api/task/contract-spec?' + qs).then(r => r.json()).then(res => {
+            if (res.code !== 200 || !res.data || !res.data.spec) {
+                hint.textContent = baseText + '（合约规格获取失败，请检查合约ID）';
+                return;
+            }
+            const d = res.data;
+            // 缓存最大杠杆，供杠杆输入框校验使用
+            if (d.max_lever > 0) {
+                _maxLeverCache[instId] = d.max_lever;
+                document.getElementById('cfg-leverage').setAttribute('max', d.max_lever);
+                _checkLeverage();
+            }
+            let txt = baseText + ' ｜ 1张≈' + Number(d.contract_usd_value).toFixed(4) + ' USDT';
+            if (mode === 'usd') {
+                // 口径提示：输入为占用保证金预算，张数 = floor(金额 × 杠杆 ÷ 每张面值)
+                txt += ' ｜ 按' + lev + 'x杠杆折算 ' + d.contracts + ' 张（持仓价值≈' + Number(d.notional_usd).toFixed(2) + ' USDT，占用保证金≈' + Number(d.margin_usd).toFixed(2) + ' USDT）';
+                if (!(d.contracts > 0)) txt += ' ⚠ 低于最小下单量或价格缺失，将不挂单';
+            } else {
+                txt += ' ｜ 持仓价值≈' + Number(d.notional_usd).toFixed(2) + ' USDT（' + lev + 'x杠杆下占用保证金≈' + (Number(d.notional_usd) / lev).toFixed(2) + ' USDT）';
+            }
+            hint.textContent = txt;
+        }).catch(() => { hint.textContent = baseText; });
+    }
+
+    function addCurrency() {
+        if (_globalApplyMode) { showToast('请先退出全局通用配置模式，再添加或删除币种', 'warning'); return; }
+        if (!_tradingConfig) _tradingConfig = {};
+        if (!_tradingConfig.currencies) _tradingConfig.currencies = [];
+        _tradingConfig.currencies.push({});
+        _currentCoinIdx = _tradingConfig.currencies.length - 1;
+        renderCurrencySelector();
+        fillCurrencyForm({});
+    }
+
+    function removeCurrency() {
+        if (_globalApplyMode) { showToast('请先退出全局通用配置模式，再添加或删除币种', 'warning'); return; }
+        const list = (_tradingConfig && _tradingConfig.currencies) || [];
+        if (list.length <= 1) { showToast('至少需要保留一个币种配置', 'error'); return; }
+        const inst = list[_currentCoinIdx] ? (list[_currentCoinIdx].instId || '未命名币种') : '当前币种';
+        if (!confirm(`确定删除币种「${inst}」？\n\n交易所已有持仓不会被自动平仓，仅停止调度器对该币种的管理。`)) return;
+        list.splice(_currentCoinIdx, 1);
+        if (_currentCoinIdx >= list.length) _currentCoinIdx = list.length - 1;
+        renderCurrencySelector();
+        fillCurrencyForm(list[_currentCoinIdx] || {});
+    }
+
+    function loadTradingConfig(account) {
+        const _sel = document.getElementById('trading-account');
+        const _acct = (account !== undefined && account !== null) ? account : (_sel ? _sel.value : '');
+        const _url = '/api/task/config/trading' + (_acct ? ('?account=' + encodeURIComponent(_acct)) : '');
+        fetch(_url).then(r=>r.json()).then(res => {
+            if (res.code !== 200) { showToast('加载交易配置失败: ' + res.message, 'error'); return; }
+            _tradingConfig = res.data;
+            _currentCoinIdx = 0;
+            const gs = res.data.global_settings || {};
+            const rc = gs.risk_control || {};
+
+            renderCurrencySelector();
+            fillCurrencyForm((res.data.currencies && res.data.currencies[0]) || {});
+
+            document.getElementById('cfg-max-per-currency').value = rc.max_position_per_currency || 10000;
+            document.getElementById('cfg-max-per-currency-usd').value = rc.max_position_per_currency_usd || 0;
+            document.getElementById('cfg-max-total').value = rc.max_total_position || 10000;
+            document.getElementById('cfg-emergency-stop').checked = !!rc.emergency_stop;
+
+            // 睡眠时段强平 / 反向持仓风控
+            const nfc = gs.night_force_close || {};
+            document.getElementById('cfg-nfc-enabled').checked = nfc.enabled !== false;
+            document.getElementById('cfg-nfc-start').value = nfc.start_hour != null ? nfc.start_hour : 0;
+            document.getElementById('cfg-nfc-end').value = nfc.end_hour != null ? nfc.end_hour : 6;
+            const rg = gs.reverse_position_guard || {};
+            document.getElementById('cfg-rg-enabled').checked = rg.enabled !== false;
+            document.getElementById('cfg-rg-grace').value = rg.grace_minutes != null ? rg.grace_minutes : 10;
+
+            document.getElementById('cfg-enabled').checked = gs.enabled !== false;
+            document.getElementById('cfg-email-notifications').checked = gs.email_notifications !== false;
+            document.getElementById('cfg-max-notifications').value = gs.max_notifications_per_hour || 30;
+
+            // 执行间隔
+            document.getElementById('cfg-exec-interval').value = gs.execution_interval_seconds || 60;
+
+            // 邮件冷却时间
+            document.getElementById('cfg-cooldown').value = gs.email_cooldown_minutes || 30;
+
+            // 重新加载配置后退出全局通用配置模式
+            _globalApplyMode = false;
+            refreshGlobalApplyUI();
+        }).catch(e => showToast('加载失败: ' + e, 'error'));
+    }
+
+    // 币种级表单采集：读取当前表单值写入 cur（双周期/杠杆/信号/价格/止盈止损/双仓位）
+    // 成功返回 cur；止盈配置解析失败返回 null（阻止保存）。供保存与一键应用复用
+    function collectCurrencyForm(cur) {
+        cur.instId = document.getElementById('cfg-instId').value.trim();
+        cur.short_period = document.getElementById('cfg-short-period').value;
+        cur.long_period = document.getElementById('cfg-long-period').value;
+        cur.leverage = parseInt(document.getElementById('cfg-leverage').value) || 10;
+        cur.verbose_lifecycle = document.getElementById('cfg-verbose-lifecycle').checked;
+        cur.trade_enabled = document.getElementById('cfg-trade-enabled').checked;
+        cur.manual_direction = document.querySelector('input[name="cfg-manual-dir"]:checked').value;
+
+        // 信号算法与价格配置
+        cur.signal_algo = document.getElementById('cfg-signal-algo').value;
+        cur.entry_price_type = document.getElementById('cfg-entry-price').value;
+        cur.exit_price_type = document.getElementById('cfg-exit-price').value;
+
+        // 仓位A 趋势跟踪（止盈止损只对本仓位生效）
+        //   就地合并而非整体赋值，保留配置文件中界面未暴露的字段
+        const tpCfg = collectTpConfig();
+        if (tpCfg === null) return null;  // 解析失败，阻止保存
+        const tpos = (cur.trend_position && typeof cur.trend_position === 'object') ? cur.trend_position : {};
+        cur.trend_position = tpos;
+        tpos.enabled = document.getElementById('cfg-trend-enabled').checked;
+        tpos.period_mode = document.getElementById('cfg-trend-mode').value;
+        tpos.size_mode = document.getElementById('cfg-trend-size-mode').value;
+        tpos.contracts = parseFloat(document.getElementById('cfg-trend-contracts').value) || 0;
+        tpos.notional_usd = parseFloat(document.getElementById('cfg-trend-usd').value) || 0;
+        tpos.exchange_algo_backup = document.getElementById('cfg-trend-algo-backup').checked;
+        tpos.take_profit = tpCfg;
+        tpos.stop_loss = {
+            enabled: document.getElementById('cfg-sl-enabled').checked,
+            type: document.getElementById('cfg-sl-type').value,
+            fixed_pct: parseFloat(document.getElementById('cfg-sl-fixed-pct').value) || 3.0,
+            atr_multiple: parseFloat(document.getElementById('cfg-sl-atr-multiple').value) || 1.5
+        };
+
+        // 仓位B 区间波动（界面百分数 → 配置比例）
+        const rpos = (cur.range_position && typeof cur.range_position === 'object') ? cur.range_position : {};
+        cur.range_position = rpos;
+        rpos.enabled = document.getElementById('cfg-range-enabled').checked;
+        rpos.size_mode = document.getElementById('cfg-range-size-mode').value;
+        rpos.contracts = parseFloat(document.getElementById('cfg-range-contracts').value) || 0;
+        rpos.notional_usd = parseFloat(document.getElementById('cfg-range-usd').value) || 0;
+        rpos.boll_period = parseInt(document.getElementById('cfg-range-boll-period').value) || 20;
+        rpos.boll_dev = parseFloat(document.getElementById('cfg-range-boll-dev').value) || 2.0;
+        rpos.boll_amend_min_pct =
+            (parseFloat(document.getElementById('cfg-range-amend-pct').value) || 0) / 100;
+        // 仓位B 策略引擎（keltner_boll 默认 / boll 存量）
+        rpos.strategy = document.getElementById('cfg-range-strategy').value || 'keltner_boll';
+        rpos.direction_source = document.getElementById('cfg-range-direction-source').value || 'pro3';
+        rpos.trend_indicator = document.getElementById('cfg-range-trend-indicator').value || 'keltner';
+        const _eam = parseFloat(document.getElementById('cfg-range-entry-atr-mult').value);
+        rpos.entry_atr_mult = isNaN(_eam) ? 0.0 : _eam;
+        const _xam = parseFloat(document.getElementById('cfg-range-exit-atr-mult').value);
+        rpos.exit_atr_mult = isNaN(_xam) ? 0.0 : _xam;
+        rpos.atr_period = parseInt(document.getElementById('cfg-range-atr-period').value) || 14;
+        rpos.direction_filter = document.getElementById('cfg-range-direction-filter').checked;
+        const _hsm = parseFloat(document.getElementById('cfg-range-hardstop-mult').value);
+        rpos.risk = {
+            enabled: document.getElementById('cfg-range-risk-enabled').checked,
+            hard_stop_atr_mult: isNaN(_hsm) || _hsm < 0 ? 0 : _hsm,
+            max_hold_bars: parseInt(document.getElementById('cfg-range-maxbars').value) || 0,
+            breakdown_rounds: parseInt(document.getElementById('cfg-range-breakdown-rounds').value) || 0,
+            cooldown_bars: parseInt(document.getElementById('cfg-range-cooldown-bars').value) || 0
+        };
+
+        // 清理旧三开三平体系残留字段，避免回写旧配置
+        delete cur.fixed_position;
+        delete cur.batch_trading;
+        delete cur.take_profit;
+        delete cur.stop_loss;
+
+        return cur;
+    }
+
+    // 全局设置采集：总开关/通知/执行间隔/夜间强平/反向持仓守卫/风控上限
+    function collectGlobalSettings(cooldownVal) {
+        const gs = _tradingConfig.global_settings;
+        gs.enabled = document.getElementById('cfg-enabled').checked;
+        gs.email_notifications = document.getElementById('cfg-email-notifications').checked;
+        gs.max_notifications_per_hour = parseInt(document.getElementById('cfg-max-notifications').value) || 30;
+        gs.execution_interval_seconds = parseInt(document.getElementById('cfg-exec-interval').value) || 60;
+        gs.email_cooldown_minutes = cooldownVal;
+        gs.night_force_close = {
+            enabled: document.getElementById('cfg-nfc-enabled').checked,
+            start_hour: parseInt(document.getElementById('cfg-nfc-start').value) || 0,
+            end_hour: parseInt(document.getElementById('cfg-nfc-end').value) || 0
+        };
+        gs.reverse_position_guard = {
+            enabled: document.getElementById('cfg-rg-enabled').checked,
+            grace_minutes: parseInt(document.getElementById('cfg-rg-grace').value) || 10
+        };
+
+        const rc = gs.risk_control;
+        rc.max_position_per_currency = parseFloat(document.getElementById('cfg-max-per-currency').value) || 10000;
+        rc.max_position_per_currency_usd = parseFloat(document.getElementById('cfg-max-per-currency-usd').value) || 0;
+        rc.max_total_position = parseFloat(document.getElementById('cfg-max-total').value) || 10000;
+        rc.emergency_stop = document.getElementById('cfg-emergency-stop').checked;
+    }
+
+    function saveTradingConfig() {
+        // 邮件冷却时间前置校验：非法值直接中止保存，避免回写脏配置
+        const cooldownVal = parseInt(document.getElementById('cfg-cooldown').value);
+        if (isNaN(cooldownVal) || cooldownVal < 1 || cooldownVal > 1440) {
+            showToast('邮件冷却时间需为 1~1440 之间的整数（分钟）', 'error');
+            return;
+        }
+        if (!_tradingConfig) _tradingConfig = {};
+        if (!_tradingConfig.currencies || !_tradingConfig.currencies.length) _tradingConfig.currencies = [{}];
+        if (_currentCoinIdx >= _tradingConfig.currencies.length) _currentCoinIdx = _tradingConfig.currencies.length - 1;
+        if (!_tradingConfig.global_settings) _tradingConfig.global_settings = {};
+        if (!_tradingConfig.global_settings.risk_control) _tradingConfig.global_settings.risk_control = {};
+
+        const cur = _tradingConfig.currencies[_currentCoinIdx] || {};
+        _tradingConfig.currencies[_currentCoinIdx] = cur;
+        if (collectCurrencyForm(cur) === null) return;   // 止盈解析失败，中止保存
+        collectGlobalSettings(cooldownVal);
+
+        // 全局通用配置模式：二次确认后批量同步到所有币种再提交
+        if (_globalApplyMode) {
+            const list = _tradingConfig.currencies;
+            const names = list.map(c => c.instId || '未命名币种').join('、');
+            MDialog.danger({
+                title: '全局同步确认',
+                message: '<p>即将把当前配置<b>批量覆盖</b>到全部 <b>' + list.length + '</b> 个币种：</p>' +
+                         '<p style="color:#888;font-size:12px;word-break:break-all">' + escapeHtml(names) + '</p>' +
+                         '<p style="font-size:13px">同步范围：双周期组合、杠杆倍数、挂单日志、信号算法、开/平仓价格、止盈止损、仓位A（趋势跟踪）、仓位B（区间波动）参数。<br>' +
+                         '<b>保留</b>：各币种的合约 ID、人工干预方向与自动交易开关。<br>' +
+                         '⚠️ 各币种已有的个性化设置将被覆盖且无法恢复，确定继续吗？</p>',
+                okText: '确认同步并保存',
+                onOk: function() {
+                    applyGlobalConfigToAll();
+                    postTradingConfig();
+                }
+            });
+            return;
+        }
+        postTradingConfig();
+    }
+
+    // 提交完整交易配置（单币种保存 / 全局同步保存 / 一键应用共用）
+    // successMsg: 可选自定义成功提示（一键应用等场景使用）
+    function postTradingConfig(successMsg) {
+        const _sel = document.getElementById('trading-account');
+        const _acct = _sel ? _sel.value : '';
+        const _url = '/api/task/config/trading' + (_acct ? ('?account=' + encodeURIComponent(_acct)) : '');
+        fetch(_url, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(_tradingConfig)
+        }).then(r=>r.json()).then(res => {
+            if (res.code === 200) {
+                showToast(_globalApplyMode
+                    ? ('已保存并同步到全部 ' + ((_tradingConfig.currencies || []).length) + ' 个币种')
+                    : (successMsg || res.message), 'success');
+                renderCurrencySelector();
+                refreshGlobalApplyUI();
+            }
+            else { showToast('保存失败: ' + res.message + (res.data && res.data.errors ? '\n' + res.data.errors.join('\n') : ''), 'error'); }
+        }).catch(e => showToast('保存异常: ' + e, 'error'));
+    }
+
+    // 一键清空所有币种：红色危险二次确认，保留一个空配置行；仅改前端内存，需点保存生效
+    function clearAllCurrencies() {
+        if (_globalApplyMode) { showToast('请先退出全局通用配置模式，再清空币种', 'warning'); return; }
+        const list = (_tradingConfig && _tradingConfig.currencies) || [];
+        const hasConfig = list.some(c => c && c.instId);
+        if (!hasConfig) { showToast('当前没有已配置的币种', 'info'); return; }
+        MDialog.danger({
+            title: '🗑 清空全部币种',
+            message: '<p>确定要清空所有已配置的币种吗？这将清除所有交易调度器中的币种设置。</p>' +
+                     '<p style="font-size:13px;color:#888">当前共 <b>' + list.filter(c => c && c.instId).length + '</b> 个已配置币种；交易所已有持仓不会被自动平仓。清空后需点击「💾 保存」才会生效。</p>',
+            okText: '确认清空',
+            onOk: function() {
+                _tradingConfig.currencies = [{}];   // 保留至少一个空配置行
+                _currentCoinIdx = 0;
+                renderCurrencySelector();
+                fillCurrencyForm({});
+                showToast('已清空全部币种，请点击 💾 保存使其生效', 'success');
+            }
+        });
+    }
+
+    // 从监控台（star_market 星标币种行情）批量导入：弹窗多选，
+    // 按当前币种配置为模板追加到币种列表末尾，保存后生效
+    function importFromStarMarket() {
+        if (_globalApplyMode) { showToast('请先退出全局通用配置模式，再导入币种', 'warning'); return; }
+        showToast('正在拉取监控台星标币种…', 'info');
+        fetch('/api/star-market/data').then(r => r.json()).then(res => {
+            const dataObj = (res && res.data) ? res.data : {};
+            const records = Array.isArray(dataObj.records) ? dataObj.records : (Array.isArray(dataObj) ? dataObj : []);
+            if (!records.length) { showToast('监控台暂无星标币种，请先在监控台收藏币种并刷新行情', 'error'); return; }
+            // 已配置的 instId 集合：重复项置灰禁用
+            const existIds = {};
+            ((_tradingConfig && _tradingConfig.currencies) || []).forEach(c => {
+                if (c && c.instId) existIds[c.instId] = true;
+            });
+            let html = '<div style="max-height:300px;overflow:auto;">';
+            let validCount = 0;
+            records.forEach(r => {
+                const code = String(r['代码'] || r.code || '').trim().toUpperCase();
+                if (!code) return;
+                validCount++;
+                const name = r['名称'] || r.name || '';
+                const instId = code + '-USDT-SWAP';
+                const dup = !!existIds[instId];
+                html += '<label style="display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px solid var(--border-color);border-radius:6px;margin-bottom:4px;' +
+                    'cursor:' + (dup ? 'not-allowed' : 'pointer') + ';opacity:' + (dup ? '.55' : '1') + ';">' +
+                    '<input type="checkbox" class="imp-star-cb" data-inst="' + escapeHtml(instId) + '"' + (dup ? ' disabled' : '') + '>' +
+                    '<span style="font-weight:600;">' + escapeHtml(code) + '</span>' +
+                    '<span style="color:var(--text-muted);font-size:.85em;">' + escapeHtml(String(name)) + '</span>' +
+                    (dup ? '<span style="margin-left:auto;font-size:.75em;color:#e67e22;">已在配置中</span>' : '') +
+                    '</label>';
+            });
+            html += '</div>';
+            if (!validCount) { showToast('监控台币种数据缺少代码字段，无法导入', 'error'); return; }
+            MDialog.show({
+                title: '📥 从监控台导入星标币种（共 ' + validCount + ' 个）',
+                message: html + '<p style="font-size:.78rem;color:var(--text-muted);margin:8px 0 0;">勾选后点「确认导入」，所选币种将按当前币种的完整配置模板（双周期/杠杆/信号算法/止盈止损/双仓位等）追加到币种列表末尾，保存后生效。</p>',
+                okText: '确认导入',
+                onOk: function() {
+                    const picked = [];
+                    document.querySelectorAll('.imp-star-cb').forEach(cb => {
+                        if (cb.checked && !cb.disabled) picked.push(cb.dataset.inst);
+                    });
+                    if (!picked.length) { showToast('请至少勾选一个币种再导入', 'warning'); return false; }
+                    if (!_tradingConfig) _tradingConfig = {};
+                    if (!_tradingConfig.currencies) _tradingConfig.currencies = [];
+                    if (_currentCoinIdx >= _tradingConfig.currencies.length) _currentCoinIdx = 0;
+                    // 先采集当前表单到当前币种，再以其为模板深克隆，保证导入项继承最新表单值
+                    const cur = _tradingConfig.currencies[_currentCoinIdx] || {};
+                    _tradingConfig.currencies[_currentCoinIdx] = cur;
+                    if (collectCurrencyForm(cur) === null) return false;   // 止盈解析失败，阻止导入
+                    const tpl = JSON.parse(JSON.stringify(cur));
+                    picked.forEach(instId => {
+                        const item = JSON.parse(JSON.stringify(tpl));
+                        item.instId = instId;   // 仅替换合约 ID，人工方向随模板
+                        _tradingConfig.currencies.push(item);
+                    });
+                    renderCurrencySelector();
+                    showToast('已导入 ' + picked.length + ' 个币种，请点击 💾 保存使其生效', 'success');
+                }
+            });
+        }).catch(e => showToast('拉取监控台币种失败: ' + e, 'error'));
+    }
+
+    // 一键应用：采集当前币种完整配置为模板，同步应用到所有其他币种并保存
+    // 保留各币种自身的 instId / manual_direction / trade_enabled（由 applyGlobalConfigToAll 保证）
+    function quickApplyToAll() {
+        const list = (_tradingConfig && _tradingConfig.currencies) || [];
+        if (list.length < 2) { showToast('一键应用需要至少配置 2 个币种', 'warning'); return; }
+        // 与保存同款的邮件冷却前置校验，避免回写脏配置
+        const cooldownVal = parseInt(document.getElementById('cfg-cooldown').value);
+        if (isNaN(cooldownVal) || cooldownVal < 1 || cooldownVal > 1440) {
+            showToast('邮件冷却时间需为 1~1440 之间的整数（分钟）', 'error');
+            return;
+        }
+        if (!_tradingConfig.global_settings) _tradingConfig.global_settings = {};
+        if (!_tradingConfig.global_settings.risk_control) _tradingConfig.global_settings.risk_control = {};
+        // 采集当前币种完整配置作为模板
+        const cur = list[_currentCoinIdx] || {};
+        list[_currentCoinIdx] = cur;
+        if (collectCurrencyForm(cur) === null) return;
+        collectGlobalSettings(cooldownVal);
+        const tplName = cur.instId || '未命名币种';
+        const others = list.filter((c, i) => i !== _currentCoinIdx).map(c => c.instId || '未命名币种');
+        MDialog.danger({
+            title: '🚀 一键应用确认',
+            message: '<p>即将把当前币种 <b>' + escapeHtml(tplName) + '</b> 的完整配置<b>同步应用</b>到以下 <b>' + others.length + '</b> 个币种：</p>' +
+                     '<p style="color:#888;font-size:12px;word-break:break-all">' + escapeHtml(others.join('、')) + '</p>' +
+                     '<p style="font-size:13px">同步范围：双周期、杠杆、信号算法、开/平仓价格、止盈止损、仓位A（趋势跟踪）、仓位B（区间波动）参数。<br>' +
+                     '<b>保留</b>：各币种自身的合约 ID 与人工干预方向。<br>⚠️ 目标币种的个性化设置将被覆盖且无法恢复，确定继续吗？</p>',
+            okText: '确认应用并保存',
+            onOk: function() {
+                applyGlobalConfigToAll();
+                postTradingConfig('已应用并保存到全部 ' + list.length + ' 个币种');
+            }
+        });
+    }
+
+    // 一键应用说明：展示同步范围与保留项，帮助用户理解哪些配置会被统一
+    function showQuickApplyHelp() {
+        MDialog.show({
+            title: '🚀 一键应用说明',
+            type: 'info',
+            showCancel: false,
+            okText: '知道了',
+            width: '520px',
+            message:
+                '<p style="font-size:13px;line-height:1.7;margin:0 0 10px;">' +
+                '一键应用会以<b>当前选中币种</b>的表单值为模板，覆盖同步到其他所有币种并保存。</p>' +
+                '<div style="font-size:13px;line-height:1.7;">' +
+                '<div style="font-weight:600;color:var(--success-color);margin-bottom:4px;">✅ 会被统一（同步到所有币种）</div>' +
+                '<div style="color:#666;padding-left:6px;">双周期、杠杆倍数、挂单日志、信号算法、开/平仓价格、止盈止损、仓位A（趋势跟踪）、仓位B（区间波动）参数。</div>' +
+                '</div>' +
+                '<div style="font-size:13px;line-height:1.7;margin-top:10px;">' +
+                '<div style="font-weight:600;color:var(--warning-color);margin-bottom:4px;">🔒 会保留（各币种各自独立）</div>' +
+                '<div style="color:#666;padding-left:6px;">各币种自身的合约 ID、自动交易开关（观察模式）、人工干预方向。</div>' +
+                '</div>' +
+                '<p style="font-size:12px;color:#888;line-height:1.6;margin:10px 0 0;">' +
+                '⚠️ 目标币种已有的个性化参数（同步范围内）将被覆盖且无法恢复，请谨慎操作。</p>'
+        });
+    }
+
+    // =================================================================
+    // 止盈配置：面板切换 / 回填 / 组装
+    // =================================================================
+
+    // 按主止盈方式显示对应参数面板，隐藏其余
+    function updateTpPanels() {
+        const cat = document.getElementById('cfg-tp-category').value;
+        ['fixed_target', 'trailing', 'momentum', 'channel', 'ladder', 'combo'].forEach(c => {
+            const el = document.getElementById('tp-panel-' + c);
+            if (el) el.style.display = (c === cat) ? '' : 'none';
+        });
+    }
+
+    // R阶梯数组 [[1,0],[2,1]] → 文本 "1:0, 2:1"
+    function rLevelsToText(levels) {
+        if (!Array.isArray(levels) || !levels.length) return '';
+        return levels.map(l => `${l[0]}:${l[1]}`).join(', ');
+    }
+
+    // 文本 "1:0, 2:1" → [[1,0],[2,1]]；非法返回 null
+    function parseRLevels(text) {
+        const t = (text || '').trim();
+        if (!t) return null;
+        const out = [];
+        for (const seg of t.split(',')) {
+            const parts = seg.split(':');
+            if (parts.length !== 2) return null;
+            const r = parseFloat(parts[0]), lock = parseFloat(parts[1]);
+            if (isNaN(r) || isNaN(lock) || r <= 0 || lock < 0) return null;
+            out.push([r, lock]);
+        }
+        return out.length ? out : null;
+    }
+
+    // 分批档位数组 [{pct:2,close_ratio:0.33}] → 文本 "2:33"（比例转百分数）
+    function ladderToText(levels) {
+        if (!Array.isArray(levels) || !levels.length) return '';
+        return levels.map(l => `${l.pct}:${Math.round(l.close_ratio * 100)}`).join(', ');
+    }
+
+    // 文本 "2:33, 4:50, 6:100" → [{pct,close_ratio}]；非法返回 null
+    function parseLadder(text) {
+        const t = (text || '').trim();
+        if (!t) return null;
+        const out = [];
+        for (const seg of t.split(',')) {
+            const parts = seg.split(':');
+            if (parts.length !== 2) return null;
+            const pct = parseFloat(parts[0]), ratioPct = parseFloat(parts[1]);
+            if (isNaN(pct) || isNaN(ratioPct) || pct <= 0 || ratioPct <= 0 || ratioPct > 100) return null;
+            out.push({ pct: pct, close_ratio: ratioPct / 100 });
+        }
+        if (!out.length) return null;
+        // 校验：pct 递增，末档必须 100%
+        for (let i = 1; i < out.length; i++) {
+            if (out[i].pct <= out[i - 1].pct) return null;
+        }
+        if (Math.abs(out[out.length - 1].close_ratio - 1.0) > 1e-9) return null;
+        return out;
+    }
+
+    // 加载回填：兼容旧结构 {type, fixed_pct, trailing_atr}
+    function fillTpControls(tp) {
+        let cat = tp.category;
+        if (cat === undefined && tp.type !== undefined) {
+            // 旧结构映射：fixed→固定目标/百分比；trailing→固定目标/ATR倍数
+            cat = 'fixed_target';
+        }
+        document.getElementById('cfg-tp-enabled').checked = !!tp.enabled;
+        document.getElementById('cfg-tp-category').value = cat || 'none';
+
+        const ft = tp.fixed_target || {};
+        let ftMode = ft.mode || 'pct', ftPct = ft.pct, ftAtr = ft.atr_multiple;
+        if (tp.category === undefined && tp.type !== undefined) {
+            if (tp.type === 'trailing') { ftMode = 'atr_multiple'; ftAtr = tp.trailing_atr; }
+            else { ftMode = 'pct'; ftPct = tp.fixed_pct; }
+        }
+        document.getElementById('cfg-tp-ft-mode').value = ftMode;
+        document.getElementById('cfg-tp-ft-pct').value = ftPct != null ? ftPct : 5.0;
+        document.getElementById('cfg-tp-ft-r').value = ft.r_multiple != null ? ft.r_multiple : 2.0;
+        document.getElementById('cfg-tp-ft-atr').value = ftAtr != null ? ftAtr : 3.0;
+
+        const tr = tp.trailing || {};
+        document.getElementById('cfg-tp-tr-mode').value = tr.mode || 'pullback_pct';
+        document.getElementById('cfg-tp-tr-activate').value = tr.activate_pct != null ? tr.activate_pct : 1.0;
+        document.getElementById('cfg-tp-tr-pullback').value = tr.pullback_pct != null ? tr.pullback_pct : 2.0;
+        document.getElementById('cfg-tp-tr-chatr').value = tr.chandelier_atr != null ? tr.chandelier_atr : 3.0;
+        document.getElementById('cfg-tp-tr-rlevels').value = rLevelsToText(tr.r_levels) || '1:0, 2:1, 3:2';
+
+        const mo = tp.momentum || {};
+        document.getElementById('cfg-tp-mo-mode').value = mo.mode || 'hist_decay';
+        document.getElementById('cfg-tp-mo-decay').value = mo.decay_bars != null ? mo.decay_bars : 3;
+        document.getElementById('cfg-tp-mo-lookback').value = mo.lookback != null ? mo.lookback : 30;
+        document.getElementById('cfg-tp-mo-minprofit').value = mo.min_profit_pct != null ? mo.min_profit_pct : 0.5;
+
+        const ch = tp.channel || {};
+        document.getElementById('cfg-tp-ch-mode').value = ch.mode || 'outer';
+        document.getElementById('cfg-tp-ch-minprofit').value = ch.min_profit_pct != null ? ch.min_profit_pct : 0;
+
+        const ld = tp.ladder || {};
+        document.getElementById('cfg-tp-ld-levels').value = ladderToText(ld.levels) || '2:33, 4:50, 6:100';
+
+        const cb = tp.combo || {};
+        document.getElementById('cfg-tp-cb-initr').value = cb.init_r_atr != null ? cb.init_r_atr : 2.0;
+        document.getElementById('cfg-tp-cb-activate').value = cb.activate_r != null ? cb.activate_r : 1.5;
+        document.getElementById('cfg-tp-cb-chatr').value = cb.chandelier_atr != null ? cb.chandelier_atr : 3.0;
+        document.getElementById('cfg-tp-cb-partial-r').value = cb.partial_r != null ? cb.partial_r : 2.0;
+        document.getElementById('cfg-tp-cb-partial-ratio').value = cb.partial_ratio != null ? cb.partial_ratio : 0.30;
+        document.getElementById('cfg-tp-cb-bepct').value = cb.breakeven_buffer_pct != null ? cb.breakeven_buffer_pct : 0.10;
+        document.getElementById('cfg-tp-cb-locksteps').value = rLevelsToText(cb.lock_steps) || '1.5:0, 2.5:1, 4:2';
+
+        const ts = tp.time_stop || {};
+        document.getElementById('cfg-tp-ts-enabled').checked = !!ts.enabled;
+        document.getElementById('cfg-tp-ts-maxbars').value = ts.max_bars != null ? ts.max_bars : 24;
+        document.getElementById('cfg-tp-ts-minprofit').value = ts.min_profit_pct != null ? ts.min_profit_pct : 1.0;
+
+        updateTpPanels();
+    }
+
+    // 保存组装：读取控件生成新结构；解析失败提示并返回 null
+    function collectTpConfig() {
+        const category = document.getElementById('cfg-tp-category').value;
+
+        const rLevels = parseRLevels(document.getElementById('cfg-tp-tr-rlevels').value);
+        if (category === 'trailing'
+            && document.getElementById('cfg-tp-tr-mode').value === 'r_ladder'
+            && !rLevels) {
+            showToast('R阶梯格式错误，应为 "reach_r:lock_r" 逗号分隔，如 1:0, 2:1, 3:2', 'error');
+            return null;
+        }
+
+        const ladderLevels = parseLadder(document.getElementById('cfg-tp-ld-levels').value);
+        if (category === 'ladder' && !ladderLevels) {
+            showToast('分批档位格式错误：应为 "盈利%:平仓%" 逗号分隔且盈利%递增、末档平仓%必须为100，如 2:33, 4:50, 6:100', 'error');
+            return null;
+        }
+
+        const comboLocks = parseRLevels(document.getElementById('cfg-tp-cb-locksteps').value);
+        if (category === 'combo' && !comboLocks) {
+            showToast('棘轮台阶格式错误："reach_r:lock_r" 逗号分隔，如 1.5:0, 2.5:1, 4:2', 'error');
+            return null;
+        }
+
+        return {
+            enabled: document.getElementById('cfg-tp-enabled').checked,
+            category: category,
+            fixed_target: {
+                mode: document.getElementById('cfg-tp-ft-mode').value,
+                pct: parseFloat(document.getElementById('cfg-tp-ft-pct').value) || 5.0,
+                r_multiple: parseFloat(document.getElementById('cfg-tp-ft-r').value) || 2.0,
+                atr_multiple: parseFloat(document.getElementById('cfg-tp-ft-atr').value) || 3.0
+            },
+            trailing: {
+                mode: document.getElementById('cfg-tp-tr-mode').value,
+                activate_pct: parseFloat(document.getElementById('cfg-tp-tr-activate').value) || 0,
+                pullback_pct: parseFloat(document.getElementById('cfg-tp-tr-pullback').value) || 2.0,
+                chandelier_atr: parseFloat(document.getElementById('cfg-tp-tr-chatr').value) || 3.0,
+                r_levels: rLevels || [[1.0, 0.0], [2.0, 1.0], [3.0, 2.0]]
+            },
+            momentum: {
+                mode: document.getElementById('cfg-tp-mo-mode').value,
+                decay_bars: parseInt(document.getElementById('cfg-tp-mo-decay').value) || 3,
+                lookback: parseInt(document.getElementById('cfg-tp-mo-lookback').value) || 30,
+                min_profit_pct: parseFloat(document.getElementById('cfg-tp-mo-minprofit').value) || 0
+            },
+            channel: {
+                mode: document.getElementById('cfg-tp-ch-mode').value,
+                min_profit_pct: parseFloat(document.getElementById('cfg-tp-ch-minprofit').value) || 0
+            },
+            ladder: {
+                levels: ladderLevels || [
+                    { pct: 2, close_ratio: 0.33 },
+                    { pct: 4, close_ratio: 0.5 },
+                    { pct: 6, close_ratio: 1.0 }
+                ]
+            },
+            combo: {
+                init_r_atr: parseFloat(document.getElementById('cfg-tp-cb-initr').value) || 2.0,
+                activate_r: parseFloat(document.getElementById('cfg-tp-cb-activate').value) || 0,
+                chandelier_atr: parseFloat(document.getElementById('cfg-tp-cb-chatr').value) || 3.0,
+                partial_r: parseFloat(document.getElementById('cfg-tp-cb-partial-r').value) || 0,
+                partial_ratio: (function(){ const v = parseFloat(document.getElementById('cfg-tp-cb-partial-ratio').value); return isNaN(v) ? 0.30 : v; })(),
+                breakeven_buffer_pct: (function(){ const v = parseFloat(document.getElementById('cfg-tp-cb-bepct').value); return isNaN(v) ? 0.10 : v; })(),
+                lock_steps: comboLocks || [[1.5, 0.0], [2.5, 1.0], [4.0, 2.0]]
+            },
+            time_stop: {
+                enabled: document.getElementById('cfg-tp-ts-enabled').checked,
+                max_bars: parseInt(document.getElementById('cfg-tp-ts-maxbars').value) || 24,
+                min_profit_pct: parseFloat(document.getElementById('cfg-tp-ts-minprofit').value) || 1.0
+            }
+        };
+    }
+
+    // =================================================================
+    // Tab 3: 邮件配置
+    // =================================================================
+    function loadEmailConfig() {
+        fetch('/api/task/config/email').then(r=>r.json()).then(res => {
+            if (res.code !== 200) { showToast('加载邮件配置失败', 'error'); return; }
+            const d = res.data;
+            document.getElementById('email-from').value = d.from_email || '';
+            document.getElementById('email-to').value = d.admin_email || '';
+            document.getElementById('email-smtp-host').value = d.smtp_host || 'smtp.qq.com';
+            document.getElementById('email-smtp-port').value = String(d.smtp_port || 465);
+            document.getElementById('email-use-ssl').checked = d.use_ssl !== false;
+        }).catch(e => showToast('加载失败: ' + e, 'error'));
+    }
+
+    function saveEmailConfig() {
+        const data = {
+            from_email: document.getElementById('email-from').value.trim(),
+            admin_email: document.getElementById('email-to').value.trim(),
+            password: document.getElementById('email-password').value,
+            smtp_host: document.getElementById('email-smtp-host').value.trim(),
+            smtp_port: document.getElementById('email-smtp-port').value,
+            use_ssl: document.getElementById('email-use-ssl').checked
+        };
+
+        if (!data.from_email || !data.admin_email) {
+            showToast('发件人和收件人邮箱不能为空', 'error'); return;
+        }
+
+        fetch('/api/task/config/email', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        }).then(r=>r.json()).then(res => {
+            if (res.code === 200) {
+                showToast(res.message, 'success');
+                document.getElementById('email-password').value = '';
+            } else {
+                showToast('保存失败: ' + res.message, 'error');
+            }
+        }).catch(e => showToast('保存异常: ' + e, 'error'));
+    }
+
+    function saveEmailSettings() {
+        // 保存通知频率+冷却时间到交易配置
+        saveTradingConfig();
+    }
+
+    function forceClose(type) {
+        const labels = {all:'全部平仓(全仓+逐仓)', long:'平全仓多头', short:'平逐仓空头'};
+        MDialog.danger('确定要执行 ' + (labels[type]||type) + ' 吗？此操作不可撤销！', function() {
+            fetch('/api/task/trading/force-close', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({type: type})
+            }).then(r=>r.json()).then(res => {
+                showToast(res.message, res.code===200?'success':'error');
+            }).catch(e => showToast('操作异常: ' + e, 'error'));
+        });
+    }
+
+    function sendTestEmail() {
+        const toEmail = document.getElementById('test-email-to').value.trim();
+        fetch('/api/task/email/test', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({to_email: toEmail || null})
+        }).then(r=>r.json()).then(res => {
+            showToast(res.message, res.code===200?'success':'error');
+        }).catch(e => showToast('发送异常: ' + e, 'error'));
+    }
+
+    // =================================================================
+    // Tab 4: 日志查看
+    // =================================================================
+    const LOG_FILE_LABELS = {
+        'task_scheduler': '定时任务日志',
+        'trade_operations': '交易操作日志',
+    };
+
+    function getSelectedLogFile() {
+        return document.querySelector('input[name="log-file"]:checked').value;
+    }
+
+    function refreshLogs() {
+        const file = getSelectedLogFile();
+        document.getElementById('log-file-label').textContent = LOG_FILE_LABELS[file] || file;
+
+        const keyword = document.getElementById('log-keyword').value.trim();
+        const startTime = document.getElementById('log-start-time').value.replace('T', ' ');
+        const endTime = document.getElementById('log-end-time').value.replace('T', ' ');
+
+        const params = new URLSearchParams({
+            file: file,
+            limit: 500,
+            order: 'desc'
+        });
+        if (keyword) params.append('keyword', keyword);
+        if (startTime) params.append('start_time', startTime + ':00');
+        if (endTime) params.append('end_time', endTime + ':59');
+
+        const viewer = document.getElementById('log-viewer');
+        viewer.innerHTML = '<div class="log-loading">加载中...</div>';
+
+        fetch('/api/task/logs?' + params.toString())
+            .then(r => r.json())
+            .then(res => {
+                if (res.code !== 200) {
+                    viewer.innerHTML = '<div class="log-loading">加载失败: ' + escapeHtml(res.message) + '</div>';
+                    return;
+                }
+                const data = res.data;
+                document.getElementById('log-stats').textContent =
+                    '共 ' + data.total + ' 条，显示 ' + data.returned + ' 条';
+
+                if (!data.lines || data.lines.length === 0) {
+                    viewer.innerHTML = '<div class="log-loading">暂无日志记录</div>';
+                    return;
+                }
+
+                viewer.innerHTML = data.lines.map(line => {
+                    let cls = 'log-line';
+                    if (line.includes('失败') || line.includes('异常') || line.includes('错误')) cls += ' log-error';
+                    else if (line.includes('警告') || line.includes('⚠️') || line.includes('强平执行')
+                             || line.includes('已预警')
+                             || (line.includes('触发') && !line.includes('未触发'))) cls += ' log-warning';
+                    else if (line.includes('成功') || line.includes('成交确认') || line.includes('限价单成交')) cls += ' log-success';
+                    else if (line.includes('=====')) cls += ' log-separator';
+                    else if (line.includes('┏━━')) cls += ' log-summary-head';
+                    else if (line.includes(' ┃ ') || line.includes(' ┗ ')) cls += ' log-summary';
+                    else if (line.includes('[R20')) cls += ' log-run-id';
+                    return '<div class="' + cls + '">' + escapeHtml(line) + '</div>';
+                }).join('');
+            })
+            .catch(e => {
+                viewer.innerHTML = '<div class="log-loading">请求异常: ' + escapeHtml(String(e)) + '</div>';
+            });
+    }
+
+    function searchLogs() {
+        refreshLogs();
+    }
+
+    function quickFilter(kw) {
+        document.getElementById('log-keyword').value = kw;
+        refreshLogs();
+    }
+
+    function clearLogFilters() {
+        document.getElementById('log-keyword').value = '';
+        document.getElementById('log-start-time').value = '';
+        document.getElementById('log-end-time').value = '';
+        refreshLogs();
+    }
+
+    function downloadLog() {
+        const file = getSelectedLogFile();
+        window.location.href = '/api/task/logs/download?file=' + encodeURIComponent(file);
+    }
+
+    function clearLogFile(fileKey) {
+        const nameMap = {'task_scheduler': '定时任务日志', 'trade_operations': '交易操作日志'};
+        const name = nameMap[fileKey] || fileKey;
+        MDialog.danger('确定要清除【' + name + '】吗？此操作不可恢复。', function() {
+            fetch('/api/task/logs/clear', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({file: fileKey})
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.code === 200) {
+                    showToast(data.message || `${name} 已清除`, 'success');
+                    // 如果清除的是当前选中的日志，刷新显示
+                    if (getSelectedLogFile() === fileKey) refreshLogs();
+                } else {
+                    showToast(data.message || '清除失败', 'error');
+                }
+            })
+            .catch(err => showToast('清除失败: ' + err, 'error'));
+        });
+    }
+
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    // 日志回车搜索
+    document.addEventListener('DOMContentLoaded', () => {
+        const kw = document.getElementById('log-keyword');
+        if (kw) kw.addEventListener('keydown', e => { if (e.key === 'Enter') searchLogs(); });
+    });
+
+    // =================================================================
+    // Tab 5: 实盘对比（理论信号 vs 实际成交）
+    // =================================================================
+    let cmpChart = null;
+    let cmpInited = false;
+
+    function initCompareTab() {
+        if (cmpInited) { if (cmpChart) cmpChart.resize(); return; }
+        cmpInited = true;
+        // 币种列表与交易配置同源
+        fetch('/api/task/config/trading').then(r => r.json()).then(res => {
+            if (res.code !== 200) { showToast('加载币种列表失败: ' + res.message, 'error'); return; }
+            const sel = document.getElementById('cmp-inst');
+            sel.innerHTML = '';
+            (res.data.currencies || []).forEach(c => {
+                const opt = document.createElement('option');
+                opt.value = c.instId;
+                opt.textContent = c.instId;
+                sel.appendChild(opt);
+            });
+            if (sel.options.length > 0) loadCompare();
+        }).catch(e => showToast('加载币种列表失败: ' + e, 'error'));
+    }
+
+    function loadCompare() {
+        const inst = document.getElementById('cmp-inst').value;
+        if (!inst) { showToast('请先选择币种', 'error'); return; }
+        const days = document.getElementById('cmp-days').value;
+        document.getElementById('cmp-tbody').innerHTML =
+            '<tr><td colspan="10" class="empty-state">加载中...（理论重放需拉取K线，首次约需数秒）</td></tr>';
+        fetch('/api/task/trend-compare?instId=' + encodeURIComponent(inst) + '&days=' + days)
+            .then(r => r.json()).then(res => {
+                if (res.code !== 200) {
+                    showToast('对比失败: ' + res.message, 'error');
+                    document.getElementById('cmp-tbody').innerHTML =
+                        '<tr><td colspan="10" class="empty-state">加载失败：' + escapeHtml(res.message || '') + '</td></tr>';
+                    return;
+                }
+                renderCompare(res.data);
+            }).catch(e => showToast('对比失败: ' + e, 'error'));
+    }
+
+    function cmpPnlText(v) {
+        if (v === null || v === undefined) return ['—', ''];
+        const cls = v > 0 ? 'cc-green' : (v < 0 ? 'cc-red' : '');
+        return [(v > 0 ? '+' : '') + v + '%', cls];
+    }
+
+    function renderCompare(d) {
+        const s = d.summary || {};
+        const p = d.params || {};
+        let cov = p.coverage_start
+            ? ('K线覆盖起点: ' + p.coverage_start + '｜' + p.short_period + '/' + p.long_period + '｜杠杆 ' + p.leverage + 'x')
+            : '';
+        // 交易所网络抖动时后端回落到过期缓存，明确告知理论侧数据不是最新的
+        if (p.stale_since) {
+            cov += (cov ? '｜' : '') + '⚠ K线获取失败，理论信号取自 ' + p.stale_since + ' 的缓存';
+        }
+        document.getElementById('cmp-coverage').textContent = cov;
+
+        // --- 汇总卡片 ---
+        const [tPnl, tCls] = cmpPnlText(s.theory_cum_pnl);
+        const [aPnl, aCls] = cmpPnlText(s.actual_cum_pnl);
+        const [gPnl, gCls] = cmpPnlText(s.pnl_gap);
+        const cards = [
+            ['理论信号', s.theory_signals ?? 0, ''],
+            ['匹配成交', s.matched ?? 0, 'cc-green'],
+            ['未成交', s.missed ?? 0, (s.missed > 0 ? 'cc-orange' : '')],
+            ['计划外', s.extra ?? 0, (s.extra > 0 ? 'cc-blue' : '')],
+            ['执行率', s.exec_rate == null ? '—' : s.exec_rate + '%', ''],
+            ['平均滑点', s.avg_slippage_pct == null ? '—' : s.avg_slippage_pct + '%', ''],
+            ['理论累计收益', tPnl, tCls],
+            ['实盘累计收益', aPnl, aCls],
+            ['收益差(实-理)', gPnl, gCls],
+        ];
+        document.getElementById('cmp-cards').innerHTML = cards.map(c =>
+            '<div class="compare-card"><div class="cc-label">' + c[0] + '</div>' +
+            '<div class="cc-value ' + c[2] + '">' + c[1] + '</div></div>').join('');
+
+        renderCompareChart(d.theory_curve || [], d.actual_curve || []);
+        renderCompareTable(d.rows || []);
+    }
+
+    function renderCompareChart(tc, ac) {
+        const el = document.getElementById('cmp-chart');
+        if (!cmpChart) {
+            cmpChart = echarts.init(el);
+            window.addEventListener('resize', () => cmpChart && cmpChart.resize());
+        }
+        cmpChart.setOption({
+            tooltip: {
+                trigger: 'axis',
+                valueFormatter: v => (v > 0 ? '+' : '') + v + '%'
+            },
+            legend: { data: ['理论累计收益', '实盘累计收益'], top: 8 },
+            grid: { left: 55, right: 20, top: 42, bottom: 40 },
+            xAxis: { type: 'time' },
+            yAxis: { type: 'value', axisLabel: { formatter: '{value}%' }, splitLine: { lineStyle: { type: 'dashed' } } },
+            series: [
+                {
+                    name: '理论累计收益', type: 'line', step: 'end',
+                    showSymbol: true, symbolSize: 6,
+                    data: tc.map(pt => [pt.time, pt.cum_pnl]),
+                    lineStyle: { width: 2 }, itemStyle: { color: '#2c7be5' }
+                },
+                {
+                    name: '实盘累计收益', type: 'line', step: 'end',
+                    showSymbol: true, symbolSize: 6,
+                    data: ac.map(pt => [pt.time, pt.cum_pnl]),
+                    lineStyle: { width: 2 }, itemStyle: { color: '#e6a23c' }
+                }
+            ]
+        }, true);
+    }
+
+    function renderCompareTable(rows) {
+        const tbody = document.getElementById('cmp-tbody');
+        if (!rows.length) {
+            tbody.innerHTML = '<tr><td colspan="10" class="empty-state">该时间段内没有理论信号，也没有实盘成交记录</td></tr>';
+            return;
+        }
+        const actionMap = { open: '开仓', close: '平仓' };
+        const dirMap = { long: '多', short: '空' };
+        const statusMap = {
+            matched: ['✅ 已执行', 'badge-matched'],
+            missed: ['⚠️ 未成交', 'badge-missed'],
+            extra: ['🔵 计划外', 'badge-extra']
+        };
+        const reasonMap = { signal: '信号', tp: '止盈', sl: '止损', reverse: '反转', manual: '人工', guard: '风控', other: '其他' };
+        tbody.innerHTML = rows.map(r => {
+            const st = statusMap[r.status] || [r.status, ''];
+            const dirCls = r.direction === 'long' ? 'cc-green' : 'cc-red';
+            const slip = (r.slippage_pct === null || r.slippage_pct === undefined) ? '—'
+                : ((r.slippage_pct > 0 ? '+' : '') + r.slippage_pct + '%');
+            return '<tr>' +
+                '<td>' + escapeHtml(r.time || '') + '</td>' +
+                '<td>' + (actionMap[r.action] || r.action || '—') + '</td>' +
+                '<td class="' + dirCls + '">' + (dirMap[r.direction] || '—') + '</td>' +
+                '<td><span class="badge ' + st[1] + '">' + st[0] + '</span></td>' +
+                '<td>' + (r.theory_price ?? '—') + '</td>' +
+                '<td>' + (r.actual_price ?? '—') + '</td>' +
+                '<td>' + slip + '</td>' +
+                '<td>' + (r.amount || '—') + '</td>' +
+                '<td>' + (reasonMap[r.reason] || '—') + '</td>' +
+                '<td style="color:#999;font-size:0.8rem">' + escapeHtml(r.note || '') + '</td>' +
+                '</tr>';
+        }).join('');
+    }
+
+    // =================================================================
+    // Tab 7: 持仓看板（持仓卡片 + 历史持仓弹窗 + 历史币种库）
+    // =================================================================
+    let POS_CARDS = [];
+    let PH_STATE = { instId: '', cursor: '', records: [] };
+    let LIB_DATA = [];
+
+    function initPositionsTab() {
+        loadPositionCards();
+        loadCoinLibrary();
+    }
+
+    function posFmtNum(v, digits) {
+        if (v === null || v === undefined || isNaN(v)) return '-';
+        return Number(v).toLocaleString('en-US', { maximumFractionDigits: (digits === undefined ? 6 : digits) });
+    }
+
+    // ---- 分区一：当前持仓卡片 ----
+    function loadPositionCards() {
+        const grid = document.getElementById('pos-grid');
+        grid.innerHTML = '<div class="empty-state">正在加载持仓数据...</div>';
+        fetch('/api/task/positions/current').then(r => r.json()).then(res => {
+            if (res.code !== 200) {
+                grid.innerHTML = '<div class="empty-state">加载失败：' + (res.message || '') + '</div>';
+                return;
+            }
+            const d = res.data || {};
+            POS_CARDS = d.cards || [];
+            document.getElementById('pos-account-label').textContent =
+                '账号：' + (d.account === 'default' ? '默认账号' : d.account);
+            document.getElementById('pos-holding-label').textContent =
+                '持仓 ' + d.holding + ' / ' + d.count;
+            renderPositionCards();
+        }).catch(e => { grid.innerHTML = '<div class="empty-state">加载失败：' + e + '</div>'; });
+    }
+
+    function renderPositionCards() {
+        const grid = document.getElementById('pos-grid');
+        if (!POS_CARDS.length) {
+            grid.innerHTML = '<div class="empty-state">交易配置中暂无币种，请先在「交易配置」中添加</div>';
+            return;
+        }
+        grid.innerHTML = POS_CARDS.map(renderPosCard).join('');
+    }
+
+    function renderPosCard(c) {
+        const p = c.position;
+        const dirCls = p ? (p.direction === 'long' ? 'pc-long' : 'pc-short') : 'pc-empty';
+        const dirBadge = p
+            ? (p.direction === 'long'
+                ? '<span class="pos-dir-badge dir-long">做多 ▲</span>'
+                : '<span class="pos-dir-badge dir-short">做空 ▼</span>')
+            : '<span class="pos-dir-badge dir-none">空仓</span>';
+        const watchTag = (c.trade_enabled === false)
+            ? ' <span class="pos-dir-badge dir-none">观察</span>' : '';
+        // 字段简写工厂：key + value 一行，可选附加类名（如强平价红色）
+        const f = (k, v, cls) => '<div class="pos-f' + (cls ? ' ' + cls : '') + '">' +
+            '<span class="k">' + k + '</span><span class="v">' + v + '</span></div>';
+        let body;
+        if (p) {
+            const uplCls = p.upl >= 0 ? 'val-green' : 'val-red';
+            const uplPct = (p.upl_ratio * 100).toFixed(2);
+            body = '<div class="pos-fields">' +
+                f('张数', posFmtNum(p.pos, 2) + ' 张') +
+                f('杠杆', posFmtNum(p.lever, 0) + 'x · ' + (p.mgn_mode === 'cross' ? '全仓' : '逐仓')) +
+                f('开仓均价', posFmtNum(p.avg_px, 6)) +
+                f('标记价格', posFmtNum(p.mark_px, 6)) +
+                f('持仓价值', posFmtNum(p.notional, 2) + ' USDT') +
+                f('保证金(估)', posFmtNum(p.margin_est, 2) + ' USDT') +
+                (p.liq_px > 0 ? f('强平价', posFmtNum(p.liq_px, 6), 'liq') : '') +
+                '<div class="pos-upl ' + (p.upl >= 0 ? 'up' : 'down') + '"><span class="k">浮动盈亏</span>' +
+                    '<span class="v ' + uplCls + '">' + (p.upl >= 0 ? '+' : '') + posFmtNum(p.upl, 4) +
+                    '（' + uplPct + '%）</span></div>' +
+                '</div>';
+        } else {
+            const basketName = (c.trend_enabled ? '趋势' : '') +
+                (c.trend_enabled && c.range_enabled ? '+' : '') +
+                (c.range_enabled ? '区间' : '') +
+                (!c.trend_enabled && !c.range_enabled ? '未启用' : '');
+            body = '<div class="pos-empty-body">当前空仓</div>' +
+                '<div class="pos-fields">' +
+                f('配置杠杆', (c.leverage || '-') + 'x') +
+                f('周期', (c.short_period || '-') + ' / ' + (c.long_period || '-')) +
+                f('篮子', basketName) +
+                '</div>';
+        }
+        // 篮子张数拆分（本地账本）
+        let basketHtml = '';
+        if (p) {
+            const parts = [];
+            const b = c.baskets || {};
+            [['趋势仓', b.trend], ['区间仓', b.range]].forEach(function(pair) {
+                const name = pair[0], bk = pair[1];
+                if (!bk) return;
+                if (bk.long > 0) parts.push(name + ' 多 ' + posFmtNum(bk.long, 2) + ' 张');
+                if (bk.short > 0) parts.push(name + ' 空 ' + posFmtNum(bk.short, 2) + ' 张');
+            });
+            if (parts.length) basketHtml = '<div class="pos-baskets">🧺 ' + parts.join(' ｜ ') + '</div>';
+        }
+        return '<div class="pos-card ' + dirCls + '">' +
+            '<div class="pos-card-head"><h3>' + c.instId + watchTag + '</h3>' + dirBadge + '</div>' +
+            body + basketHtml +
+            '<div class="pos-card-foot">' +
+                '<button class="m-btn m-btn-info m-btn-xs m-btn-outline" onclick="openPosHistory(\'' + c.instId + '\')">📜 历史持仓</button>' +
+            '</div></div>';
+    }
+
+    // ---- 历史持仓弹窗 ----
+    function openPosHistory(instId) {
+        PH_STATE = { instId: instId, cursor: '', records: [] };
+        document.getElementById('ph-modal-title').textContent = '📜 历史持仓 · ' + instId;
+        document.getElementById('ph-stats').innerHTML = '<span>加载中...</span>';
+        document.getElementById('ph-tbody').innerHTML = '<tr><td colspan="9" class="empty-state">加载中...</td></tr>';
+        document.getElementById('ph-load-more').style.display = 'none';
+        document.getElementById('ph-modal-mask').style.display = 'flex';
+        fetchPosHistory(false);
+    }
+
+    function fetchPosHistory(more) {
+        const st = PH_STATE;
+        let url = '/api/task/positions/history?instId=' + encodeURIComponent(st.instId) + '&limit=20';
+        if (more && st.cursor) url += '&after=' + st.cursor;
+        fetch(url).then(r => r.json()).then(res => {
+            if (res.code !== 200) {
+                if (!more) {
+                    document.getElementById('ph-tbody').innerHTML =
+                        '<tr><td colspan="9" class="empty-state">查询失败：' + (res.message || '') + '</td></tr>';
+                    document.getElementById('ph-stats').innerHTML = '';
+                } else {
+                    showToast('加载更多失败：' + (res.message || ''), 'error');
+                }
+                return;
+            }
+            const d = res.data || {};
+            st.records = more ? st.records.concat(d.records || []) : (d.records || []);
+            renderPosHistory();
+        }).catch(e => {
+            if (!more) {
+                document.getElementById('ph-tbody').innerHTML =
+                    '<tr><td colspan="9" class="empty-state">查询失败：' + e + '</td></tr>';
+            }
+        });
+    }
+
+    function renderPosHistory() {
+        const st = PH_STATE;
+        const n = st.records.length;
+        let pnl = 0, fee = 0, fund = 0, win = 0;
+        st.records.forEach(r => {
+            pnl += r.pnl; fee += r.fee; fund += r.funding_fee;
+            if (r.pnl > 0) win++;
+        });
+        const pnlCls = pnl >= 0 ? 'val-green' : 'val-red';
+        document.getElementById('ph-stats').innerHTML =
+            '<span>已加载记录：<strong>' + n + '</strong></span>' +
+            '<span>累计盈亏：<strong class="' + pnlCls + '">' + (pnl >= 0 ? '+' : '') + pnl.toFixed(4) + '</strong> USDT</span>' +
+            '<span>胜率：<strong>' + (n ? (win / n * 100).toFixed(1) : '0') + '%</strong>（' + win + '/' + n + '）</span>' +
+            '<span>总手续费：<strong>' + fee.toFixed(4) + '</strong></span>' +
+            '<span>总资金费：<strong>' + fund.toFixed(4) + '</strong></span>';
+        const tb = document.getElementById('ph-tbody');
+        if (!n) {
+            tb.innerHTML = '<tr><td colspan="9" class="empty-state">无历史持仓记录（OKX 仅保留近约 3 个月）</td></tr>';
+        } else {
+            tb.innerHTML = st.records.map(r => {
+                const cls = r.pnl >= 0 ? 'val-green' : 'val-red';
+                const dir = r.direction === 'long'
+                    ? '<span class="pos-dir-badge dir-long">多</span>'
+                    : '<span class="pos-dir-badge dir-short">空</span>';
+                return '<tr>' +
+                    '<td>' + r.close_time + '</td><td>' + dir + '</td>' +
+                    '<td>' + posFmtNum(r.pos, 2) + '</td>' +
+                    '<td>' + posFmtNum(r.open_px, 6) + '</td>' +
+                    '<td>' + posFmtNum(r.close_px, 6) + '</td>' +
+                    '<td class="' + cls + '">' + (r.pnl >= 0 ? '+' : '') + r.pnl.toFixed(4) + '</td>' +
+                    '<td>' + r.fee.toFixed(4) + '</td>' +
+                    '<td>' + r.funding_fee.toFixed(4) + '</td>' +
+                    '<td>' + (r.close_type || '-') + '</td></tr>';
+            }).join('');
+        }
+        // 本页满量才显示翻页；游标取最早一条的平仓时间戳（OKX after 语义）
+        document.getElementById('ph-load-more').style.display = n >= 20 ? 'inline-block' : 'none';
+    }
+
+    function loadPosHistoryMore() {
+        const st = PH_STATE;
+        if (!st.records.length) return;
+        const last = st.records[st.records.length - 1];
+        st.cursor = String(last.close_ts || '');
+        if (!st.cursor) return;
+        fetchPosHistory(true);
+    }
+
+    function closePosHistory() {
+        document.getElementById('ph-modal-mask').style.display = 'none';
+    }
+
+    // ---- 分区二：历史币种库 ----
+    function loadCoinLibrary() {
+        const grid = document.getElementById('lib-grid');
+        grid.innerHTML = '<div class="empty-state">正在加载...</div>';
+        fetch('/api/task/coin-library').then(r => r.json()).then(res => {
+            if (res.code !== 200) {
+                grid.innerHTML = '<div class="empty-state">加载失败：' + (res.message || '') + '</div>';
+                return;
+            }
+            const d = res.data || {};
+            LIB_DATA = d.coins || [];
+            document.getElementById('lib-summary').textContent =
+                '共 ' + d.count + ' 个 · 在用 ' + d.active_count + ' · 已停用 ' + (d.count - d.active_count);
+            renderCoinLibrary();
+        }).catch(e => { grid.innerHTML = '<div class="empty-state">加载失败：' + e + '</div>'; });
+    }
+
+    function libFmtTime(ts) {
+        if (!ts) return '-';
+        const dt = new Date(ts * 1000);
+        const pad = n => String(n).padStart(2, '0');
+        return dt.getFullYear() + '-' + pad(dt.getMonth() + 1) + '-' + pad(dt.getDate()) +
+            ' ' + pad(dt.getHours()) + ':' + pad(dt.getMinutes());
+    }
+
+    function renderCoinLibrary() {
+        const grid = document.getElementById('lib-grid');
+        if (!LIB_DATA.length) {
+            grid.innerHTML = '<div class="empty-state">暂无币种历史记录，保存交易配置后将自动建档留存</div>';
+            return;
+        }
+        grid.innerHTML = LIB_DATA.map(c => {
+            const cb = c.active ? '' :
+                '<input type="checkbox" class="lib-check" data-inst="' + c.instId + '" onchange="onLibCheck(this)">';
+            return '<div class="lib-chip ' + (c.active ? '' : 'lib-inactive') + '">' +
+                '<div class="lib-chip-head">' + cb +
+                    '<span class="lib-name">' + c.instId + '</span>' +
+                    '<span class="lib-badge ' + (c.active ? 'lib-badge-active' : 'lib-badge-inactive') + '">' +
+                        (c.active ? '在用' : '已停用') + '</span>' +
+                '</div>' +
+                '<span class="lib-meta">首次使用：' + libFmtTime(c.first_used) + '</span>' +
+                '<span class="lib-meta">最近使用：' + libFmtTime(c.last_used) + ' · 使用 ' + c.use_count + ' 次</span>' +
+            '</div>';
+        }).join('');
+    }
+
+    function onLibCheck(cb) {
+        const chip = cb.closest('.lib-chip');
+        if (chip) chip.classList.toggle('lib-checked', cb.checked);
+    }
+
+    function libAutoSelectInactive() {
+        const cbs = document.querySelectorAll('.lib-check');
+        if (!cbs.length) { showToast('没有可删除的已停用币种', 'info'); return; }
+        cbs.forEach(cb => { cb.checked = true; onLibCheck(cb); });
+        showToast('已自动选中 ' + cbs.length + ' 个已停用币种', 'success');
+    }
+
+    function libDeleteSelected() {
+        const ids = Array.from(document.querySelectorAll('.lib-check:checked')).map(cb => cb.dataset.inst);
+        if (!ids.length) { showToast('请先勾选要删除的币种（可用「自动选择已停用」）', 'info'); return; }
+        MDialog.danger({
+            message: '确定删除以下币种的历史留存记录？<br><br><strong>' + ids.join('、') +
+                '</strong><br><br>仅移除币种库记录，不影响交易配置与实际持仓，删除后不可恢复。'
+        }, function() {
+            fetch('/api/task/coin-library', {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ inst_ids: ids })
+            }).then(r => r.json()).then(res => {
+                showToast(res.message, res.code === 200 ? 'success' : 'error');
+                if (res.code === 200) loadCoinLibrary();
+            }).catch(e => showToast('删除失败：' + e, 'error'));
+        });
+    }
+
+    // =================================================================
+    // 固定币种池：市值榜整体重建（实时详情面板已迁至监控台 index.html，由 main.js 渲染）
+    // =================================================================
+
+    // 「🔄 更新市值列表」：二次确认后调后端重建固定池（config+DB+宇宙）
+    function refreshFixedMarketcap() {
+        const btn = document.getElementById('btn-refresh-marketcap');
+        MDialog.show({
+            title: '🔄 更新市值列表',
+            message: '将拉取 CoinGecko 实时市值榜，筛选 OKX 有 USDT 线性永续的<b>市值前 50</b> 热门币，' +
+                     '<b>整体替换</b>监控台的固定币种池（浮动币种保留不变，新币同步写入币种库）。<br>' +
+                     '替换后请在监控台点一次「批量更新趋势数据」补全新币指标。确定继续？',
+            okText: '开始更新',
+            onOk: function () {
+                if (btn) { btn.disabled = true; btn.textContent = '⏳ 更新中…'; }
+                fetch('/api/strategy/fixed-coins/refresh-marketcap', { method: 'POST' })
+                    .then(r => r.json()).then(res => {
+                        if (res.code === 200) {
+                            showToast('✅ ' + res.message + '（实时明细请到监控台「固定币种详情」查看）', 'success');
+                        } else {
+                            showToast('❌ 更新失败：' + res.message, 'error');
+                        }
+                    }).catch(e => {
+                        showToast('❌ 更新失败：' + e, 'error');
+                    }).finally(() => {
+                        if (btn) { btn.disabled = false; btn.textContent = '🔄 更新市值列表'; }
+                    });
+                return true;
+            }
+        });
+    }
+
+    // =================================================================
+    // 页面初始化
+    // =================================================================
+    document.addEventListener('DOMContentLoaded', () => {
+        loadTradingAccounts();
+        loadTradingRuntime();
+        refreshStatus();
+    });
+    </script>
+    <script src="{{ url_for('static', filename='js/analysis.js') }}"></script>
+</body>
+</html>

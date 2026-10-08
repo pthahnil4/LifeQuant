@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>股票 Pro3 策略监控台</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        /* 股票选择面板 - 分类折叠 */
+        .stocks-selector-panel {
+            background: white;
+            padding: 15px 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            margin-bottom: 20px;
+        }
+        .stocks-selector-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        .stocks-selector-title {
+            font-weight: bold;
+            color: #555;
+            font-size: 1rem;
+        }
+        .category-group {
+            margin-bottom: 10px;
+            border: 1px solid #eee;
+            border-radius: 6px;
+            overflow: hidden;
+        }
+        .category-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 14px;
+            background: #f8f9fa;
+            cursor: pointer;
+            user-select: none;
+            font-weight: 600;
+            color: #444;
+            font-size: 0.9rem;
+            transition: background 0.2s;
+        }
+        .category-header:hover {
+            background: #eef1f6;
+        }
+        .category-header .arrow {
+            font-size: 0.7rem;
+            transition: transform 0.2s;
+            color: #888;
+        }
+        .category-header .count {
+            font-size: 0.75rem;
+            color: #999;
+            font-weight: normal;
+            margin-left: auto;
+        }
+        .category-body {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease;
+        }
+        .category-body.open {
+            max-height: 600px;
+        }
+        .category-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 7px;
+            padding: 12px 14px;
+        }
+        .stock-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+            padding: 5px 10px;
+            border-radius: 6px;
+            border: 1px solid #ddd;
+            background: #f8f9fa;
+            cursor: pointer;
+            font-size: 0.82rem;
+            transition: all 0.2s;
+            user-select: none;
+        }
+        .stock-tag:hover {
+            border-color: var(--primary-color);
+        }
+        .stock-tag.active {
+            background: var(--primary-color);
+            color: white;
+            border-color: var(--primary-color);
+        }
+        .stock-tag .code {
+            font-family: 'Consolas', monospace;
+            font-size: 0.72rem;
+            opacity: 0.7;
+        }
+
+        /* 股票卡片特有样式 */
+        .stock-card .code-badge {
+            font-family: 'Consolas', monospace;
+            font-size: 0.7rem;
+            color: #888;
+            background: #f0f2f5;
+            padding: 2px 8px;
+            border-radius: 4px;
+        }
+
+        /* 策略模式切换 */
+        .strategy-mode-selector {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.82rem;
+            color: #888;
+        }
+        .strategy-mode-selector select {
+            padding: 4px 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 0.82rem;
+            color: #555;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    {% include 'nav.html' %}
+    <div class="dashboard">
+        <header>
+            <h1>股票 Pro3 策略监控台</h1>
+            <p class="subtitle">MACD平滑 + ADX自适应 | A股市场 · 六大行业板块</p>
+        </header>
+
+        <main>
+            <!-- 选股面板 -->
+            <div class="stocks-selector-panel">
+                <div class="stocks-selector-header">
+                    <span class="stocks-selector-title">自选股管理</span>
+                    <div>
+                        <span id="selected-count" style="font-size:0.85rem;color:#888;margin-right:12px;">已选: 0</span>
+                        <button id="save-stocks-btn" class="btn-small">保存选择</button>
+                    </div>
+                </div>
+                <div id="category-selector">
+                    <!-- JS 动态生成分类面板 -->
+                </div>
+            </div>
+
+            <!-- 综合行情面板 -->
+            <div class="overall-panel">
+                <h3>A股市场综合判断</h3>
+                <div id="overall-market">--</div>
+            </div>
+
+            <!-- 数据展示面板 -->
+            <div id="data-panel" class="data-panel" style="display: none;">
+            </div>
+
+            <!-- 加载中 -->
+            <div id="loading" class="loading">正在加载策略数据...</div>
+            
+            <div class="actions">
+                <button id="refresh-btn" class="btn">手动刷新数据</button>
+            </div>
+        </main>
+    </div>
+
+    <script>
+    (function() {
+        // ================================================================
+        // 状态
+        // ================================================================
+        let allCategories = [];
+        let selectedCodes = new Set();
+
+        const loadingEl = document.getElementById('loading');
+        const dataPanel = document.getElementById('data-panel');
+        const overallEl = document.getElementById('overall-market');
+        const selectedCountEl = document.getElementById('selected-count');
+
+        // ================================================================
+        // 工具函数
+        // ================================================================
+        function fmtMoney(v) {
+            const n = parseFloat(v);
+            if (isNaN(n)) return '--';
+            return n.toFixed(2);
+        }
+
+        function fmtShort(v) {
+            const n = parseFloat(v);
+            if (isNaN(n)) return '--';
+            return n.toFixed(4);
+        }
+
+        function getSignalClass(flag) {
+            if (flag === 'rise') return 'signal-buy';
+            if (flag === 'fall') return 'signal-sell';
+            return 'signal-wait';
+        }
+
+        function getSignalText(flag) {
+            if (flag === 'rise') return '上涨';
+            if (flag === 'fall') return '下跌';
+            return '观望';
+        }
+
+        function pctClass(val) {
+            const n = parseFloat(val);
+            if (isNaN(n)) return '';
+            return n > 0 ? 'val-green' : n < 0 ? 'val-red' : '';
+        }
+
+        // ================================================================
+        // 初始化 — 加载配置
+        // ================================================================
+        async function loadConfig() {
+            try {
+                const resp = await fetch('/stocks/api/config');
+                const result = await resp.json();
+                if (result.code === 200 && result.data) {
+                    allCategories = result.data.categories || [];
+                    selectedCodes = new Set(result.data.selected || []);
+                    renderCategorySelector();
+                    updateSelectedCount();
+                    // 加载策略数据
+                    loadStrategyData();
+                }
+            } catch (e) {
+                console.error('加载配置失败:', e);
+                loadingEl.textContent = '配置加载失败: ' + e.message;
+            }
+        }
+
+        // ================================================================
+        // 渲染分类选择面板
+        // ================================================================
+        function renderCategorySelector() {
+            const container = document.getElementById('category-selector');
+            let html = '';
+            allCategories.forEach(function(cat) {
+                const catSelected = cat.products.filter(function(p) {
+                    return selectedCodes.has(p.code);
+                }).length;
+                const total = cat.products.length;
+                html += '<div class="category-group">' +
+                    '<div class="category-header" data-category="' + cat.name + '">' +
+                        '<span class="arrow">▼</span>' +
+                        '<span>' + cat.name + '</span>' +
+                        '<span class="count">' + catSelected + '/' + total + '</span>' +
+                    '</div>' +
+                    '<div class="category-body open">' +
+                        '<div class="category-tags">' +
+                            cat.products.map(function(p) {
+                                const active = selectedCodes.has(p.code) ? ' active' : '';
+                                return '<span class="stock-tag' + active + '" data-code="' + p.code + '">' +
+                                    p.name +
+                                    ' <span class="code">' + p.code + '</span>' +
+                                '</span>';
+                            }).join('') +
+                        '</div>' +
+                    '</div>' +
+                '</div>';
+            });
+            container.innerHTML = html;
+
+            // 绑定事件
+            // 折叠/展开
+            container.querySelectorAll('.category-header').forEach(function(header) {
+                header.addEventListener('click', function() {
+                    const body = header.nextElementSibling;
+                    const arrow = header.querySelector('.arrow');
+                    const isOpen = body.classList.contains('open');
+                    if (isOpen) {
+                        body.classList.remove('open');
+                        arrow.textContent = '▶';
+                    } else {
+                        body.classList.add('open');
+                        arrow.textContent = '▼';
+                    }
+                });
+            });
+
+            // 股票标签点击
+            container.querySelectorAll('.stock-tag').forEach(function(tag) {
+                tag.addEventListener('click', function() {
+                    const code = tag.dataset.code;
+                    if (selectedCodes.has(code)) {
+                        selectedCodes.delete(code);
+                        tag.classList.remove('active');
+                    } else {
+                        selectedCodes.add(code);
+                        tag.classList.add('active');
+                    }
+                    updateSelectedCount();
+                    updateCategoryCounts();
+                });
+            });
+        }
+
+        function updateCategoryCounts() {
+            document.querySelectorAll('.category-group').forEach(function(group) {
+                const catName = group.querySelector('.category-header').dataset.category;
+                const tags = group.querySelectorAll('.stock-tag');
+                let count = 0;
+                tags.forEach(function(tag) {
+                    if (selectedCodes.has(tag.dataset.code)) count++;
+                });
+                group.querySelector('.count').textContent = count + '/' + tags.length;
+            });
+        }
+
+        function updateSelectedCount() {
+            selectedCountEl.textContent = '已选: ' + selectedCodes.size;
+        }
+
+        // ================================================================
+        // 保存自选
+        // ================================================================
+        document.getElementById('save-stocks-btn').addEventListener('click', async function() {
+            const selected = Array.from(selectedCodes);
+            try {
+                const resp = await fetch('/stocks/api/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ selected: selected }),
+                });
+                const result = await resp.json();
+                if (result.code === 200) {
+                    loadStrategyData();
+                } else {
+                    alert('保存失败: ' + result.message);
+                }
+            } catch (e) {
+                alert('保存失败: ' + e.message);
+            }
+        });
+
+        // ================================================================
+        // 加载策略数据
+        // ================================================================
+        async function loadStrategyData() {
+            loadingEl.style.display = 'block';
+            dataPanel.style.display = 'none';
+            overallEl.textContent = '--';
+
+            try {
+                const resp = await fetch('/stocks/api/strategy/data');
+                const result = await resp.json();
+                if (result.code === 200 && result.data) {
+                    loadingEl.style.display = 'none';
+                    dataPanel.style.display = 'grid';
+                    overallEl.textContent = result.data.overall_market || '--';
+                    renderCards(result.data.products || []);
+                } else {
+                    loadingEl.textContent = '数据加载失败: ' + (result.message || '未知错误');
+                }
+            } catch (e) {
+                loadingEl.textContent = '网络请求失败: ' + e.message;
+            }
+        }
+
+        // ================================================================
+        // 渲染监控卡片
+        // ================================================================
+        function renderCards(products) {
+            if (!products || products.length === 0) {
+                dataPanel.innerHTML = '<div style="text-align:center;grid-column:1/-1;padding:40px;color:#999;">暂无可监控股票，请先选择自选股</div>';
+                return;
+            }
+
+            dataPanel.innerHTML = products.map(function(p) {
+                const signal = p.analysis ? p.analysis.action_signal : '--';
+                const flag = p.analysis ? p.analysis.modify_flag : 'wait';
+                const price = p.price || 0;
+                const macd = p.indicators && p.indicators.macd ? p.indicators.macd.histogram : 0;
+                const dif = p.indicators && p.indicators.macd ? p.indicators.macd.dif : 0;
+                const adx = p.indicators && p.indicators.adx ? p.indicators.adx.adx : 0;
+                const marketState = p.analysis ? (p.analysis.overall_market || '--') : '--';
+                const backtest = p.backtest || {};
+                const totalTrades = backtest.total_trades || 0;
+                const winRate = backtest.win_rate != null ? (backtest.win_rate * 100).toFixed(1) + '%' : '--';
+                const netProfit = backtest.net_profit_pct != null ? backtest.net_profit_pct.toFixed(2) + '%' : '--';
+                const timestamp = p.timestamp || '';
+                const err = p.error || '';
+
+                return '<div class="card stock-card">' +
+                    '<h2>' +
+                        (p.display_name || p.symbol) +
+                        ' <span class="code-badge">' + p.symbol + '</span>' +
+                    '</h2>' +
+                    (timestamp ? '<div style="font-size:0.7rem;color:#999;margin-bottom:8px;text-align:right;">策略时间: ' + timestamp + '</div>' : '') +
+                    '<div class="card-rows">' +
+                        // 第1行：最新价格（全宽，大字体，居中）
+                        '<div class="card-row full">' +
+                            '<div class="data-row" style="text-align:center;">' +
+                                '<span class="label" style="margin:0 auto;">最新价格</span>' +
+                                '<span class="value price-value val-blue" style="font-size:1.5rem;">' + fmtMoney(price) + '</span>' +
+                            '</div>' +
+                        '</div>' +
+                        // 第2行：MACD柱 | DIF
+                        '<div class="card-row cols-2">' +
+                            '<div class="data-row">' +
+                                '<span class="label">MACD柱</span>' +
+                                '<span class="value ' + pctClass(macd) + '">' + fmtShort(macd) + '</span>' +
+                            '</div>' +
+                            '<div class="data-row">' +
+                                '<span class="label">DIF</span>' +
+                                '<span class="value ' + pctClass(dif) + '">' + fmtShort(dif) + '</span>' +
+                            '</div>' +
+                        '</div>' +
+                        // 第3行：ADX | 趋势方向
+                        '<div class="card-row cols-2">' +
+                            '<div class="data-row">' +
+                                '<span class="label">ADX</span>' +
+                                '<span class="value ' + (adx > 25 ? 'val-green' : 'val-yellow') + '">' + fmtMoney(adx) + '</span>' +
+                            '</div>' +
+                            '<div class="data-row">' +
+                                '<span class="label">趋势方向</span>' +
+                                '<span class="value ' + getSignalClass(flag) + '">' + (signal || '--') + '</span>' +
+                            '</div>' +
+                        '</div>' +
+                        // 第4行：回测交易 | 胜率
+                        '<div class="card-row cols-2">' +
+                            '<div class="data-row">' +
+                                '<span class="label">回测交易</span>' +
+                                '<span class="value val-blue">' + totalTrades + ' 笔</span>' +
+                            '</div>' +
+                            '<div class="data-row">' +
+                                '<span class="label">胜率</span>' +
+                                '<span class="value ' + (backtest.win_rate >= 0.5 ? 'val-green' : 'val-red') + '">' + winRate + '</span>' +
+                            '</div>' +
+                        '</div>' +
+                        // 第5行：净值收益 | 最大回撤
+                        '<div class="card-row cols-2">' +
+                            '<div class="data-row">' +
+                                '<span class="label">净值收益</span>' +
+                                '<span class="value ' + pctClass(backtest.net_profit_pct) + '">' + netProfit + '</span>' +
+                            '</div>' +
+                            '<div class="data-row">' +
+                                '<span class="label">最大回撤</span>' +
+                                '<span class="value val-red">' + (backtest.max_drawdown != null ? backtest.max_drawdown.toFixed(2) + '%' : '--') + '</span>' +
+                            '</div>' +
+                        '</div>' +
+                    '</div>' +
+                    (err ? '<div class="card-error">' + err + '</div>' : '') +
+                    '<div class="card-footer">' +
+                        '<a href="/stocks/detail/' + p.symbol + '" class="card-detail-link">查看策略详情</a>' +
+                        '<a href="/stocks/multi/' + p.symbol + '" class="card-detail-link card-multi-link">多周期总览</a>' +
+                    '</div>' +
+                '</div>';
+            }).join('');
+        }
+
+        // ================================================================
+        // 手动刷新
+        // ================================================================
+        document.getElementById('refresh-btn').addEventListener('click', loadStrategyData);
+
+        // 自动刷新（每 90 秒，股票行情变化较慢）
+        setInterval(loadStrategyData, 90000);
+
+        // ================================================================
+        // 启动
+        // ================================================================
+        loadConfig();
+    })();
+    </script>
+</body>
+</html>

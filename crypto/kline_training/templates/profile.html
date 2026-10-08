@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>👤 个人中心 · K线训练营</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        body { background: #f4f6fb; margin: 0; }
+        .pf-wrap { max-width: 620px; margin: 32px auto; padding: 0 16px 60px; }
+        .pf-card { background: #fff; border-radius: 14px; padding: 24px 26px; box-shadow: 0 8px 30px rgba(20,40,90,0.10); margin-bottom: 18px; }
+        .pf-title { font-size: 1.25rem; color: #1a237e; margin: 0 0 4px; }
+        .pf-sub { color: #8a90a0; font-size: 0.85rem; margin: 0 0 18px; }
+        .section-h { font-size: 1rem; color: #1a237e; margin: 4px 0 12px; padding-top: 4px; border-top: 1px solid #eef1f7; }
+        .field { margin-bottom: 14px; }
+        .field label { display: block; font-size: 0.82rem; color: #555; margin-bottom: 5px; }
+        .field .req { color: #ef5350; }
+        .field input {
+            width: 100%; box-sizing: border-box; padding: 10px 12px; font-size: 0.95rem;
+            border: 1px solid #d7dce6; border-radius: 8px; outline: none; background: #fff;
+        }
+        .field input[readonly] { background: #f4f6fb; color: #8a90a0; }
+        .field input:focus { border-color: #1565c0; }
+        .save-btn {
+            padding: 10px 20px; border: none; border-radius: 9px; cursor: pointer; font-size: 0.92rem;
+            background: linear-gradient(135deg, #1a237e, #3949ab); color: #fff;
+        }
+        .save-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+        .row-btn { display: flex; align-items: center; gap: 12px; }
+        .row-btn input { flex: 1; }
+        .msg { min-height: 18px; margin-top: 8px; font-size: 0.85rem; }
+        .msg.err { color: #ef5350; } .msg.ok { color: #26a69a; }
+        .hint { color: #9aa0aa; font-size: 0.78rem; margin: -6px 0 12px; }
+        .admin { border: 1px solid #f3c1c1; background: #fff7f7; }
+        .admin .section-h { color: #b71c1c; border-top-color: #f3d3d3; }
+        .badge { display: inline-block; font-size: 0.72rem; padding: 2px 8px; border-radius: 20px; background: #fce4ec; color: #c2185b; margin-left: 8px; }
+    </style>
+</head>
+<body>
+    {% include 'nav.html' %}
+{% include 'kline_account_bar.html' %}
+
+    <div class="pf-wrap">
+        <div class="pf-card">
+            <h2 class="pf-title">👤 个人中心</h2>
+            <p class="pf-sub">管理你的账号资料与登录口令</p>
+
+            <div class="field">
+                <label>邮箱（登录账号，不可修改）</label>
+                <input id="me-email" value="{{ me.email }}" readonly>
+            </div>
+
+            <!-- 昵称 -->
+            <div class="section-h">昵称</div>
+            <div class="row-btn">
+                <input id="in-nickname" maxlength="24" value="{{ me.nickname or '' }}" placeholder="其他好友看到的名字">
+                <button class="save-btn" onclick="saveNickname(this)">保存</button>
+            </div>
+            <div class="msg" id="msg-nickname"></div>
+
+            <!-- 手机号 -->
+            <div class="section-h">手机号（选填，可用于登录）</div>
+            <div class="row-btn">
+                <input id="in-phone" maxlength="11" inputmode="numeric" value="{{ me.phone or '' }}" placeholder="11 位手机号，留空则清除">
+                <button class="save-btn" onclick="savePhone(this)">保存</button>
+            </div>
+            <div class="msg" id="msg-phone"></div>
+
+            <!-- 改密 -->
+            <div class="section-h">修改登录口令</div>
+            <div class="field"><label>原密码 <span class="req">*</span></label><input id="in-old" type="password" autocomplete="current-password"></div>
+            <div class="field"><label>新密码 <span class="req">*</span>（至少 4 位）</label><input id="in-new" type="password" autocomplete="new-password"></div>
+            <div class="field"><label>确认新密码</label><input id="in-new2" type="password" autocomplete="new-password"></div>
+            <button class="save-btn" onclick="savePwd(this)">更新密码</button>
+            <div class="msg" id="msg-pwd"></div>
+        </div>
+
+        {% if is_admin %}
+        <!-- 管理员：重置任意用户密码 -->
+        <div class="pf-card admin">
+            <div class="section-h" style="border-top:none;margin-top:0">🛡 站长工具 · 重置用户密码<span class="badge">管理员</span></div>
+            <div class="field"><label>目标用户（邮箱 / 手机号 / 昵称）</label><input id="ad-target" placeholder="如 2559539143@qq.com"></div>
+            <div class="field"><label>新密码（至少 4 位）</label><input id="ad-new" placeholder="重置后的口令"></div>
+            <p class="hint">以你的管理员身份（{{ me.email }}）重置指定用户密码，操作会记入服务端日志。</p>
+            <button class="save-btn" style="background:linear-gradient(135deg,#b71c1c,#e53935)" onclick="adminReset(this)">重置密码</button>
+            <div class="msg" id="msg-admin"></div>
+        </div>
+        {% endif %}
+    </div>
+
+    <script>
+        var ADMIN_EMAIL = '{{ me.email }}';
+        function $(id) { return document.getElementById(id); }
+        function msg(id, text, ok) { var el = $(id); el.textContent = text || ''; el.className = 'msg ' + (text ? (ok ? 'ok' : 'err') : ''); }
+        function post(url, body) {
+            return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+                .then(function (r) { return r.json(); })
+                .then(function (j) { if (j.code === 401) { location.href = '/kline/auth?next=/kline/profile'; throw new Error('请先登录'); } if (j.code !== 200 || !j.data) throw new Error(j.message || ('接口错误 ' + j.code)); return j; });
+        }
+        function withBtn(btn, fn) { btn.disabled = true; fn().catch(function (e) { throw e; }).finally(function () { btn.disabled = false; }); }
+
+        function saveNickname(btn) {
+            withBtn(btn, function () {
+                var v = $('in-nickname').value.trim();
+                if (!v) { msg('msg-nickname', '昵称不能为空'); return Promise.resolve(); }
+                return post('/kline/api/profile/nickname', { nickname: v })
+                    .then(function () { msg('msg-nickname', '昵称已更新', true); })
+                    .catch(function (e) { msg('msg-nickname', e.message); });
+            });
+        }
+        function savePhone(btn) {
+            withBtn(btn, function () {
+                var v = $('in-phone').value.trim();
+                return post('/kline/api/profile/phone', { phone: v })
+                    .then(function () { msg('msg-phone', '手机号已更新', true); })
+                    .catch(function (e) { msg('msg-phone', e.message); });
+            });
+        }
+        function savePwd(btn) {
+            withBtn(btn, function () {
+                var o = $('in-old').value, n = $('in-new').value, n2 = $('in-new2').value;
+                if (!o) { msg('msg-pwd', '请输入原密码'); return Promise.resolve(); }
+                if (n.length < 4) { msg('msg-pwd', '新密码至少 4 位'); return Promise.resolve(); }
+                if (n !== n2) { msg('msg-pwd', '两次输入的新密码不一致'); return Promise.resolve(); }
+                return post('/kline/api/profile/change-password', { old_password: o, new_password: n })
+                    .then(function () { msg('msg-pwd', '密码已更新', true); $('in-old').value = $('in-new').value = $('in-new2').value = ''; })
+                    .catch(function (e) { msg('msg-pwd', e.message); });
+            });
+        }
+        function adminReset(btn) {
+            withBtn(btn, function () {
+                var t = $('ad-target').value.trim(), np = $('ad-new').value;
+                if (!t) { msg('msg-admin', '请填写目标用户'); return Promise.resolve(); }
+                if (np.length < 4) { msg('msg-admin', '新密码至少 4 位'); return Promise.resolve(); }
+                if (!confirm('确认将「' + t + '」的密码重置为所填新密码？')) return Promise.resolve();
+                return post('/kline/api/admin/reset-password', { admin_email: ADMIN_EMAIL, target_email: t, new_password: np })
+                    .then(function (j) { msg('msg-admin', '已重置：' + (j.data.user.email || j.data.user.nickname), true); $('ad-target').value = ''; $('ad-new').value = ''; })
+                    .catch(function (e) { msg('msg-admin', e.message); });
+            });
+        }
+    </script>
+</body>
+</html>

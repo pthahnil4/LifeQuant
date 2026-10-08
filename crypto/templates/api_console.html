@@ -1,0 +1,1187 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API 控制台 - LifeQuant</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="{{ url_for('static', filename='js/echarts.min.js') }}"></script>
+</head>
+<body>
+    {% include 'nav.html' %}
+
+    <div class="page-wrapper">
+        <h1 class="api-console-title">🔌 API 交互控制台</h1>
+        <p class="api-console-desc">左侧选择接口 → 中间输入参数点击执行 → 右侧查看API文档</p>
+
+        <!-- 账号选择器 -->
+        <div class="account-selector-bar" id="account-selector-bar" style="display:flex;align-items:center;gap:12px;margin-bottom:16px;padding:10px 16px;background:#f8fbff;border:1px solid var(--border-color);border-radius:10px;">
+            <span style="font-weight:700;font-size:0.9rem;white-space:nowrap;">🔑 查询账号：</span>
+            <select id="account-select" style="flex:1;max-width:320px;padding:6px 12px;border:1px solid var(--border-color);border-radius:6px;font-size:0.88rem;background:#fff;cursor:pointer;">
+                <option value="">加载中…</option>
+            </select>
+            <span id="account-hint" style="font-size:0.78rem;color:var(--text-muted);"></span>
+        </div>
+
+        <div class="api-console-layout">
+
+            <!-- ============= 左侧：接口列表 ============= -->
+            <aside class="api-sidebar" id="api-sidebar">
+                <!-- JS 动态渲染 -->
+            </aside>
+
+            <!-- ============= 中间：交互控制台 ============= -->
+            <main class="api-console-center" id="api-console-center">
+                <div class="console-placeholder" id="console-placeholder">
+                    <div class="placeholder-icon">👈</div>
+                    <p>请在左侧选择一个接口</p>
+                </div>
+                <div class="console-active" id="console-active" style="display:none;">
+                    <div class="console-header" id="console-header"></div>
+                    <div class="console-params" id="console-params"></div>
+                    <div class="console-action">
+                        <button class="m-btn m-btn-primary" id="execute-btn">▶ 执行请求</button>
+                        <span class="execute-hint" id="execute-hint"></span>
+                    </div>
+                    <div class="console-result" id="console-result" style="display:none;">
+                        <div class="result-header">
+                            <span>📤 返回结果</span>
+                            <span class="result-status" id="result-status">200 OK</span>
+                        </div>
+                        <pre class="response-json" id="result-content"></pre>
+                    </div>
+                </div>
+            </main>
+
+            <!-- ============= 右侧：API 文档 ============= -->
+            <aside class="api-doc" id="api-doc">
+                <div class="doc-placeholder" id="doc-placeholder">
+                    <div class="placeholder-icon">📖</div>
+                    <p>选择接口后<br>显示文档说明</p>
+                </div>
+                <div class="doc-active" id="doc-active" style="display:none;">
+                    <h3 class="doc-title">📖 API 文档</h3>
+                    <div class="doc-section">
+                        <span class="doc-label">请求方式</span>
+                        <span class="doc-value" id="doc-method"></span>
+                    </div>
+                    <div class="doc-section">
+                        <span class="doc-label">接口路径</span>
+                        <code class="doc-value" id="doc-path"></code>
+                    </div>
+                    <div class="doc-section">
+                        <span class="doc-label">说明</span>
+                        <span class="doc-value" id="doc-desc"></span>
+                    </div>
+                    <div class="doc-section">
+                        <span class="doc-label">请求参数</span>
+                        <div class="doc-params" id="doc-params"></div>
+                    </div>
+                    <div class="doc-section">
+                        <span class="doc-label">响应示例</span>
+                        <pre class="response-json" id="doc-response"></pre>
+                    </div>
+                </div>
+            </aside>
+
+        </div>
+    </div>
+
+    <script>
+    // =====================================================================
+    // API 接口数据定义
+    // =====================================================================
+    const API_DATA = {
+        market: {
+            label: '市场',
+            icon: '📈',
+            endpoints: {
+                ticker: {
+                    label: '行情查询',
+                    method: 'GET',
+                    path: '/api/market/ticker',
+                    desc: '获取单个币种最新行情',
+                    params: [
+                        { name: 'instId', desc: '币种ID', example: 'NEAR-USDT-SWAP' }
+                    ]
+                },
+                orderbook: {
+                    label: '盘口深度',
+                    method: 'GET',
+                    path: '/api/market/orderbook',
+                    desc: '获取币种盘口深度数据',
+                    params: [
+                        { name: 'instId', desc: '币种ID', example: 'NEAR-USDT-SWAP' },
+                        { name: 'depth', desc: '深度档位', example: '20' }
+                    ]
+                },
+                index_kline: {
+                    label: '指数K线',
+                    method: 'GET',
+                    path: '/api/market/index_kline',
+                    desc: '获取指数K线数据（demo08）',
+                    params: [
+                        { name: 'instId', desc: '指数ID', example: 'NEAR-USDT' },
+                        { name: 'bar', desc: '时间周期', example: '1H' },
+                        { name: 'limit', desc: '返回条数', example: '10' }
+                    ]
+                },
+                history_kline: {
+                    label: '历史K线',
+                    method: 'GET',
+                    path: '/api/market/history_kline',
+                    desc: '获取历史K线数据，不含最新未完成K线（demo16）',
+                    params: [
+                        { name: 'instId', desc: '币种ID', example: 'NEAR-USDT-SWAP' },
+                        { name: 'bar', desc: '时间周期', example: '1H' },
+                        { name: 'limit', desc: '返回条数', example: '10' }
+                    ]
+                },
+                kline_compare: {
+                    label: 'K线对比',
+                    method: 'GET',
+                    path: '/api/market/kline_compare',
+                    desc: '同时运行4种K线方法进行数据对比（demo23）',
+                    params: [
+                        { name: 'instId', desc: '币种ID', example: 'NEAR-USDT-SWAP' },
+                        { name: 'indexId', desc: '指数ID', example: 'NEAR-USDT' },
+                        { name: 'bar', desc: '时间周期', example: '1H' },
+                        { name: 'limit', desc: '返回条数', example: '5' }
+                    ]
+                }
+            }
+        },
+        account: {
+            label: '账户',
+            icon: '👤',
+            endpoints: {
+                info: {
+                    label: '账户信息',
+                    method: 'GET',
+                    path: '/api/account/info',
+                    desc: '获取账户基本信息',
+                    params: []
+                },
+                positions: {
+                    label: '当前持仓',
+                    method: 'GET',
+                    path: '/api/account/positions',
+                    desc: '获取当前持仓信息',
+                    params: [
+                        { name: 'instId', desc: '币种ID（可选，不传返回全部）', example: 'NEAR-USDT-SWAP' }
+                    ]
+                },
+                max_order_size: {
+                    label: '最大可开仓',
+                    method: 'GET',
+                    path: '/api/account/max_order_size',
+                    desc: '获取最大可开仓数量（demo14）',
+                    params: [
+                        { name: 'instId', desc: '币种ID', example: 'NEAR-USDT-SWAP' },
+                        { name: 'tdMode', desc: '保证金模式 cross/isolated', example: 'cross' }
+                    ]
+                },
+                interest: {
+                    label: '计息记录',
+                    method: 'GET',
+                    path: '/api/account/interest',
+                    desc: '获取账户计息记录（demo17）',
+                    params: [
+                        { name: 'ccy', desc: '币种（可选）', example: 'USDT' },
+                        { name: 'limit', desc: '返回条数', example: '10' }
+                    ]
+                },
+                positions_history: {
+                    label: '历史持仓',
+                    method: 'GET',
+                    path: '/api/account/positions_history',
+                    desc: '获取历史持仓信息（demo21）',
+                    params: [
+                        { name: 'instId', desc: '币种ID（可选）', example: 'NEAR-USDT-SWAP' },
+                        { name: 'limit', desc: '返回条数', example: '10' }
+                    ]
+                },
+                leverage: {
+                    label: '杠杆倍数',
+                    method: 'GET',
+                    path: '/api/account/leverage',
+                    desc: '查询杠杆倍数（demo25）',
+                    params: [
+                        { name: 'instId', desc: '币种ID', example: 'NEAR-USDT-SWAP' },
+                        { name: 'mgnMode', desc: '保证金模式 cross/isolated', example: 'cross' }
+                    ]
+                }
+            }
+        },
+        balance_history: {
+            label: '账户余额历史',
+            icon: '📉',
+            endpoints: {
+                history: {
+                    label: '余额变化趋势',
+                    method: 'GET',
+                    path: '/api/account/balance-history',
+                    desc: '合并本地余额快照与 OKX 近7日账单流水，生成余额变化时间序列（每次查询自动追加最新快照，支持多账号）',
+                    params: [
+                        { name: 'days', desc: '账单流水范围天数（1-7）', example: '7' }
+                    ],
+                    response: {
+                        code: 200,
+                        message: 'success',
+                        data: {
+                            account: 'main',
+                            accountName: '主账号',
+                            days: 7,
+                            points: [
+                                { ts: 1755849600000, balance: 1234.56, time: '2026-08-22 12:00:00', reason: '交易', source: 'snapshot' }
+                            ],
+                            bills: [
+                                { ts: 1755849600000, time: '2026-08-22 12:00:00', ccy: 'USDT', change: '-1.25', balAfter: '1234.56', type: '2', reason: '交易' }
+                            ],
+                            summary: { current: 1234.56, max: 1300.0, min: 1200.0, changePct: 1.23, pointCount: 10, billCount: 5 }
+                        }
+                    }
+                }
+            }
+        },
+        funds: {
+            label: '资金',
+            icon: '💰',
+            endpoints: {
+                balance: {
+                    label: '资金余额',
+                    method: 'GET',
+                    path: '/api/funds/balance',
+                    desc: '获取各币种资金余额',
+                    params: [
+                        { name: 'ccy', desc: '币种（可选，不传返回全部）', example: 'USDT' }
+                    ]
+                },
+                history: {
+                    label: '资金流水',
+                    method: 'GET',
+                    path: '/api/funds/history',
+                    desc: '获取资金流水 / 账单记录',
+                    params: [
+                        { name: 'limit', desc: '返回条数', example: '10' }
+                    ]
+                }
+            }
+        },
+        trade: {
+            label: '交易（查询）',
+            icon: '🔄',
+            endpoints: {
+                open_orders: {
+                    label: '当前委托',
+                    method: 'GET',
+                    path: '/api/trade/open_orders',
+                    desc: '获取当前委托列表',
+                    params: [
+                        { name: 'instId', desc: '币种ID（可选）', example: 'NEAR-USDT-SWAP' }
+                    ]
+                },
+                order_info: {
+                    label: '订单查询',
+                    method: 'GET',
+                    path: '/api/trade/order_info',
+                    desc: '查询订单详情',
+                    params: [
+                        { name: 'instId', desc: '币种ID', example: 'NEAR-USDT-SWAP' },
+                        // 示例值留空：这两个是二选一，且默认值必须是"能真查到的形状"。
+                        // 原先 ordId 预填 ORD20260511001（OKX 单号是纯数字，这串永远查不到），
+                        // 直接点执行只会得到"订单不存在"；更糟的是粘了 clOrdId 也白粘，
+                        // 因为后端优先取非空的 ordId。
+                        { name: 'ordId', desc: '交易所订单ID（与 clOrdId 二选一）', example: '' },
+                        { name: 'clOrdId', desc: '本侧打标客户订单号（交易日志里那串，与 ordId 二选一）', example: '' }
+                    ]
+                },
+                history: {
+                    label: '历史委托',
+                    method: 'GET',
+                    path: '/api/trade/history',
+                    desc: '获取历史委托记录',
+                    params: [
+                        { name: 'instId', desc: '币种ID', example: 'NEAR-USDT-SWAP' },
+                        { name: 'limit', desc: '返回条数', example: '10' }
+                    ]
+                }
+            }
+        }
+    };
+
+    // =====================================================================
+    // 结果格式化器 —— 将 JSON 数据渲染为中文结构化视图
+    // key = "category/endpoint"
+    // =====================================================================
+    const RESULT_FORMATTERS = {
+
+        // ---- 📈 市场 ----
+
+        'market/ticker': function(data) {
+            let html = '<div class="fmt-overview">';
+            html += '<div class="fmt-card"><span class="fmt-label">💰 最新价</span><span class="fmt-value fmt-highlight">' + toFixed(data.last, 2) + '</span></div>';
+            html += '<div class="fmt-card"><span class="fmt-label">📊 24H成交量</span><span class="fmt-value">' + formatVolume(data.vol24h) + '</span></div>';
+            html += '<div class="fmt-card"><span class="fmt-label">📈 24H最高</span><span class="fmt-value">' + toFixed(data.high24h, 2) + '</span></div>';
+            html += '<div class="fmt-card"><span class="fmt-label">📉 24H最低</span><span class="fmt-value">' + toFixed(data.low24h, 2) + '</span></div>';
+            html += '</div>';
+
+            html += '<table class="fmt-table"><thead><tr><th>币种</th><th>买一价</th><th>卖一价</th><th>24H涨跌</th><th>更新时间</th></tr></thead><tbody>';
+            html += '<tr>';
+            html += '<td><strong>' + (data.instId || 'N/A') + '</strong></td>';
+            html += '<td>' + toFixed(data.bid, 2) + '</td>';
+            html += '<td>' + toFixed(data.ask, 2) + '</td>';
+            const change = data.change24h || '0%';
+            html += '<td class="' + (parseFloat(change) >= 0 ? 'fmt-up' : 'fmt-down') + '">' + (parseFloat(change) >= 0 ? '📈 ' : '📉 ') + change + '</td>';
+            html += '<td>' + (data.timestamp || 'N/A') + '</td>';
+            html += '</tr></tbody></table>';
+            return html;
+        },
+
+        'market/orderbook': function(data) {
+            let html = '<div class="fmt-overview">';
+            html += '<div class="fmt-card"><span class="fmt-label">📊 币种</span><span class="fmt-value">' + (data.instId || 'N/A') + '</span></div>';
+            html += '<div class="fmt-card"><span class="fmt-label">🕐 更新时间</span><span class="fmt-value">' + (data.ts || 'N/A') + '</span></div>';
+            html += '</div>';
+
+            const asks = data.asks || [];
+            const bids = data.bids || [];
+            html += '<div style="display:flex;gap:20px;">';
+
+            // 卖单（asks）
+            html += '<div style="flex:1;"><div class="fmt-section-title">🔴 卖盘 (asks)</div><table class="fmt-table"><thead><tr><th>价格</th><th>数量</th></tr></thead><tbody>';
+            asks.slice(0, 20).forEach(function(row) {
+                html += '<tr><td style="color:#e74c3c;">' + toFixed(row[0], 2) + '</td><td>' + formatVolume(row[1]) + '</td></tr>';
+            });
+            if (asks.length === 0) html += '<tr><td colspan="2" style="color:#bbb;">暂无数据</td></tr>';
+            html += '</tbody></table></div>';
+
+            // 买单（bids）
+            html += '<div style="flex:1;"><div class="fmt-section-title">🟢 买盘 (bids)</div><table class="fmt-table"><thead><tr><th>价格</th><th>数量</th></tr></thead><tbody>';
+            bids.slice(0, 20).forEach(function(row) {
+                html += '<tr><td style="color:#27ae60;">' + toFixed(row[0], 2) + '</td><td>' + formatVolume(row[1]) + '</td></tr>';
+            });
+            if (bids.length === 0) html += '<tr><td colspan="2" style="color:#bbb;">暂无数据</td></tr>';
+            html += '</tbody></table></div>';
+
+            html += '</div>';
+            return html;
+        },
+
+        'market/index_kline': function(data) {
+            return buildKlineView(data, '指数K线');
+        },
+
+        'market/history_kline': function(data) {
+            return buildKlineView(data, '历史K线');
+        },
+
+        'market/kline_compare': function(data) {
+            let html = '<table class="fmt-table"><thead><tr><th>K线方法</th><th>币种</th><th>数据条数</th><th>最新时间</th><th>最新收盘价</th></tr></thead><tbody>';
+            for (const [name, info] of Object.entries(data)) {
+                html += '<tr>';
+                html += '<td><strong>' + name + '</strong></td>';
+                if (info.error) {
+                    html += '<td colspan="4" style="color:#e74c3c;">❌ ' + info.error + '</td>';
+                } else {
+                    html += '<td>' + (info.instId || 'N/A') + '</td>';
+                    html += '<td>' + (info.count || 0) + ' 条</td>';
+                    html += '<td>' + (info.latest_ts || 'N/A') + '</td>';
+                    html += '<td style="font-weight:600;">' + toFixed(info.latest_close, 2) + '</td>';
+                }
+                html += '</tr>';
+            }
+            html += '</tbody></table>';
+            return html;
+        },
+
+        // ---- 👤 账户 ----
+
+        'account/info': function(data) {
+            let html = '<div class="fmt-overview">';
+            html += '<div class="fmt-card"><span class="fmt-label">💰 总权益</span><span class="fmt-value fmt-highlight">' + toFixed(data.totalEq, 2) + ' USDT</span></div>';
+            html += '<div class="fmt-card"><span class="fmt-label">🕐 更新时间</span><span class="fmt-value">' + (data.uTime || 'N/A') + '</span></div>';
+            if (data.marginMode) {
+                html += '<div class="fmt-card"><span class="fmt-label">📐 保证金模式</span><span class="fmt-value">' + data.marginMode + '</span></div>';
+            }
+            html += '</div>';
+
+            if (data.details && data.details.length > 0) {
+                html += '<div class="fmt-section-title">📋 币种明细</div>';
+                html += '<table class="fmt-table"><thead><tr><th>币种</th><th>权益 (eq)</th><th>可用余额</th><th>冻结</th><th>USD估值</th></tr></thead><tbody>';
+                data.details.forEach(function(item) {
+                    html += '<tr>';
+                    html += '<td><strong>' + item.ccy + '</strong></td>';
+                    html += '<td>' + toFixed(item.eq, 4) + '</td>';
+                    html += '<td>' + toFixed(item.availBal, 4) + '</td>';
+                    html += '<td class="' + (parseFloat(item.frozenBal) > 0 ? 'fmt-warn' : '') + '">' + toFixed(item.frozenBal, 4) + '</td>';
+                    html += '<td>' + toFixed(item.eqUsd, 2) + '</td>';
+                    html += '</tr>';
+                });
+                html += '</tbody></table>';
+            }
+            return html;
+        },
+
+        'account/positions': function(data) {
+            if (!Array.isArray(data) || data.length === 0) return emptyMsg('当前无持仓');
+            let html = '<table class="fmt-table"><thead><tr><th>币种</th><th>方向</th><th>持仓量</th><th>开仓均价</th><th>标记价</th><th>未实现盈亏</th><th>盈亏比</th><th>杠杆</th><th>保证金</th><th>开仓时间</th></tr></thead><tbody>';
+            data.forEach(function(p) {
+                const uplNum = parseFloat(p.upl || '0');
+                html += '<tr>';
+                html += '<td><strong>' + (p.instId || '') + '</strong></td>';
+                html += '<td>' + posSideLabel(p.posSide) + '</td>';
+                html += '<td>' + formatVolume(p.size) + '</td>';
+                html += '<td>' + toFixed(p.avgPx, 2) + '</td>';
+                html += '<td>' + toFixed(p.markPx, 2) + '</td>';
+                html += '<td class="' + (uplNum >= 0 ? 'fmt-up' : 'fmt-down') + '">' + (uplNum >= 0 ? '+' : '') + toFixed(p.upl, 4) + '</td>';
+                html += '<td class="' + (parseFloat(p.uplRatio) >= 0 ? 'fmt-up' : 'fmt-down') + '">' + (p.uplRatio || '0%') + '</td>';
+                html += '<td>' + (p.lever || '1x') + '</td>';
+                html += '<td>' + toFixed(p.margin, 2) + '</td>';
+                html += '<td>' + (p.cTime || '') + '</td>';
+                html += '</tr>';
+            });
+            html += '</tbody></table>';
+            return html;
+        },
+
+        'account/max_order_size': function(data) {
+            let html = '<div class="fmt-overview">';
+            html += '<div class="fmt-card"><span class="fmt-label">📊 币种</span><span class="fmt-value">' + (data.instId || '') + '</span></div>';
+            html += '<div class="fmt-card"><span class="fmt-label">📐 保证金模式</span><span class="fmt-value">' + (data.tdMode || '') + '</span></div>';
+            html += '<div class="fmt-card"><span class="fmt-label">🟢 最大买入</span><span class="fmt-value fmt-highlight">' + formatVolume(data.maxBuy) + '</span></div>';
+            html += '<div class="fmt-card"><span class="fmt-label">🔴 最大卖出</span><span class="fmt-value fmt-highlight">' + formatVolume(data.maxSell) + '</span></div>';
+            html += '</div>';
+            return html;
+        },
+
+        'account/interest': function(data) {
+            if (!Array.isArray(data) || data.length === 0) return emptyMsg('无计息记录');
+            let html = '<table class="fmt-table"><thead><tr><th>币种</th><th>利息</th><th>利率</th><th>类型</th><th>交易对</th><th>时间</th></tr></thead><tbody>';
+            data.forEach(function(r) {
+                html += '<tr>';
+                html += '<td><strong>' + (r.ccy || '') + '</strong></td>';
+                html += '<td>' + toFixed(r.interest, 6) + '</td>';
+                html += '<td>' + (r.interestRate || '0') + '%</td>';
+                html += '<td>' + (r.type || '') + '</td>';
+                html += '<td>' + (r.instId || '-') + '</td>';
+                html += '<td>' + (r.ts || '') + '</td>';
+                html += '</tr>';
+            });
+            html += '</tbody></table>';
+            return html;
+        },
+
+        'account/positions_history': function(data) {
+            if (!Array.isArray(data) || data.length === 0) return emptyMsg('无历史持仓记录');
+            let html = '<table class="fmt-table"><thead><tr><th>币种</th><th>方向</th><th>杠杆</th><th>开仓均价</th><th>平仓均价</th><th>已实现盈亏</th><th>盈亏比</th><th>平仓量</th><th>开仓时间</th><th>平仓时间</th></tr></thead><tbody>';
+            data.forEach(function(p) {
+                const pnlNum = parseFloat(p.pnl || '0');
+                html += '<tr>';
+                html += '<td><strong>' + (p.instId || '') + '</strong></td>';
+                html += '<td>' + (p.direction || '') + '</td>';
+                html += '<td>' + (p.lever || '') + '</td>';
+                html += '<td>' + toFixed(p.openAvgPx, 2) + '</td>';
+                html += '<td>' + toFixed(p.closeAvgPx, 2) + '</td>';
+                html += '<td class="' + (pnlNum >= 0 ? 'fmt-up' : 'fmt-down') + '">' + (pnlNum >= 0 ? '+' : '') + toFixed(p.pnl, 4) + '</td>';
+                html += '<td class="' + (parseFloat(p.pnlRatio) >= 0 ? 'fmt-up' : 'fmt-down') + '">' + (p.pnlRatio || '0') + '%</td>';
+                html += '<td>' + formatVolume(p.closeTotalPos) + '</td>';
+                html += '<td>' + (p.cTime || '') + '</td>';
+                html += '<td>' + (p.uTime || '') + '</td>';
+                html += '</tr>';
+            });
+            html += '</tbody></table>';
+            return html;
+        },
+
+        'account/leverage': function(data) {
+            if (!Array.isArray(data) || data.length === 0) return emptyMsg('无杠杆数据');
+            let html = '<table class="fmt-table"><thead><tr><th>币种</th><th>保证金模式</th><th>持仓方向</th><th>杠杆倍数</th></tr></thead><tbody>';
+            data.forEach(function(l) {
+                html += '<tr>';
+                html += '<td><strong>' + (l.instId || '') + '</strong></td>';
+                html += '<td>' + (l.mgnMode === 'cross' ? '全仓' : l.mgnMode === 'isolated' ? '逐仓' : l.mgnMode || '') + '</td>';
+                html += '<td>' + (l.posSide === 'net' ? '单向' : l.posSide || '') + '</td>';
+                html += '<td><strong>' + (l.lever || '0') + 'x</strong></td>';
+                html += '</tr>';
+            });
+            html += '</tbody></table>';
+            return html;
+        },
+
+        // ---- 💰 资金 ----
+
+        'funds/balance': function(data) {
+            let html = '';
+
+            // 估值概览
+            if (data.valuation && data.valuation.totalBal) {
+                html += '<div class="fmt-overview">';
+                html += '<div class="fmt-card"><span class="fmt-label">💰 总资产估值</span><span class="fmt-value fmt-highlight">' + toFixed(data.valuation.totalBal, 2) + ' USDT</span></div>';
+                html += '<div class="fmt-card"><span class="fmt-label">🕐 估值时间</span><span class="fmt-value">' + (data.valuation.ts || 'N/A') + '</span></div>';
+                html += '</div>';
+
+                // 各账户类型分布
+                const details = data.valuation.details || {};
+                const accTypes = { funding: '💳 资金账户', trading: '📈 交易账户', classic: '🏛️ 经典账户', earn: '💰 金融账户' };
+                const hasAny = Object.values(details).some(function(v) { return parseFloat(v) > 0; });
+                if (hasAny) {
+                    html += '<div class="fmt-section-title">📊 账户分布</div><table class="fmt-table"><thead><tr><th>账户类型</th><th>估值 (USDT)</th><th>状态</th></tr></thead><tbody>';
+                    for (const [key, label] of Object.entries(accTypes)) {
+                        const val = details[key] || '0';
+                        html += '<tr><td>' + label + '</td><td>' + toFixed(val, 2) + '</td><td>' + (parseFloat(val) > 0 ? '✅ 有资产' : '⭕ 无资产') + '</td></tr>';
+                    }
+                    html += '</tbody></table>';
+                }
+            }
+
+            // 币种余额
+            const balances = data.balances || [];
+            if (balances.length > 0) {
+                html += '<div class="fmt-section-title">📋 各币种余额</div>';
+                html += '<table class="fmt-table"><thead><tr><th>币种</th><th>余额</th><th>可用</th><th>冻结</th></tr></thead><tbody>';
+                balances.forEach(function(b) {
+                    html += '<tr>';
+                    html += '<td><strong>' + (b.ccy || '') + '</strong></td>';
+                    html += '<td>' + toFixed(b.bal, 4) + '</td>';
+                    html += '<td>' + toFixed(b.availBal, 4) + '</td>';
+                    html += '<td class="' + (parseFloat(b.frozenBal) > 0 ? 'fmt-warn' : '') + '">' + toFixed(b.frozenBal, 4) + '</td>';
+                    html += '</tr>';
+                });
+                html += '</tbody></table>';
+            } else if (!data.valuation || !data.valuation.totalBal) {
+                html += emptyMsg('暂无资金数据');
+            }
+
+            return html;
+        },
+
+        'funds/history': function(data) {
+            if (!Array.isArray(data) || data.length === 0) return emptyMsg('无资金流水记录');
+            let html = '<table class="fmt-table"><thead><tr><th>流水ID</th><th>币种</th><th>类型</th><th>变动金额</th><th>变动后余额</th><th>时间</th></tr></thead><tbody>';
+            data.forEach(function(b) {
+                const chgNum = parseFloat(b.change || '0');
+                html += '<tr>';
+                html += '<td style="font-size:0.75rem;color:#888;">' + (b.txId || '') + '</td>';
+                html += '<td><strong>' + (b.ccy || '') + '</strong></td>';
+                html += '<td>' + billTypeLabel(b.type) + '</td>';
+                html += '<td class="' + (chgNum >= 0 ? 'fmt-up' : 'fmt-down') + '">' + (chgNum >= 0 ? '+' : '') + toFixed(b.change, 4) + '</td>';
+                html += '<td>' + toFixed(b.balAfter, 4) + '</td>';
+                html += '<td>' + (b.ts || '') + '</td>';
+                html += '</tr>';
+            });
+            html += '</tbody></table>';
+            return html;
+        },
+
+        // ---- 🔄 交易 ----
+
+        'trade/open_orders': function(data) {
+            if (!Array.isArray(data) || data.length === 0) return emptyMsg('当前无委托订单');
+            let html = '<table class="fmt-table"><thead><tr><th>订单ID</th><th>币种</th><th>方向</th><th>价格</th><th>数量</th><th>已成交</th><th>类型</th><th>状态</th><th>杠杆</th><th>创建时间</th></tr></thead><tbody>';
+            data.forEach(function(o) {
+                html += '<tr>';
+                html += '<td style="font-size:0.75rem;color:#888;">' + (o.ordId || '')
+                    + clOrdIdLine(o.clOrdId) + '</td>';
+                html += '<td><strong>' + (o.instId || '') + '</strong></td>';
+                html += '<td>' + sideLabel(o.side) + ' ' + posSideLabel(o.posSide) + '</td>';
+                html += '<td>' + toFixed(o.px, 2) + '</td>';
+                html += '<td>' + formatVolume(o.sz) + '</td>';
+                html += '<td>' + formatVolume(o.accFillSz) + '</td>';
+                html += '<td>' + ordTypeLabel(o.ordType) + '</td>';
+                html += '<td>' + orderStateLabel(o.state) + '</td>';
+                html += '<td>' + (o.lever || '1x') + '</td>';
+                html += '<td>' + (o.cTime || '') + '</td>';
+                html += '</tr>';
+            });
+            html += '</tbody></table>';
+            return html;
+        },
+
+        'trade/order_info': function(data) {
+            let html = '<div class="fmt-overview">';
+            html += '<div class="fmt-card"><span class="fmt-label">📋 订单ID</span><span class="fmt-value" style="font-size:0.85rem;">' + (data.ordId || '') + '</span></div>';
+            html += '<div class="fmt-card"><span class="fmt-label">🏷️ 客户号</span><span class="fmt-value" style="font-size:0.85rem;">' + (data.clOrdId || '(无打标)') + '</span></div>';
+            html += '<div class="fmt-card"><span class="fmt-label">📊 币种</span><span class="fmt-value">' + (data.instId || '') + '</span></div>';
+            html += '<div class="fmt-card"><span class="fmt-label">🔖 状态</span><span class="fmt-value">' + orderStateLabel(data.state) + '</span></div>';
+            html += '</div>';
+
+            html += '<table class="fmt-table"><thead><tr><th>方向</th><th>开平</th><th>委托类型</th><th>委托价</th><th>数量</th><th>已成交</th><th>成交均价</th><th>手续费</th><th>创建时间</th><th>更新时间</th></tr></thead><tbody>';
+            html += '<tr>';
+            html += '<td>' + sideLabel(data.side) + '</td>';
+            html += '<td>' + posSideLabel(data.posSide) + '</td>';
+            html += '<td>' + ordTypeLabel(data.ordType) + '</td>';
+            html += '<td>' + toFixed(data.px, 2) + '</td>';
+            html += '<td>' + formatVolume(data.sz) + '</td>';
+            html += '<td>' + formatVolume(data.accFillSz) + '</td>';
+            html += '<td>' + toFixed(data.avgPx, 2) + '</td>';
+            html += '<td>' + toFixed(data.fee, 6) + '</td>';
+            html += '<td>' + (data.cTime || '') + '</td>';
+            html += '<td>' + (data.uTime || '') + '</td>';
+            html += '</tr></tbody></table>';
+            return html;
+        },
+
+        'trade/history': function(data) {
+            if (!Array.isArray(data) || data.length === 0) return emptyMsg('无历史委托记录');
+            let html = '<table class="fmt-table"><thead><tr><th>订单ID</th><th>币种</th><th>方向</th><th>价格</th><th>数量</th><th>成交价</th><th>成交量</th><th>类型</th><th>状态</th><th>创建时间</th><th>更新时间</th></tr></thead><tbody>';
+            data.forEach(function(o) {
+                html += '<tr>';
+                html += '<td style="font-size:0.75rem;color:#888;">' + (o.ordId || '')
+                    + clOrdIdLine(o.clOrdId) + '</td>';
+                html += '<td><strong>' + (o.instId || '') + '</strong></td>';
+                html += '<td>' + sideLabel(o.side) + '</td>';
+                html += '<td>' + toFixed(o.px, 2) + '</td>';
+                html += '<td>' + formatVolume(o.sz) + '</td>';
+                html += '<td>' + toFixed(o.fillPx, 2) + '</td>';
+                html += '<td>' + formatVolume(o.fillSz) + '</td>';
+                html += '<td>' + ordTypeLabel(o.ordType) + '</td>';
+                html += '<td>' + orderStateLabel(o.state) + '</td>';
+                html += '<td>' + (o.cTime || '') + '</td>';
+                html += '<td>' + (o.uTime || '') + '</td>';
+                html += '</tr>';
+            });
+            html += '</tbody></table>';
+            return html;
+        },
+
+        // ---- 📉 账户余额历史 ----
+
+        'balance_history/history': function(data) {
+            let html = '';
+            // 工具栏：账号/数据概览 + 时间范围筛选按钮
+            html += '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:14px;">';
+            const bhPoints = data.points || [];
+            const bhBackfillCount = bhPoints.filter(function(p) { return p.source === 'backfill'; }).length;
+            html += '<div style="font-size:0.85rem;color:#666;">👤 ' + (data.accountName || data.account || '') + ' · 总权益（USD估值） · 数据点 ' + bhPoints.length + ' · 账单流水 ' + ((data.bills || []).length) + (bhBackfillCount > 0 ? ' · <span style="color:#e67e22;">回溯点 ' + bhBackfillCount + '（估算）</span>' : '') + '</div>';
+            html += '<div style="display:flex;gap:6px;">';
+            html += '<button class="bh-range-btn m-btn" data-range="1d">近1天</button>';
+            html += '<button class="bh-range-btn m-btn" data-range="7d">近7天</button>';
+            html += '<button class="bh-range-btn m-btn" data-range="all">全部</button>';
+            html += '</div></div>';
+            // 关键指标卡片（由后置钩子根据所选范围实时更新）
+            html += '<div class="fmt-overview">';
+            html += '<div class="fmt-card"><span class="fmt-label">💰 当前余额</span><span class="fmt-value fmt-highlight" id="bh-stat-current">-</span></div>';
+            html += '<div class="fmt-card"><span class="fmt-label">📈 最大余额</span><span class="fmt-value" id="bh-stat-max">-</span></div>';
+            html += '<div class="fmt-card"><span class="fmt-label">📉 最小余额</span><span class="fmt-value" id="bh-stat-min">-</span></div>';
+            html += '<div class="fmt-card"><span class="fmt-label">📊 总变动</span><span class="fmt-value" id="bh-stat-change">-</span></div>';
+            html += '</div>';
+            // 折线图容器（ECharts 由后置钩子初始化）
+            html += '<div id="bh-chart" style="width:100%;height:320px;"></div>';
+            // 资金变动明细（账单流水，最新在前）
+            const bills = data.bills || [];
+            if (bills.length > 0) {
+                html += '<div class="fmt-section-title" style="margin-top:18px;">🧾 资金变动明细 (' + bills.length + ')</div>';
+                html += '<table class="fmt-table"><thead><tr><th>时间</th><th>币种</th><th>变动原因</th><th>变动金额</th><th>变动后余额</th></tr></thead><tbody>';
+                bills.slice().reverse().forEach(function(b) {
+                    const chgNum = parseFloat(b.change || '0');
+                    html += '<tr>';
+                    html += '<td>' + (b.time || '') + '</td>';
+                    html += '<td><strong>' + (b.ccy || '') + '</strong></td>';
+                    html += '<td>' + (b.reason || '') + '</td>';
+                    html += '<td class="' + (chgNum >= 0 ? 'fmt-up' : 'fmt-down') + '">' + (chgNum >= 0 ? '+' : '') + toFixed(b.change, 4) + '</td>';
+                    html += '<td>' + toFixed(b.balAfter, 4) + '</td>';
+                    html += '</tr>';
+                });
+                html += '</tbody></table>';
+            } else if (data.billWarning) {
+                html += emptyMsg(data.billWarning);
+            } else {
+                html += emptyMsg('近7日无账单流水');
+            }
+            return html;
+        }
+    };
+
+    // -------------------------------------------------------------------
+    // 格式化辅助函数
+    // -------------------------------------------------------------------
+
+    function toFixed(val, n) {
+        const num = parseFloat(val);
+        if (isNaN(num)) return val;
+        return num.toFixed(n);
+    }
+
+    function formatVolume(v) {
+        // 大数自动加千分位
+        const num = parseFloat(v);
+        if (isNaN(num)) return v;
+        if (num >= 1000000) return (num / 1000000).toFixed(2) + 'M';
+        if (num >= 1000) return (num / 1000).toFixed(2) + 'K';
+        return toFixed(v, 4);
+    }
+
+    function emptyMsg(text) {
+        return '<div style="text-align:center;padding:30px;color:#bbb;font-size:0.95rem;">📭 ' + (text || '暂无数据') + '</div>';
+    }
+
+    function buildKlineView(data, title) {
+        let html = '<div class="fmt-overview">';
+        html += '<div class="fmt-card"><span class="fmt-label">📊 币种</span><span class="fmt-value">' + (data.instId || '') + '</span></div>';
+        html += '<div class="fmt-card"><span class="fmt-label">⏱ 周期</span><span class="fmt-value">' + (data.bar || '') + '</span></div>';
+        html += '<div class="fmt-card"><span class="fmt-label">📏 条数</span><span class="fmt-value">' + (data.total || 0) + ' 条</span></div>';
+        html += '</div>';
+
+        const klines = data.klines || [];
+        if (klines.length === 0) {
+            html += emptyMsg('无K线数据');
+            return html;
+        }
+
+        html += '<div class="fmt-section-title">📈 ' + title + ' (' + klines.length + ' 条)</div>';
+        html += '<table class="fmt-table"><thead><tr><th>时间</th><th>开</th><th>高</th><th>低</th><th>收</th><th>成交量</th></tr></thead><tbody>';
+        klines.forEach(function(c) {
+            const changeClass = parseFloat(c.c) >= parseFloat(c.o) ? 'fmt-up' : 'fmt-down';
+            html += '<tr>';
+            html += '<td>' + (c.ts || '') + '</td>';
+            html += '<td>' + toFixed(c.o, 2) + '</td>';
+            html += '<td>' + toFixed(c.h, 2) + '</td>';
+            html += '<td>' + toFixed(c.l, 2) + '</td>';
+            html += '<td class="' + changeClass + '"><strong>' + toFixed(c.c, 2) + '</strong></td>';
+            html += '<td>' + formatVolume(c.vol) + '</td>';
+            html += '</tr>';
+        });
+        html += '</tbody></table>';
+        return html;
+    }
+
+    // 枚举映射
+    function sideLabel(s) {
+        return s === 'buy' ? '🟢 买入' : s === 'sell' ? '🔴 卖出' : (s || '');
+    }
+    function posSideLabel(s) {
+        return s === 'long' ? '多头' : s === 'short' ? '空头' : s === 'net' ? '单向' : (s || '');
+    }
+    // 客户订单号：下单时本侧打标（trade_executor.gen_cl_ord_id），排障时靠它认出
+    // 这笔交易所订单是「哪一轮、哪个篮子」下的。没有打标的（手工单/打标上线前旧单）留空。
+    function clOrdIdLine(cid) {
+        if (!cid) return '';
+        return '<br><span style="color:#5b9fd4;word-break:break-all;" title="客户订单号 clOrdId">' + cid + '</span>';
+    }
+    function ordTypeLabel(t) {
+        const map = { limit: '限价单', market: '市价单', post_only: '只做Maker', fok: '全部成交或取消', ioc: '立即成交并取消', optimal_limit_ioc: '最优限价IOC' };
+        return map[t] || (t || '');
+    }
+    function orderStateLabel(s) {
+        const map = { live: '🟡 活跃', partially_filled: '🟠 部分成交', filled: '✅ 全部成交', canceled: '⚫ 已撤销', cancelled: '⚫ 已撤销', mmp_canceled: '⚫ MMP撤销' };
+        return map[s] || (s || '');
+    }
+    function billTypeLabel(t) {
+        const map = { '1': '划转', '2': '交易', '3': '交割', '4': '自动换币', '5': '余币宝申购', '6': '余币宝赎回', '7': '计息收入', '8': '策略转入', '9': '策略转出' };
+        return t ? (map[t] || t) : '';
+    }
+
+    // -------------------------------------------------------------------
+    // 📉 账户余额历史 - 折线图（ECharts）与范围筛选
+    // -------------------------------------------------------------------
+    let _balHistData = null;      // 最近一次查询返回的完整数据
+    let _balHistRange = 'all';    // 当前时间范围：1d / 7d / all
+    let _balHistChart = null;     // ECharts 实例
+
+    // 时间戳精度规范化：统一转为 13 位 UTC 毫秒数字，
+    // 避免秒级（10位）/微秒级（16位）/字符串 ts 导致 Date 解析偏差、时间轴严重偏离
+    function bhNormalizeTs(ts) {
+        let n = Number(ts);
+        if (!isFinite(n) || n <= 0) return NaN;
+        n = Math.floor(n);
+        if (n < 1e12) n *= 1000;          // 10位秒级 → 毫秒
+        else if (n >= 1e15) n = Math.floor(n / 1000);  // 16位微秒级 → 毫秒
+        return n;
+    }
+
+    function bhFormatTime(ts) {
+        const d = new Date(bhNormalizeTs(ts));
+        if (isNaN(d.getTime())) return '-';
+        const pad = function(n) { return n < 10 ? '0' + n : '' + n; };
+        return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+    }
+
+    function bhFilterPoints(points, range) {
+        if (range === 'all') return points.slice();
+        const span = range === '1d' ? 86400000 : 7 * 86400000;
+        const cutoff = Date.now() - span;
+        return points.filter(function(p) { return p.ts >= cutoff; });
+    }
+
+    function initBalanceHistory(data) {
+        // 数据源规范化：ts 统一为 UTC 毫秒数字，过滤非法点，保证时间轴与真实时间一致
+        if (data && Array.isArray(data.points)) {
+            data.points = data.points
+                .map(function(p) { p.ts = bhNormalizeTs(p.ts); return p; })
+                .filter(function(p) { return !isNaN(p.ts); })
+                .sort(function(a, b) { return a.ts - b.ts; });
+        }
+        _balHistData = data;
+        _balHistRange = 'all';
+        // pre 容器内的图表需要普通空白模式
+        resultContent.style.whiteSpace = 'normal';
+        // 范围按钮高亮与点击事件
+        document.querySelectorAll('.bh-range-btn').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                _balHistRange = this.dataset.range;
+                updateBalanceHistory();
+            });
+        });
+        // 结果区域重渲染会销毁旧 DOM，这里重新初始化图表实例
+        if (_balHistChart) { _balHistChart.dispose(); _balHistChart = null; }
+        const el = document.getElementById('bh-chart');
+        if (el) _balHistChart = echarts.init(el);
+        updateBalanceHistory();
+    }
+
+    function updateBalanceHistory() {
+        if (!_balHistData) return;
+        const points = bhFilterPoints(_balHistData.points || [], _balHistRange);
+
+        // 范围按钮高亮
+        document.querySelectorAll('.bh-range-btn').forEach(function(btn) {
+            btn.classList.toggle('m-btn-primary', btn.dataset.range === _balHistRange);
+        });
+
+        // 关键指标（随范围变化重算）
+        const setText = function(id, text) { const el = document.getElementById(id); if (el) el.textContent = text; };
+        const balances = points.map(function(p) { return p.balance; });
+        if (balances.length === 0) {
+            setText('bh-stat-current', '-');
+            setText('bh-stat-max', '-');
+            setText('bh-stat-min', '-');
+            setText('bh-stat-change', '-');
+        } else {
+            const current = balances[balances.length - 1];
+            const maxVal = Math.max.apply(null, balances);
+            const minVal = Math.min.apply(null, balances);
+            const first = balances[0];
+            const pct = first ? (current - first) / first * 100 : 0;
+            setText('bh-stat-current', current.toFixed(2) + ' USDT');
+            setText('bh-stat-max', maxVal.toFixed(2) + ' USDT');
+            setText('bh-stat-min', minVal.toFixed(2) + ' USDT');
+            const chgEl = document.getElementById('bh-stat-change');
+            if (chgEl) {
+                chgEl.textContent = (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%';
+                chgEl.style.color = pct >= 0 ? '#27ae60' : '#e74c3c';
+            }
+        }
+
+        if (!_balHistChart) return;
+        const seriesData = points.map(function(p) { return [p.ts, p.balance]; });
+        _balHistChart.setOption({
+            backgroundColor: 'transparent',
+            tooltip: {
+                trigger: 'axis',
+                axisPointer: { type: 'cross', label: { backgroundColor: '#41617f' } },
+                formatter: function(params) {
+                    const p = params[0];
+                    const pt = points[p.dataIndex] || {};
+                    let tip = '<div style="font-weight:600;margin-bottom:4px;">' + bhFormatTime(p.value[0]) + '</div>';
+                    tip += p.marker + ' 余额：<b>' + Number(p.value[1]).toFixed(2) + ' USDT</b>';
+                    if (pt.reason) tip += '<br>🏷 变动原因：' + pt.reason;
+                    const bhSourceMap = { live: '实时查询', snapshot: '历史快照', backfill: '回溯估算' };
+                    if (pt.source) tip += '<br>📌 数据来源：' + (bhSourceMap[pt.source] || pt.source);
+                    return tip;
+                }
+            },
+            grid: { left: 60, right: 24, top: 30, bottom: 52 },
+            xAxis: {
+                type: 'time',
+                axisLabel: { fontSize: 10, color: '#8aa3ba' },
+                axisLine: { lineStyle: { color: '#dfe9f3' } }
+            },
+            yAxis: {
+                type: 'value', scale: true, name: 'USDT',
+                axisLabel: { fontSize: 10, color: '#8aa3ba' },
+                splitLine: { lineStyle: { type: 'dashed', color: '#eef2f7' } }
+            },
+            dataZoom: [
+                { type: 'inside', xAxisIndex: 0 },
+                { type: 'slider', xAxisIndex: 0, height: 18, bottom: 8, borderColor: '#dfe9f3', fillerColor: 'rgba(47,128,237,0.12)' }
+            ],
+            series: [{
+                name: '余额', type: 'line', data: seriesData, smooth: true,
+                showSymbol: seriesData.length <= 50, symbol: 'circle', symbolSize: 5,
+                lineStyle: { width: 2.2, color: '#2f80ed' }, itemStyle: { color: '#2f80ed' },
+                areaStyle: {
+                    color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                        { offset: 0, color: 'rgba(47,128,237,0.28)' },
+                        { offset: 1, color: 'rgba(47,128,237,0.02)' }
+                    ])
+                }
+            }]
+        }, true);
+        _balHistChart.resize();
+    }
+
+    // -------------------------------------------------------------------
+    // 后置渲染钩子 —— 格式化器只产出静态 HTML，图表等动态逻辑在此执行
+    // key = "category/endpoint"
+    // -------------------------------------------------------------------
+    const POST_RENDER_HOOKS = {
+        'balance_history/history': function(data) { initBalanceHistory(data); }
+    };
+
+    let currentCategory = null;
+    let currentEndpoint = null;
+    let currentAccount = '';  // 当前选中的账号标识
+
+    // 加载账号列表
+    function loadAccounts() {
+        fetch('/api/accounts/list')
+            .then(function(r) { return r.json(); })
+            .then(function(res) {
+                if (res.code === 200 && res.data) {
+                    var sel = document.getElementById('account-select');
+                    sel.innerHTML = '';
+                    // 添加默认选项（不指定账号）
+                    var defaultOpt = document.createElement('option');
+                    defaultOpt.value = '';
+                    defaultOpt.textContent = '🏠 默认账号（当前激活）';
+                    sel.appendChild(defaultOpt);
+                    // 添加各账号
+                    res.data.forEach(function(acct) {
+                        var opt = document.createElement('option');
+                        opt.value = acct.key;
+                        opt.textContent = (acct.is_default ? '⭐ ' : '') + acct.name;
+                        if (acct.is_default) {
+                            defaultOpt.textContent = '🏠 ' + acct.name + '（当前默认）';
+                        }
+                        sel.appendChild(opt);
+                    });
+                    // 绑定切换事件
+                    sel.addEventListener('change', function() {
+                        currentAccount = this.value;
+                        var hint = document.getElementById('account-hint');
+                        if (currentAccount) {
+                            var selectedOpt = this.options[this.selectedIndex];
+                            hint.textContent = '📡 将使用 ' + selectedOpt.textContent + ' 的密钥查询';
+                            hint.style.color = '#0b5ed7';
+                        } else {
+                            hint.textContent = '使用默认账号';
+                            hint.style.color = '';
+                        }
+                    });
+                    document.getElementById('account-hint').textContent = '使用默认账号';
+                }
+            })
+            .catch(function() {
+                document.getElementById('account-select').innerHTML = '<option value="">加载失败</option>';
+            });
+    }
+
+    const sidebarEl = document.getElementById('api-sidebar');
+    const placeholderEl = document.getElementById('console-placeholder');
+    const activeEl = document.getElementById('console-active');
+    const consoleHeader = document.getElementById('console-header');
+    const consoleParams = document.getElementById('console-params');
+    const executeBtn = document.getElementById('execute-btn');
+    const executeHint = document.getElementById('execute-hint');
+    const consoleResult = document.getElementById('console-result');
+    const resultContent = document.getElementById('result-content');
+    const resultStatus = document.getElementById('result-status');
+
+    const docPlaceholder = document.getElementById('doc-placeholder');
+    const docActive = document.getElementById('doc-active');
+    const docMethod = document.getElementById('doc-method');
+    const docPath = document.getElementById('doc-path');
+    const docDesc = document.getElementById('doc-desc');
+    const docParams = document.getElementById('doc-params');
+    const docResponse = document.getElementById('doc-response');
+
+    // 渲染左侧接口列表
+    function renderSidebar() {
+        let html = '';
+        for (const [catKey, cat] of Object.entries(API_DATA)) {
+            html += `<div class="sidebar-category">`;
+            html += `<h3 class="sidebar-cat-title">${cat.icon} ${cat.label}</h3>`;
+            html += `<ul class="sidebar-endpoints">`;
+            for (const [epKey, ep] of Object.entries(cat.endpoints)) {
+                const activeClass = (currentCategory === catKey && currentEndpoint === epKey) ? ' active' : '';
+                html += `<li class="sidebar-ep${activeClass}" data-category="${catKey}" data-endpoint="${epKey}">${ep.label}</li>`;
+            }
+            html += `</ul></div>`;
+        }
+        sidebarEl.innerHTML = html;
+
+        // 绑定点击事件
+        document.querySelectorAll('.sidebar-ep').forEach(el => {
+            el.addEventListener('click', function() {
+                const cat = this.dataset.category;
+                const ep = this.dataset.endpoint;
+                selectEndpoint(cat, ep);
+            });
+        });
+    }
+
+    // 选择接口
+    function selectEndpoint(catKey, epKey) {
+        currentCategory = catKey;
+        currentEndpoint = epKey;
+
+        // 高亮
+        document.querySelectorAll('.sidebar-ep').forEach(el => el.classList.remove('active'));
+        const activeLi = document.querySelector(`.sidebar-ep[data-category="${catKey}"][data-endpoint="${epKey}"]`);
+        if (activeLi) activeLi.classList.add('active');
+
+        // 获取数据
+        const ep = API_DATA[catKey].endpoints[epKey];
+
+        // ---- 中间控制台 ----
+        placeholderEl.style.display = 'none';
+        activeEl.style.display = 'block';
+
+        consoleHeader.innerHTML = `
+            <span class="method-tag method-${ep.method.toLowerCase()}">${ep.method}</span>
+            <span class="console-ep-title">${ep.label}</span>
+            <code class="console-ep-path">${ep.path}</code>
+        `;
+
+        // 参数表单
+        if (ep.params.length === 0) {
+            consoleParams.innerHTML = '<div class="no-params">该接口无需请求参数</div>';
+        } else {
+            let paramsHtml = '';
+            ep.params.forEach((p, idx) => {
+                paramsHtml += `
+                    <div class="param-row">
+                        <label class="param-label">${p.name}</label>
+                        <input class="param-input" id="param_${idx}" value="${p.example}" placeholder="${p.desc}" spellcheck="false">
+                        <span class="param-desc">${p.desc}</span>
+                    </div>
+                `;
+            });
+            consoleParams.innerHTML = paramsHtml;
+        }
+
+        // 执行提示 - 显示真实API调用
+        if (currentAccount) {
+            var selEl = document.getElementById('account-select');
+            var acctName = selEl ? selEl.options[selEl.selectedIndex].textContent : currentAccount;
+            executeHint.textContent = `📡 将使用 ${acctName} 的密钥查询`;
+        } else {
+            executeHint.textContent = `📡 将请求 OKX 真实数据`;
+        }
+
+        // 隐藏结果
+        consoleResult.style.display = 'none';
+
+        // ---- 右侧文档 ----
+        docPlaceholder.style.display = 'none';
+        docActive.style.display = 'block';
+
+        docMethod.innerHTML = `<span class="method-tag method-${ep.method.toLowerCase()}">${ep.method}</span>`;
+        docPath.textContent = ep.path;
+        docDesc.textContent = ep.desc;
+
+        // 参数文档
+        if (ep.params.length === 0) {
+            docParams.innerHTML = '<span class="no-params">无</span>';
+        } else {
+            let paramsDocHtml = '<table class="doc-params-table"><thead><tr><th>名称</th><th>说明</th><th>示例</th></tr></thead><tbody>';
+            ep.params.forEach(p => {
+                paramsDocHtml += `<tr><td><code>${p.name}</code></td><td>${p.desc}</td><td><code>${p.example}</code></td></tr>`;
+            });
+            paramsDocHtml += '</tbody></table>';
+            docParams.innerHTML = paramsDocHtml;
+        }
+
+        docResponse.textContent = ep.response ? JSON.stringify(ep.response, null, 4) : '暂无示例数据（真实请求返回）';
+    }
+
+    // 执行请求 - 调用真实 OKX API
+    executeBtn.addEventListener('click', async function() {
+        const ep = API_DATA[currentCategory].endpoints[currentEndpoint];
+
+        // 收集当前输入的参数
+        const paramInputs = document.querySelectorAll('.param-input');
+        const reqParams = {};
+        paramInputs.forEach((input, idx) => {
+            reqParams[ep.params[idx].name] = input.value;
+        });
+
+        // 构建请求 URL
+        let url = ep.path;
+        const fetchOptions = {
+            method: ep.method,
+            headers: { 'Content-Type': 'application/json' }
+        };
+
+        if (ep.method === 'GET') {
+            // GET: 参数拼接到 query string
+            const queryParts = [];
+            for (const [key, val] of Object.entries(reqParams)) {
+                if (val) queryParts.push(`${encodeURIComponent(key)}=${encodeURIComponent(val)}`);
+            }
+            // 追加账号参数
+            if (currentAccount) {
+                queryParts.push(`account=${encodeURIComponent(currentAccount)}`);
+            }
+            if (queryParts.length > 0) {
+                url += '?' + queryParts.join('&');
+            }
+        } else {
+            // POST: 参数放在 body
+            fetchOptions.body = JSON.stringify(reqParams);
+        }
+
+        // 发起真实请求
+        executeBtn.textContent = '⏳ 请求中...';
+        executeBtn.disabled = true;
+        consoleResult.style.display = 'none';
+
+        try {
+            const response = await fetch(url, fetchOptions);
+            const result = await response.json();
+
+            // 显示结果
+            consoleResult.style.display = 'block';
+            
+            if (result.code === 200) {
+                resultStatus.textContent = `${response.status} OK`;
+                resultStatus.className = 'result-status result-ok';
+
+                // 检查是否有对应格式化器
+                const fmtKey = currentCategory + '/' + currentEndpoint;
+                const formatter = RESULT_FORMATTERS[fmtKey];
+                resultContent.style.whiteSpace = '';
+                if (formatter && result.data) {
+                    resultContent.innerHTML = formatter(result.data);
+                    // 后置钩子：图表初始化等动态逻辑
+                    const hook = POST_RENDER_HOOKS[fmtKey];
+                    if (hook) hook(result.data);
+                } else {
+                    resultContent.textContent = JSON.stringify(result, null, 4);
+                }
+            } else {
+                resultStatus.textContent = `${response.status} Error`;
+                resultStatus.className = 'result-status result-err';
+                resultContent.textContent = JSON.stringify(result, null, 4);
+            }
+
+        } catch (error) {
+            consoleResult.style.display = 'block';
+            resultStatus.textContent = '❌ 网络错误';
+            resultStatus.className = 'result-status result-err';
+            resultContent.textContent = JSON.stringify({
+                code: -1,
+                message: '请求失败: ' + error.message,
+                data: null
+            }, null, 4);
+        } finally {
+            executeBtn.textContent = '▶ 执行请求';
+            executeBtn.disabled = false;
+        }
+    });
+
+    // 默认选中第一个接口
+    function initDefault() {
+        const firstCat = Object.keys(API_DATA)[0];
+        const firstEp = Object.keys(API_DATA[firstCat].endpoints)[0];
+        selectEndpoint(firstCat, firstEp);
+    }
+
+    // 启动
+    loadAccounts();
+    renderSidebar();
+    initDefault();
+    </script>
+</body>
+</html>

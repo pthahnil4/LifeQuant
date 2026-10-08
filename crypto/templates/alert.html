@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>风险警报 - LifeQuant</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="{{ url_for('static', filename='js/mdialog.js') }}"></script>
+    <style>
+        .alert-page { max-width: 1100px; margin: 30px auto; padding: 0 20px; }
+        .alert-page h1 { margin-bottom: 8px; }
+        .alert-desc { color: var(--text-muted); margin-bottom: 24px; }
+        .card {
+            background: var(--card-bg); border-radius: 8px; padding: 18px 20px;
+            margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        .card-title { font-weight: 600; font-size: 1rem; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+        /* 状态卡片 */
+        .status-card { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+        .status-dot { width: 12px; height: 12px; border-radius: 50%; background: #ccc; flex-shrink: 0; }
+        .status-dot.running { background: var(--success-color); box-shadow: 0 0 6px rgba(40,167,69,0.5); }
+        .status-dot.stopped { background: var(--danger-color); }
+        .status-info { flex: 1; min-width: 260px; }
+        .status-info span { color: var(--text-muted); font-size: 0.85rem; margin-left: 12px; }
+        /* 表单 */
+        .form-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; }
+        .form-item label { display: block; font-size: 0.82rem; color: var(--text-muted); margin-bottom: 5px; }
+        .form-item input, .form-item select, .form-item textarea {
+            width: 100%; padding: 7px 10px; border: 1px solid var(--border-color);
+            border-radius: 6px; font-size: 0.9rem; box-sizing: border-box; background: #fff;
+        }
+        .form-item textarea { resize: vertical; min-height: 60px; font-family: Consolas, monospace; }
+        .form-item input[type="checkbox"] { width: auto; margin-right: 6px; transform: translateY(1px); }
+        .form-check { display: flex; align-items: center; font-size: 0.9rem; padding-top: 22px; }
+        .sub-section { border-top: 1px dashed var(--border-color); margin-top: 16px; padding-top: 14px; }
+        .sub-title { font-size: 0.9rem; font-weight: 600; margin-bottom: 12px; color: var(--text-muted); }
+        .hint { font-size: 0.75rem; color: var(--text-muted); margin-top: 4px; }
+        .btn { padding: 8px 18px; border: none; border-radius: 6px; cursor: pointer; font-size: 0.9rem; transition: opacity 0.2s; }
+        .btn:hover { opacity: 0.85; }
+        .btn-primary { background: var(--primary-color, #2f6fed); color: #fff; }
+        .btn-warn { background: #f0ad4e; color: #fff; }
+        .btn-plain { background: #eef1f5; color: #333; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        /* 历史表格 */
+        .filter-bar { display: flex; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; align-items: center; }
+        .filter-bar select, .filter-bar input {
+            padding: 6px 10px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 0.85rem;
+        }
+        .alert-table-wrap { overflow-x: auto; }
+        .alert-table { width: 100%; border-collapse: collapse; }
+        .alert-table th, .alert-table td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border-color); font-size: 0.85rem; }
+        .alert-table th { background: #f8f9fa; font-weight: 600; color: var(--text-muted); white-space: nowrap; }
+        .alert-table tr:last-child td { border-bottom: none; }
+        .alert-table tr:hover { background: #f8fbff; }
+        .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 0.75rem; font-weight: 600; white-space: nowrap; }
+        .badge-warning { background: #fff3cd; color: #856404; }
+        .badge-critical { background: #f8d7da; color: #721c24; }
+        .badge-recover { background: #d4edda; color: #155724; }
+        .badge-price { background: #d1ecf1; color: #0c5460; }
+        .badge-pnl { background: #e2d5f1; color: #4a235a; }
+        .badge-profit { background: #d4edda; color: #155724; }
+        .badge-liq { background: #f8d7da; color: #721c24; }
+        .badge-acct { background: #fff3cd; color: #856404; }
+        .badge-liveness { background: #e2e3e5; color: #41464b; }
+        .sent-yes { color: var(--success-color, #28a745); font-weight: 600; }
+        .sent-no { color: var(--text-muted); }
+        .empty-state { text-align: center; padding: 40px 20px; color: var(--text-muted); }
+        .empty-state .icon { font-size: 2.5rem; margin-bottom: 10px; }
+        /* toast */
+        #toast {
+            position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+            padding: 10px 24px; border-radius: 6px; color: #fff; font-size: 0.9rem;
+            z-index: 9999; display: none; box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+        #toast.success { background: #28a745; }
+        #toast.error { background: #dc3545; }
+        #toast.info { background: #17a2b8; }
+        #toast.warning { background: #f0ad4e; }
+    </style>
+</head>
+<body>
+{% include 'nav.html' %}
+<div class="alert-page">
+    <h1>🚨 风险警报</h1>
+    <p class="alert-desc">旁路只读监控：行情异动、持仓盈亏（浮亏告警 + 盈利提醒双向）、强平距离、账户保证金率/可用余额、调度轮存活，命中时邮件报警；同级别重复命中自动抑制，回落后发送缓解通知。所有阈值由下方配置决定，保存后热生效。</p>
+
+    <!-- 状态卡片 -->
+    <div class="card status-card">
+        <div class="status-dot" id="statusDot"></div>
+        <div class="status-info">
+            <b id="statusText">加载中…</b>
+            <span id="statusDetail"></span>
+        </div>
+        <button class="btn btn-warn" id="btnRunNow" onclick="runNow()">⚡ 立即检测一次</button>
+        <button class="btn btn-plain" onclick="refreshAll()">🔄 刷新</button>
+    </div>
+
+    <!-- 配置卡片 -->
+    <div class="card">
+        <div class="card-title">⚙️ 监控配置</div>
+        <div class="form-grid">
+            <div class="form-item form-check">
+                <label style="padding-top:0">
+                    <input type="checkbox" id="cfgEnabled"> 启用监控（总开关）
+                </label>
+            </div>
+            <div class="form-item">
+                <label>检测周期（秒，最小 30）</label>
+                <input type="number" id="cfgInterval" min="30" step="30">
+            </div>
+            <div class="form-item">
+                <label>持仓监控账号</label>
+                <select id="cfgAccount">
+                    <option value="">默认账号</option>
+                    {% for acct in accounts %}
+                    <option value="{{ acct.key }}">{{ acct.name }}{% if acct.is_default %}（默认）{% endif %}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+
+        <div class="sub-section">
+            <div class="sub-title">📈 行情异动监控（N 分钟窗口涨跌幅）</div>
+            <div class="form-grid">
+                <div class="form-item form-check">
+                    <label style="padding-top:0">
+                        <input type="checkbox" id="priceEnabled"> 启用行情监控
+                    </label>
+                </div>
+                <div class="form-item">
+                    <label>检测窗口（分钟）</label>
+                    <input type="number" id="priceWindow" min="1" max="99">
+                </div>
+                <div class="form-item">
+                    <label>预警阈值（% 绝对值）</label>
+                    <input type="number" id="priceWarning" min="0.1" step="0.5">
+                </div>
+                <div class="form-item">
+                    <label>严重阈值（% 绝对值）</label>
+                    <input type="number" id="priceCritical" min="0.1" step="0.5">
+                </div>
+            </div>
+            <div class="form-item" style="margin-top:12px">
+                <label>监控币种（逗号分隔；留空 = 跟随实盘交易配置的币种）</label>
+                <textarea id="priceInstIds" placeholder="例如：BTC-USDT-SWAP,ETH-USDT-SWAP"></textarea>
+                <div class="hint" id="priceInstHint"></div>
+            </div>
+        </div>
+
+        <div class="sub-section">
+            <div class="sub-title">💰 持仓盈亏监控（标的价格口径浮动盈亏率，双向提醒）</div>
+            <div class="form-grid">
+                <div class="form-item form-check">
+                    <label style="padding-top:0">
+                        <input type="checkbox" id="pnlEnabled"> 启用盈亏监控
+                    </label>
+                </div>
+                <div class="form-item">
+                    <label>浮亏预警阈值（% 负值）</label>
+                    <input type="number" id="pnlWarning" max="-0.1" step="0.5">
+                </div>
+                <div class="form-item">
+                    <label>浮亏严重阈值（% 负值）</label>
+                    <input type="number" id="pnlCritical" max="-0.1" step="0.5">
+                </div>
+                <div class="form-item form-check">
+                    <label style="padding-top:0">
+                        <input type="checkbox" id="profitEnabled"> 启用盈利提醒（暴涨/达标）
+                    </label>
+                </div>
+                <div class="form-item">
+                    <label>盈利预警阈值（% 正值）</label>
+                    <input type="number" id="profitWarning" min="0.1" step="0.5">
+                </div>
+                <div class="form-item">
+                    <label>盈利达标阈值（% 正值）</label>
+                    <input type="number" id="profitCritical" min="0.1" step="0.5">
+                </div>
+            </div>
+        </div>
+
+        <div class="sub-section">
+            <div class="sub-title">💥 爆仓风险 · 强平距离预警（现价距强平价百分比，越近越危险）</div>
+            <div class="form-grid">
+                <div class="form-item form-check">
+                    <label style="padding-top:0">
+                        <input type="checkbox" id="liqEnabled"> 启用强平距离监控
+                    </label>
+                </div>
+                <div class="form-item">
+                    <label>预警阈值（距离 ≤ %）</label>
+                    <input type="number" id="liqWarning" min="0.1" step="0.5">
+                </div>
+                <div class="form-item">
+                    <label>严重阈值（距离 ≤ %，更小）</label>
+                    <input type="number" id="liqCritical" min="0.1" step="0.5">
+                </div>
+            </div>
+        </div>
+
+        <div class="sub-section">
+            <div class="sub-title">🏦 账户健康 · 保证金率与可用余额巡检（只读旁路）</div>
+            <div class="form-grid">
+                <div class="form-item form-check">
+                    <label style="padding-top:0">
+                        <input type="checkbox" id="acctEnabled"> 启用账户巡检
+                    </label>
+                </div>
+                <div class="form-item">
+                    <label>保证金率预警（≤ %，越近100越危险）</label>
+                    <input type="number" id="acctMarginWarning" min="100" step="10">
+                </div>
+                <div class="form-item">
+                    <label>保证金率严重（≤ %，更小）</label>
+                    <input type="number" id="acctMarginCritical" min="100" step="10">
+                </div>
+                <div class="form-item">
+                    <label>可用余额预警（≤ USDT）</label>
+                    <input type="number" id="acctAvailWarning" min="0" step="10">
+                </div>
+                <div class="form-item">
+                    <label>可用余额严重（≤ USDT，0=关闭）</label>
+                    <input type="number" id="acctAvailCritical" min="0" step="5">
+                </div>
+            </div>
+        </div>
+
+        <div class="sub-section">
+            <div class="sub-title">🫀 调度轮存活 · 主循环停滞/线程意外死亡旁路告警</div>
+            <div class="form-grid">
+                <div class="form-item form-check">
+                    <label style="padding-top:0">
+                        <input type="checkbox" id="livenessEnabled"> 启用存活检测
+                    </label>
+                </div>
+                <div class="form-item">
+                    <label>停滞预警倍数（× 执行间隔）</label>
+                    <input type="number" id="livenessGrace" min="1" step="1">
+                </div>
+                <div class="form-item">
+                    <label>停滞预警绝对下限（秒）</label>
+                    <input type="number" id="livenessMinStale" min="60" step="60">
+                </div>
+                <div class="form-item">
+                    <label>停滞严重阈值（秒，更大）</label>
+                    <input type="number" id="livenessCritStale" min="60" step="60">
+                </div>
+            </div>
+        </div>
+
+        <div style="margin-top:18px">
+            <button class="btn btn-primary" id="btnSave" onclick="saveConfig()">💾 保存配置（保存后立即生效）</button>
+        </div>
+    </div>
+
+    <!-- 告警历史 -->
+    <div class="card">
+        <div class="card-title">📜 告警历史 <span style="font-weight:400;font-size:0.78rem;color:var(--text-muted)">（含被抑制的重复命中，未发送列区分）</span></div>
+        <div class="filter-bar">
+            <select id="fType">
+                <option value="">全部类型</option>
+                <option value="price">行情异动</option>
+                <option value="pnl">持仓盈亏</option>
+                <option value="profit">盈利提醒</option>
+                <option value="liq">强平距离</option>
+                <option value="acct">账户健康</option>
+                <option value="liveness">调度存活</option>
+            </select>
+            <select id="fLevel">
+                <option value="">全部级别</option>
+                <option value="warning">预警</option>
+                <option value="critical">严重</option>
+                <option value="recover">缓解</option>
+            </select>
+            <input type="text" id="fInst" placeholder="币种筛选，如 BTC">
+            <button class="btn btn-plain" onclick="loadHistory()">筛选</button>
+        </div>
+        <div class="alert-table-wrap">
+            <table class="alert-table">
+                <thead>
+                    <tr>
+                        <th>时间</th><th>类型</th><th>合约</th><th>级别</th>
+                        <th>指标值</th><th>阈值</th><th>已发送</th><th>描述</th>
+                    </tr>
+                </thead>
+                <tbody id="historyBody"></tbody>
+            </table>
+        </div>
+        <div class="empty-state" id="historyEmpty" style="display:none">
+            <div class="icon">✅</div>
+            暂无告警记录
+        </div>
+    </div>
+</div>
+<div id="toast"></div>
+
+<script>
+// =================================================================
+// 工具函数
+// =================================================================
+function showToast(msg, type) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = type || 'info';
+    t.style.display = 'block';
+    clearTimeout(t._timer);
+    t._timer = setTimeout(() => { t.style.display = 'none'; }, 3000);
+}
+
+const LEVEL_CN = { warning: '预警', critical: '严重', recover: '缓解' };
+const TYPE_CN = { price: '行情异动', pnl: '持仓盈亏', profit: '盈利提醒', liq: '强平距离', acct: '账户健康', liveness: '调度存活' };
+
+// =================================================================
+// 配置
+// =================================================================
+function loadConfig() {
+    fetch('/alert/api/config').then(r => r.json()).then(res => {
+        if (res.code !== 200) { showToast('加载配置失败: ' + (res.message || ''), 'error'); return; }
+        const cfg = res.data;
+        document.getElementById('cfgEnabled').checked = !!cfg.enabled;
+        document.getElementById('cfgInterval').value = cfg.interval_seconds;
+        document.getElementById('cfgAccount').value = cfg.account || '';
+        const price = cfg.price || {};
+        document.getElementById('priceEnabled').checked = !!price.enabled;
+        document.getElementById('priceWindow').value = price.window_minutes;
+        document.getElementById('priceWarning').value = price.warning_pct;
+        document.getElementById('priceCritical').value = price.critical_pct;
+        document.getElementById('priceInstIds').value = (price.inst_ids || []).join(', ');
+        document.getElementById('priceInstHint').textContent =
+            (price.inst_ids || []).length ? '' : '当前为空：自动跟随实盘交易配置中的币种列表';
+        const pnl = cfg.pnl || {};
+        document.getElementById('pnlEnabled').checked = !!pnl.enabled;
+        document.getElementById('pnlWarning').value = pnl.warning_pct;
+        document.getElementById('pnlCritical').value = pnl.critical_pct;
+        document.getElementById('profitEnabled').checked = !!pnl.profit_enabled;
+        document.getElementById('profitWarning').value = pnl.profit_warning_pct;
+        document.getElementById('profitCritical').value = pnl.profit_critical_pct;
+        const liq = cfg.liq || {};
+        document.getElementById('liqEnabled').checked = !!liq.enabled;
+        document.getElementById('liqWarning').value = liq.warning_pct;
+        document.getElementById('liqCritical').value = liq.critical_pct;
+        const acct = cfg.acct || {};
+        document.getElementById('acctEnabled').checked = !!acct.enabled;
+        document.getElementById('acctMarginWarning').value = acct.margin_warning_pct;
+        document.getElementById('acctMarginCritical').value = acct.margin_critical_pct;
+        document.getElementById('acctAvailWarning').value = acct.min_avail_warning;
+        document.getElementById('acctAvailCritical').value = acct.min_avail_critical;
+        const lv = cfg.liveness || {};
+        document.getElementById('livenessEnabled').checked = !!lv.enabled;
+        document.getElementById('livenessGrace').value = lv.grace_multiplier;
+        document.getElementById('livenessMinStale').value = lv.min_stale_seconds;
+        document.getElementById('livenessCritStale').value = lv.critical_stale_seconds;
+    }).catch(e => showToast('加载配置失败: ' + e, 'error'));
+}
+
+function saveConfig() {
+    const payload = {
+        enabled: document.getElementById('cfgEnabled').checked,
+        interval_seconds: Number(document.getElementById('cfgInterval').value),
+        account: document.getElementById('cfgAccount').value,
+        price: {
+            enabled: document.getElementById('priceEnabled').checked,
+            window_minutes: Number(document.getElementById('priceWindow').value),
+            warning_pct: Number(document.getElementById('priceWarning').value),
+            critical_pct: Number(document.getElementById('priceCritical').value),
+            inst_ids: document.getElementById('priceInstIds').value
+        },
+        pnl: {
+            enabled: document.getElementById('pnlEnabled').checked,
+            warning_pct: Number(document.getElementById('pnlWarning').value),
+            critical_pct: Number(document.getElementById('pnlCritical').value),
+            profit_enabled: document.getElementById('profitEnabled').checked,
+            profit_warning_pct: Number(document.getElementById('profitWarning').value),
+            profit_critical_pct: Number(document.getElementById('profitCritical').value)
+        },
+        liq: {
+            enabled: document.getElementById('liqEnabled').checked,
+            warning_pct: Number(document.getElementById('liqWarning').value),
+            critical_pct: Number(document.getElementById('liqCritical').value)
+        },
+        acct: {
+            enabled: document.getElementById('acctEnabled').checked,
+            margin_warning_pct: Number(document.getElementById('acctMarginWarning').value),
+            margin_critical_pct: Number(document.getElementById('acctMarginCritical').value),
+            min_avail_warning: Number(document.getElementById('acctAvailWarning').value),
+            min_avail_critical: Number(document.getElementById('acctAvailCritical').value)
+        },
+        liveness: {
+            enabled: document.getElementById('livenessEnabled').checked,
+            grace_multiplier: Number(document.getElementById('livenessGrace').value),
+            min_stale_seconds: Number(document.getElementById('livenessMinStale').value),
+            critical_stale_seconds: Number(document.getElementById('livenessCritStale').value)
+        }
+    };
+    document.getElementById('btnSave').disabled = true;
+    fetch('/alert/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    }).then(r => r.json()).then(res => {
+        showToast(res.message || (res.code === 200 ? '保存成功' : '保存失败'), res.code === 200 ? 'success' : 'error');
+        if (res.code === 200) { loadConfig(); loadStatus(); }
+    }).catch(e => showToast('保存失败: ' + e, 'error'))
+      .finally(() => { document.getElementById('btnSave').disabled = false; });
+}
+
+// =================================================================
+// 状态
+// =================================================================
+function loadStatus() {
+    fetch('/alert/api/status').then(r => r.json()).then(res => {
+        if (res.code !== 200) return;
+        const d = res.data;
+        const dot = document.getElementById('statusDot');
+        const text = document.getElementById('statusText');
+        const detail = document.getElementById('statusDetail');
+        if (!d.enabled) {
+            dot.className = 'status-dot stopped';
+            text.textContent = '监控已关闭';
+            detail.textContent = '在下方配置中勾选「启用监控」并保存后生效';
+            return;
+        }
+        const running = d.job && d.job.active;
+        dot.className = 'status-dot ' + (running ? 'running' : 'stopped');
+        text.textContent = running ? '监控运行中' : '监控未注册';
+        const parts = ['周期 ' + d.interval_seconds + 's'];
+        if (d.job && d.job.next_run_time) parts.push('下次检测 ' + d.job.next_run_time);
+        const lr = d.last_run || {};
+        if (lr.finished_at) {
+            parts.push('上轮 ' + lr.finished_at + '（命中 ' + lr.hit_count + ' / 发送 ' + lr.sent_count + '）');
+            if (lr.error) parts.push('⚠ ' + lr.error);
+        }
+        detail.textContent = parts.join('　');
+    }).catch(() => {});
+}
+
+function runNow() {
+    const btn = document.getElementById('btnRunNow');
+    btn.disabled = true;
+    btn.textContent = '检测中…';
+    fetch('/alert/api/run-now', { method: 'POST' }).then(r => r.json()).then(res => {
+        if (res.code === 200) {
+            const d = res.data || {};
+            showToast('检测完成：命中 ' + d.hit_count + ' 项，发送 ' + d.sent_count + ' 项' + (d.error ? '（' + d.error + '）' : ''), 'success');
+            loadHistory();
+            loadStatus();
+        } else {
+            showToast(res.message || '检测失败', 'error');
+        }
+    }).catch(e => showToast('检测失败: ' + e, 'error'))
+      .finally(() => { btn.disabled = false; btn.textContent = '⚡ 立即检测一次'; });
+}
+
+// =================================================================
+// 历史
+// =================================================================
+function loadHistory() {
+    const params = new URLSearchParams({ limit: '200' });
+    const t = document.getElementById('fType').value;
+    const lv = document.getElementById('fLevel').value;
+    const inst = document.getElementById('fInst').value.trim();
+    if (t) params.set('type', t);
+    if (lv) params.set('level', lv);
+    if (inst) params.set('inst', inst);
+    fetch('/alert/api/history?' + params.toString()).then(r => r.json()).then(res => {
+        if (res.code !== 200) { showToast('加载历史失败: ' + (res.message || ''), 'error'); return; }
+        const rows = res.data || [];
+        const body = document.getElementById('historyBody');
+        document.getElementById('historyEmpty').style.display = rows.length ? 'none' : 'block';
+        body.innerHTML = rows.map(r => {
+            const typeBadge = '<span class="badge badge-' + r.type + '">' + (TYPE_CN[r.type] || r.type) + '</span>';
+            const levelBadge = '<span class="badge badge-' + r.level + '">' + (LEVEL_CN[r.level] || r.level) + '</span>';
+            const sent = r.notify_sent
+                ? '<span class="sent-yes">✔ 已发送</span>'
+                : '<span class="sent-no">— 抑制</span>';
+            return '<tr>' +
+                '<td style="white-space:nowrap">' + r.created_at + '</td>' +
+                '<td>' + typeBadge + '</td>' +
+                '<td style="font-weight:600">' + r.inst_id + '</td>' +
+                '<td>' + levelBadge + '</td>' +
+                '<td>' + Number(r.metric_value).toFixed(2) + '%</td>' +
+                '<td style="color:var(--text-muted)">' + Number(r.threshold).toFixed(2) + '%</td>' +
+                '<td>' + sent + '</td>' +
+                '<td>' + (r.message || '') + '</td>' +
+                '</tr>';
+        }).join('');
+    }).catch(e => showToast('加载历史失败: ' + e, 'error'));
+}
+
+// =================================================================
+// 初始化
+// =================================================================
+function refreshAll() { loadStatus(); loadHistory(); }
+loadConfig();
+refreshAll();
+setInterval(loadStatus, 30000);
+</script>
+</body>
+</html>

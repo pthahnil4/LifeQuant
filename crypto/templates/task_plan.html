@@ -1,0 +1,708 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>任务计划 · 长期主义 - LifeQuant</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="{{ url_for('static', filename='js/mdialog.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/echarts.min.js') }}"></script>
+    <style>
+        /* ============ 任务计划页面（长期主义版本 Longtermism v1.1） ============ */
+        /* 页面主体：原来固定 1200px，宽屏（1440/1920）两侧各空 120px 以上，
+           卡片网格与统计栏都吃不到宽度；改为跟随视口放宽，窄屏留 4% 呼吸。 */
+        .plan-page { max-width: min(1600px, 96vw); margin: 30px auto; padding: 0 20px 40px; }
+        .plan-page h1 { margin-bottom: 8px; }
+        .plan-desc { color: var(--text-muted); margin-bottom: 24px; }
+
+        /* 长期主义欢迎横幅 */
+        .longterm-banner {
+            background: linear-gradient(135deg, #e8f7ee, #f0f9ff);
+            border: 1px solid #b8e6c9; border-radius: 12px;
+            padding: 14px 20px; margin-bottom: 20px;
+            display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+            box-shadow: 0 2px 8px rgba(40,167,69,0.08);
+        }
+        .longterm-banner .lt-icon { font-size: 1.6rem; }
+        .longterm-banner .lt-title { font-weight: 800; font-size: 1rem; color: #1a7f42; }
+        .longterm-banner .lt-desc { font-size: 0.85rem; color: #2d6a4f; }
+        .longterm-banner .lt-badge {
+            margin-left: auto; background: #28a745; color: #fff;
+            font-size: 0.72rem; font-weight: 700; padding: 3px 12px;
+            border-radius: 12px; flex-shrink: 0;
+        }
+
+        /* 总览统计栏 */
+        .plan-overview {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 12px; margin-bottom: 20px;
+        }
+        .overview-item {
+            background: var(--card-bg); border-radius: 12px; padding: 16px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05); text-align: center;
+            border: 1px solid var(--border-color); transition: all .2s;
+        }
+        .overview-item:hover { transform: translateY(-3px); box-shadow: 0 6px 16px rgba(0,0,0,0.1); }
+        .overview-item .ov-num {
+            font-size: 1.6rem; font-weight: 800; color: var(--primary-color);
+            background: linear-gradient(135deg, #0b5ed7, #00d2ff);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .overview-item .ov-label { font-size: 0.8rem; color: var(--text-muted); margin-top: 4px; }
+
+        /* 每日/累积打卡统计双曲线图面板 */
+        .checkin-stats-panel {
+            background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05); padding: 14px 20px; margin-bottom: 20px;
+        }
+        .checkin-stats-panel .cf-title {
+            font-size: 0.92rem; font-weight: 700; margin-bottom: 10px;
+            display: flex; align-items: center; gap: 8px;
+        }
+
+        /* 状态分组 */
+        .status-group { margin-bottom: 28px; }
+        .status-group-title {
+            font-size: 1.02rem; font-weight: 700; margin-bottom: 12px;
+            display: flex; align-items: center; gap: 8px;
+            padding-left: 10px; border-left: 4px solid var(--primary-color);
+        }
+        .status-group-title.sg-in_progress { border-left-color: #0b5ed7; }
+        .status-group-title.sg-pending { border-left-color: #ffc107; }
+        .status-group-title.sg-completed { border-left-color: #28a745; }
+        .status-group-title.sg-ended { border-left-color: #dc3545; }
+        .status-group-title .sg-count {
+            background: #f0f4ff; border-radius: 10px; padding: 1px 10px;
+            font-size: 0.78rem; color: var(--text-muted); font-weight: 600;
+        }
+        #card-grid { display: block; }
+
+        /* 今日在场面板（长期主义版：只报喜不施压） */
+        .today-panel {
+            background: linear-gradient(135deg, var(--card-bg), #f8fbff);
+            border: 1px solid var(--border-color); border-radius: 12px; padding: 14px 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05); margin-bottom: 20px;
+            display: flex; align-items: center; gap: 24px; flex-wrap: wrap;
+        }
+        .today-item { display: flex; align-items: center; gap: 8px; font-size: 0.92rem; }
+        .today-item .dot { width: 10px; height: 10px; border-radius: 50%; box-shadow: 0 0 4px rgba(0,0,0,0.2); }
+        .dot-ok { background: #28a745; }
+        .dot-warn { background: #ffc107; }
+        .dot-danger { background: #dc3545; }
+        .today-welcome {
+            font-size: 1.02rem; font-weight: 800; padding: 6px 14px;
+            border-radius: 10px; flex-shrink: 0;
+        }
+        .today-welcome.present-ok { background: #d4edda; color: #155724; }
+        .today-welcome.present-idle { background: #fff3cd; color: #7a5b00; }
+        .today-hint { color: var(--text-muted); font-size: 0.85rem; }
+        .slot-encourage {
+            margin-top: 10px; padding: 8px 12px; border-radius: 8px;
+            background: #e8f7ee; border: 1px dashed #b8e6c9;
+            font-size: 0.82rem; color: #1a7f42; text-align: center;
+        }
+        .task-card .tc-presence { color: #1a7f42; font-weight: 600; }
+
+        /* 在场日历（v1.1：GitHub 贡献图风格，断档如实呈现） */
+        .cal-wrap {
+            margin-top: 14px; padding-top: 12px;
+            border-top: 1px dashed var(--border-color); width: 100%;
+        }
+        .cal-title { font-size: 0.85rem; font-weight: 600; color: #1a7f42; margin-bottom: 10px; }
+        .cal-grid { display: flex; gap: 3px; overflow-x: auto; padding-bottom: 4px; }
+        .cal-rows { display: flex; flex-direction: column; gap: 3px; margin-right: 2px; flex-shrink: 0; }
+        .cal-row-label {
+            width: 14px; height: 12px; font-size: 0.62rem; color: var(--text-muted);
+            display: flex; align-items: center; justify-content: center;
+        }
+        .cal-col { display: flex; flex-direction: column; gap: 3px; }
+        .cal-cell {
+            width: 12px; height: 12px; border-radius: 3px; background: #ebedf0;
+            transition: transform .1s;
+        }
+        .cal-cell:hover { transform: scale(1.35); }
+        .cal-cell.lv1 { background: #c6e48b; }
+        .cal-cell.lv2 { background: #7bc96f; }
+        .cal-cell.lv3 { background: #239a3b; }
+        .cal-cell.lv4 { background: #196127; }
+        .cal-cell.future { opacity: 0.35; }
+        .cal-cell.empty { background: transparent; }
+        .cal-legend {
+            display: flex; align-items: center; gap: 4px; margin-top: 8px;
+            font-size: 0.72rem; color: var(--text-muted); justify-content: flex-end;
+        }
+        .cal-legend .cal-cell { width: 10px; height: 10px; display: inline-block; }
+
+        /* 任务卡网格 */
+        .card-section-title {
+            font-size: 1.05rem; font-weight: 700; margin: 24px 0 12px;
+            display: flex; align-items: center; justify-content: space-between;
+        }
+        .card-grid {
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+            gap: 14px;
+        }
+        .task-card {
+            background: var(--card-bg); border-radius: 12px; padding: 16px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06); cursor: pointer;
+            border: 2px solid transparent; transition: all .2s; position: relative;
+        }
+        .task-card:hover { transform: translateY(-3px); box-shadow: 0 6px 18px rgba(0,0,0,0.12); }
+        .task-card.locked { opacity: 0.6; cursor: not-allowed; }
+        .task-card.st-in_progress { border-color: #0b5ed7; }
+        .task-card.st-completed { border-color: #28a745; }
+        .task-card.st-failed { border-color: #dc3545; }
+        .task-card.st-abandoned { border-color: #aaa; opacity: 0.7; }
+        .task-card .tc-type { font-size: 0.72rem; padding: 2px 8px; border-radius: 10px; font-weight: 600; flex-shrink: 0; }
+        .tc-type.learn { background: #e2f0ff; color: #0b5ed7; }
+        .tc-type.trade { background: #fff3cd; color: #997404; }
+        .task-card .tc-head { display: flex; align-items: center; gap: 8px; }
+        .task-card .tc-title { font-size: 0.95rem; font-weight: 600; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .task-card .tc-round { font-size: 0.78rem; color: var(--text-muted); }
+        .task-card .tc-body { margin-top: 8px; }
+        .task-card .tc-progress { margin: 10px 0 6px; }
+        .task-card .tc-bar {
+            height: 8px; background: #f0f0f0; border-radius: 4px; overflow: hidden;
+        }
+        .task-card .tc-bar-fill { height: 100%; background: linear-gradient(90deg, #0b5ed7, #00d2ff); border-radius: 4px; transition: width .3s; }
+        .task-card .tc-meta { display: flex; justify-content: space-between; font-size: 0.78rem; color: var(--text-muted); }
+        .task-card .tc-status {
+            font-size: 0.75rem; padding: 2px 8px; border-radius: 10px; font-weight: 600; flex-shrink: 0;
+        }
+        .st-pending .tc-status { background: #eee; color: #666; }
+        .st-in_progress .tc-status { background: #d4edda; color: #155724; }
+        .st-completed .tc-status { background: #28a745; color: #fff; }
+        .st-failed .tc-status { background: #dc3545; color: #fff; }
+        .st-abandoned .tc-status { background: #aaa; color: #fff; }
+        .task-card .tc-reward { font-weight: 700; color: #e07b00; }
+        .task-card .tc-penalty { color: #dc3545; font-weight: 600; }
+        .task-card .tc-countdown { color: #6c757d; font-weight: 600; }
+        .task-card .tc-countdown-out { color: #dc3545; }
+        .task-card .tc-hit { color: var(--primary-color); font-weight: 600; }
+        .task-card .tc-lock-icon { font-size: 1rem; flex-shrink: 0; }
+        .task-card .tc-meta-2 { margin-top: 4px; }
+
+        /* 卡片重置按钮 */
+        .task-card .tc-reset-btn {
+            border: none; background: #f0f0f0; border-radius: 6px;
+            width: 24px; height: 24px; font-size: 0.8rem; cursor: pointer;
+            flex-shrink: 0; line-height: 1; transition: all .15s;
+        }
+        .task-card .tc-reset-btn:hover { background: #fde8e8; transform: rotate(-20deg); }
+
+        /* 待开始卡片：默认折叠，只显示标题行 */
+        .task-card.collapsed { padding: 10px 16px; }
+        .task-card.collapsed .tc-body { display: none; }
+        .task-card .tc-collapse-btn {
+            margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--border-color);
+            font-size: 0.78rem; color: var(--text-muted); text-align: center; cursor: pointer;
+        }
+        .task-card .tc-collapse-btn:hover { color: var(--primary-color); }
+        .task-card.collapsed .tc-collapse-open { display: inline; }
+        .task-card:not(.collapsed) .tc-collapse-open { display: none; }
+        .task-card.collapsed .tc-collapse-close { display: none; }
+        .task-card:not(.collapsed) .tc-collapse-close { display: inline; }
+
+        .card-modal-overlay {
+            position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 1000;
+            display: flex; align-items: center; justify-content: center;
+        }
+        /* 卡片详情弹窗
+           原来固定 780px，只占 1440 视口的 54%，里面要装 100 格 + 任务树 + 87 条打卡记录，
+           「脸盆里塞大象」的盆就是这里。放宽到 1280px（窄屏退化 96vw，手机全屏）。
+           --cm-pad 统一控制内容区内边距：小记输入框的 sticky 负偏移必须跟着它走，做成变量。 */
+        .card-modal {
+            --cm-pad: 18px;
+            background: #fff; border-radius: 14px; width: min(1280px, 96vw);
+            max-height: 92vh; display: flex; flex-direction: column; overflow: hidden;
+            box-shadow: 0 12px 40px rgba(0,0,0,0.2);
+        }
+        .card-modal-head {
+            padding: 14px var(--cm-pad); border-bottom: 1px solid var(--border-color);
+            display: flex; align-items: center; justify-content: space-between; gap: 10px;
+        }
+        .card-modal-head .cm-title { font-size: 1.05rem; font-weight: 700; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .card-modal-head .cm-close {
+            border: none; background: #f0f0f0; border-radius: 6px; width: 30px; height: 30px;
+            cursor: pointer; font-size: 1rem; flex-shrink: 0;
+        }
+        /* Tab 条：原来 flex 不换行也不滚动，6 个 Tab 约需 547px，
+           480px 屏上「小记」「结算」被 .card-modal{overflow:hidden} 裁掉 → 功能不可达。
+           改为横向可滚动 + Tab 不收缩，任何宽度下都能滚到全部 Tab。 */
+        .card-modal-tabs {
+            display: flex; gap: 4px; padding: 8px var(--cm-pad) 0;
+            border-bottom: 1px solid var(--border-color);
+            overflow-x: auto; overflow-y: hidden; scrollbar-width: thin;
+            -webkit-overflow-scrolling: touch;
+        }
+        .card-modal-tabs::-webkit-scrollbar { height: 4px; }
+        .card-modal-tabs::-webkit-scrollbar-thumb { background: #d8dee9; border-radius: 2px; }
+        .cm-tab {
+            position: relative; flex-shrink: 0; white-space: nowrap;
+            padding: 8px 14px; border: none; background: none; cursor: pointer;
+            font-size: 0.88rem; color: var(--text-muted); border-bottom: 2px solid transparent;
+        }
+        .cm-tab.active { color: var(--primary-color); border-bottom-color: var(--primary-color); font-weight: 600; }
+        /* 提前通关引导横幅 */
+        .ov-early-banner {
+            background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
+            border: 1px solid #66bb6a; border-radius: 8px;
+            padding: 12px 16px; margin-bottom: 16px;
+            font-size: 0.9rem; color: #2e7d32;
+            display: flex; align-items: center; gap: 8px;
+        }
+        /* 结算 Tab 徽章 */
+        .cm-tab-badge {
+            display: inline-flex; align-items: center; justify-content: center;
+            width: 16px; height: 16px; margin-left: 4px;
+            background: #ff5722; color: #fff; border-radius: 50%;
+            font-size: 10px; font-weight: 700; line-height: 1;
+            animation: badge-pulse 1.5s ease-in-out infinite;
+        }
+        .cm-tab-glow { animation: tab-glow 2s ease-in-out infinite; }
+        @keyframes badge-pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.2); }
+        }
+        @keyframes tab-glow {
+            0%, 100% { color: var(--text-muted); }
+            50% { color: #ff5722; }
+        }
+        .card-modal-body { padding: var(--cm-pad); overflow-y: auto; flex: 1; overscroll-behavior: contain; }
+
+        /* 概览：宽弹窗下改成「左内容 / 右参数」两栏，避免目标框横向拉成一米宽、
+           而进度与时间控件还挤在下面的老问题 */
+        .cm-overview .ov-cols { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 0 26px; align-items: start; }
+        .cm-overview .ov-col { min-width: 0; }
+        .cm-overview .ov-row { display: flex; margin-bottom: 8px; font-size: 0.9rem; align-items: flex-start; }
+        .cm-overview .ov-row .label { width: 78px; color: var(--text-muted); flex-shrink: 0; padding-top: 7px; }
+        .cm-overview .ov-row input[type="text"], .cm-overview .ov-row input[type="datetime-local"],
+        .cm-overview .ov-row input[type="number"], .cm-overview .ov-row textarea {
+            flex: 1; min-width: 0; padding: 6px 10px; border: 1px solid var(--border-color); border-radius: 6px;
+            font-size: 0.9rem; font-family: inherit; box-sizing: border-box;
+        }
+        .cm-overview .ov-row textarea { min-height: 62px; resize: vertical; line-height: 1.6; }
+        .cm-overview .ov-row textarea.ov-tall { min-height: 118px; }
+        .cm-overview .ov-unit { flex-shrink: 0; margin-left: 6px; font-size: .85rem; }
+        .cm-overview .ov-cap { font-size: .78rem; color: var(--text-muted); margin: 2px 0 10px; }
+        .cm-overview .ov-cap b { font-variant-numeric: tabular-nums; }
+        .cm-overview .ov-cap.hi { color: #e67e22; font-weight: 600; }
+        .cm-big-progress { margin: 12px 0; }
+        .cm-big-bar { height: 14px; background: #f0f0f0; border-radius: 7px; overflow: hidden; }
+        .cm-big-fill { height: 100%; background: linear-gradient(90deg, #007bff, #00d2ff); border-radius: 7px; transition: width .3s; }
+
+        /* ============ 打卡 Tab：左「格子总览」+ 右「记录流水」 ============
+           原来 10 列正方形格子自身就有 740px 高，加上记录列表整页要滚 6.7 屏。
+           现在格子改扁（26px）并按宽度自动 20/14/10 列，记录列表单独成列自己滚，
+           首屏同时看得见第 1 格和第 100 格。 */
+        .slots-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 400px); gap: 0 22px; align-items: start; }
+        .slots-main, .slots-side { min-width: 0; }
+
+        .slot-grid { display: grid; grid-template-columns: repeat(20, minmax(0, 1fr)); gap: 2px; }
+        .slot-cell {
+            height: 26px; border: 1px solid var(--border-color); border-radius: 4px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 0.66rem; color: #999; cursor: pointer; background: #fafafa;
+            transition: all .12s; position: relative; font-variant-numeric: tabular-nums;
+        }
+        .slot-cell:hover { border-color: var(--primary-color); transform: scale(1.12); z-index: 2; box-shadow: 0 2px 8px rgba(0,0,0,.14); }
+        .slot-cell.filled { background: #d4edda; border-color: #28a745; color: #155724; font-weight: 600; }
+        .slot-cell.filled::after {
+            content: '✔'; position: absolute; right: 2px; bottom: 0;
+            font-size: .5rem; line-height: 1; color: #2b8a3e;
+        }
+        .slot-cell.locked { cursor: not-allowed; }
+        .slot-cell.locked:hover { border-color: var(--border-color); transform: none; box-shadow: none; }
+        .slot-cell .slot-title { font-size: inherit; color: inherit; line-height: 1; }
+        .slot-cell.cur { border-color: var(--primary-color); box-shadow: 0 0 0 2px rgba(11,94,215,.22); }
+        .slot-grid-legend { display: flex; gap: 14px; margin-top: 8px; font-size: 0.76rem; color: var(--text-muted); flex-wrap: wrap; }
+
+        /* 打卡记录列表（含时间与内容摘要） */
+        .slot-record-list { border: 1px solid var(--border-color); border-radius: 10px; padding: 8px 10px; background: #fff; }
+        .slot-record-list .srl-title { font-size: 0.86rem; font-weight: 600; margin-bottom: 6px; }
+        .slot-record-list .srl-title .srl-count { color: var(--text-muted); font-weight: 400; font-size: .76rem; }
+        .srl-tools { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; position: sticky; top: 0; background: #fff; padding: 2px 0; z-index: 2; }
+        .srl-tools input[type="search"] {
+            flex: 1; min-width: 0; padding: 5px 9px; font-size: .8rem;
+            border: 1px solid var(--border-color); border-radius: 6px; outline: none; box-sizing: border-box;
+        }
+        .srl-tools input[type="search"]:focus { border-color: var(--primary-color); }
+        .srl-tools .srl-filter { display: flex; align-items: center; gap: 4px; font-size: .76rem; color: var(--text-muted); flex-shrink: 0; cursor: pointer; white-space: nowrap; }
+        .srl-body { max-height: 58vh; overflow-y: auto; overscroll-behavior: contain; }
+        .srl-empty { font-size: .8rem; color: var(--text-muted); text-align: center; padding: 14px 6px; }
+        .srl-more { display: block; width: 100%; margin-top: 6px; }
+        .slot-record-item {
+            display: flex; align-items: flex-start; gap: 8px; padding: 5px 8px;
+            border: 1px solid var(--border-color); border-radius: 8px; margin-bottom: 5px;
+            font-size: 0.82rem; background: #fafafa; line-height: 1.45;
+        }
+        .slot-record-item:hover { border-color: var(--primary-color); background: #f8fbff; }
+        /* 未关联任务的记录：淡黄左边框标出"这条还欠关联"，与右栏「只看未关联」过滤配套 */
+        .slot-record-item.is-pending { background: #fffdf5; border-left: 3px solid #f0b429; padding-left: 6px; }
+        .slot-record-item.is-pending:hover { background: #fff9e8; }
+        .slot-record-item .srl-index { flex-shrink: 0; color: var(--text-muted); width: 50px; font-size: .76rem; font-variant-numeric: tabular-nums; }
+        .slot-record-item .srl-mid { flex: 1; min-width: 0; }
+        /* 内容摘要：原来 nowrap + ellipsis 只显示半句话，改为最多两行完整可见 */
+        .slot-record-item .srl-content {
+            display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical;
+            overflow: hidden; white-space: normal; word-break: break-word;
+        }
+        .slot-record-item .srl-time { flex-shrink: 0; color: var(--text-muted); font-size: 0.7rem; width: 78px; text-align: right; line-height: 1.35; }
+        .slot-record-item .srl-del {
+            border: none; background: transparent; color: #dc3545; cursor: pointer;
+            font-size: 0.78rem; padding: 1px 4px; border-radius: 4px; flex-shrink: 0; transition: all .12s;
+        }
+        .slot-record-item .srl-del:hover { background: #fde8e8; }
+
+        /* 目标拆解 */
+        .milestone-item {
+            display: flex; align-items: center; gap: 10px; padding: 8px 10px;
+            border: 1px solid var(--border-color); border-radius: 8px; margin-bottom: 8px;
+        }
+        .milestone-item.done .ms-content { text-decoration: line-through; color: var(--text-muted); }
+        .milestone-item input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; }
+        .milestone-item .ms-content { flex: 1; font-size: 0.9rem; min-width: 0; word-break: break-all; }
+        .milestone-item .ms-edit-input {
+            flex: 1; min-width: 0; padding: 4px 8px; font-size: 0.9rem;
+            border: 1px solid var(--primary-color); border-radius: 6px; outline: none;
+            box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.12);
+        }
+        .milestone-item .ms-action {
+            cursor: pointer; border: none; background: none; font-size: 0.85rem;
+            padding: 2px 5px; border-radius: 6px; flex-shrink: 0; transition: background .15s;
+        }
+        .milestone-item .ms-action:hover { background: #f0f4ff; }
+        .milestone-item .ms-action.ms-del:hover { background: #fde8e8; }
+        .milestone-add { display: flex; gap: 8px; margin-top: 10px; }
+        .milestone-add input { flex: 1; padding: 6px 10px; border: 1px solid var(--border-color); border-radius: 6px; }
+
+        /* TodoList（任务目标子任务清单） */
+        .todo-item {
+            display: flex; align-items: center; gap: 8px; padding: 7px 10px;
+            border: 1px solid var(--border-color); border-radius: 8px; margin-bottom: 6px;
+            background: #fff; transition: all .15s;
+        }
+        .todo-item:hover { border-color: var(--primary-color); }
+        .todo-item input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; flex-shrink: 0; }
+        .todo-item .todo-content { flex: 1; font-size: 0.9rem; min-width: 0; word-break: break-all; }
+        .todo-item.done .todo-content { text-decoration: line-through; color: var(--text-muted); }
+        .todo-item .todo-edit-input {
+            flex: 1; padding: 4px 8px; border: 1px solid var(--primary-color); border-radius: 6px;
+            font-size: 0.9rem; font-family: inherit;
+        }
+        .todo-item .todo-action {
+            border: none; background: transparent; cursor: pointer; font-size: 0.8rem;
+            padding: 2px 5px; border-radius: 4px; flex-shrink: 0; transition: all .12s;
+        }
+        .todo-item .todo-action:hover { background: #f0f4ff; }
+        .todo-item .todo-action.todo-del { color: #dc3545; }
+        .todo-item .todo-action.todo-del:hover { background: #fde8e8; }
+
+        /* ============ 任务树（任务管理 v2） ============ */
+        .tc-progress-2 { margin: 10px 0 6px; }
+        .tc-bar-row { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+        .tc-bar-row .tc-bar-label { font-size: .68rem; color: var(--text-muted); width: 54px; flex-shrink: 0; }
+        .tc-bar-row .tc-bar { flex: 1; height: 8px; background: #f0f0f0; border-radius: 4px; overflow: hidden; }
+        .tc-bar-row .tc-bar-fill { height: 100%; border-radius: 4px; transition: width .3s; }
+        .tc-bar-row .tc-bar-fill.task { background: linear-gradient(90deg, #28a745, #7bc96f); }
+        .tc-bar-row .tc-bar-fill.hour { background: linear-gradient(90deg, #0b5ed7, #00d2ff); }
+        .tc-bar-row .tc-bar-num { font-size: .68rem; color: var(--text-muted); width: 76px; text-align: right; flex-shrink: 0; font-variant-numeric: tabular-nums; }
+
+        .tt-wrap { margin-top: 4px; }
+        .tt-summary { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; font-size: .85rem; }
+        .tt-summary .tts-bar { flex: 1; min-width: 110px; height: 10px; background: #f0f0f0; border-radius: 5px; overflow: hidden; }
+        .tt-summary .tts-fill { height: 100%; background: linear-gradient(90deg, #28a745, #7bc96f); border-radius: 5px; transition: width .3s; }
+        .tt-summary .tts-text { color: var(--text-muted); font-size: .8rem; flex-shrink: 0; }
+        .tt-warn { font-size: .78rem; color: #e67e22; margin: 0 0 8px; }
+        .tt-tools { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; flex-wrap: wrap; }
+        .tt-tools .ttt-stat { font-size: .74rem; color: var(--text-muted); margin-left: auto; }
+        .tt-tree { border: 1px solid var(--border-color); border-radius: 10px; padding: 4px 8px; }
+        .tt-tree.cm-embed { max-height: 46vh; overflow-y: auto; }
+        .tt-children { margin-left: 18px; border-left: 1px dashed var(--border-color); padding-left: 8px; }
+        /* 行改成定宽列（折叠柄/标题/状态/预估/操作）：树在宽弹窗下按列表方式对齐，
+           纵向扫读时眼睛不用重新找每列的起点 */
+        .tt-row {
+            display: grid; grid-template-columns: 16px minmax(0, 1fr) 58px 138px auto;
+            align-items: center; gap: 8px; padding: 4px 4px; border-radius: 8px; transition: background .12s;
+        }
+        .tt-row:hover { background: #f8fbff; }
+        .tt-caret { border: none; background: none; cursor: pointer; font-size: .68rem; color: var(--text-muted); width: 16px; flex-shrink: 0; padding: 0; }
+        .tt-caret.ghost { visibility: hidden; }
+        .tt-title { font-size: .88rem; min-width: 0; word-break: break-word; }
+        .tt-title-input { width: 100%; min-width: 0; padding: 3px 8px; font-size: .88rem; border: 1px solid var(--primary-color); border-radius: 6px; outline: none; box-shadow: 0 0 0 2px rgba(0,123,255,.12); box-sizing: border-box; }
+        .tt-est-input { width: 100%; min-width: 0; padding: 3px 6px; font-size: .82rem; border: 1px solid var(--primary-color); border-radius: 6px; outline: none; box-sizing: border-box; }
+        .tt-node.done > .tt-row .tt-title { text-decoration: line-through; color: var(--text-muted); }
+        .tt-status { font-size: .68rem; padding: 1px 6px; border-radius: 9px; font-weight: 600; text-align: center; }
+        .tt-status.todo { background: #eee; color: #666; }
+        .tt-status.doing { background: #d4edda; color: #155724; }
+        .tt-status.done { background: #28a745; color: #fff; }
+        .tt-est { font-size: .74rem; color: var(--text-muted); font-variant-numeric: tabular-nums; text-align: right; }
+        .tt-est.warn { color: #e67e22; font-weight: 600; }
+        .tt-doneby { font-size: .66rem; color: #3557a8; background: #eef4ff; border-radius: 8px; padding: 0 6px; margin-left: 6px; cursor: pointer; }
+        .tt-doneby:hover { background: #dcebff; }
+        .tt-actions { display: flex; gap: 1px; flex-shrink: 0; justify-self: end; }
+        .tt-act { border: none; background: none; cursor: pointer; font-size: .76rem; padding: 2px 4px; border-radius: 5px; }
+        .tt-act:hover { background: #f0f4ff; }
+        .tt-act.tt-del:hover { background: #fde8e8; }
+        .tt-empty { font-size: .85rem; color: var(--text-muted); padding: 12px; text-align: center; }
+        .tt-add-bar { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+        .tt-add-bar input { flex: 1; min-width: 120px; padding: 6px 10px; border: 1px solid var(--border-color); border-radius: 6px; font-size: .85rem; }
+        .tt-add-bar input.tt-est-in { flex: 0 0 86px; min-width: 86px; }
+        .tt-readonly { font-size: .75rem; color: var(--text-muted); margin-top: 8px; }
+        .tt-jump { margin-top: 8px; }
+
+        /* 打卡弹窗：任务关联选择器
+           任务一多（几十节点）时，250px 的框里既有可勾的也有不可勾的，找起来费劲；
+           加一条可吸顶的过滤条（只看可关联），并把框高放宽到视口比例的 44vh。 */
+        .link-picker { border: 1px solid var(--border-color); border-radius: 8px; padding: 6px 8px; margin-top: 4px; max-height: min(340px, 44vh); overflow-y: auto; }
+        /* 注意：这些控件都在 .slot-form 里，而 task_plan.js 注入的 FORM_CSS 有
+                   `.slot-form label{display:block}` / `.slot-form input{width:100%}`（同权重且后加载，会赢），
+                   所以这里必须用 .link-picker/.bf-row 前缀抬到两位 class 权重，否则复选框会被拉成整行宽。 */
+        .link-picker .lp-tools { display: flex; align-items: center; gap: 8px; position: sticky; top: -6px; z-index: 2; background: #fff; padding: 10px 8px 6px; margin: -6px -8px 2px; border-bottom: 1px dashed var(--border-color); font-size: .74rem; color: var(--text-muted); }
+        .link-picker .lp-tools label { display: flex; align-items: center; gap: 5px; margin: 0; flex: 0 0 auto; cursor: pointer; white-space: nowrap; }
+        .link-picker .lp-tools input[type="checkbox"] { width: 15px; height: 15px; flex: 0 0 auto; padding: 0; margin: 0; accent-color: var(--primary-color); }
+        .link-picker .lp-tools .lp-stat { margin-left: auto; white-space: nowrap; }
+        .link-picker.only-leaf .lp-row.disabled:not(.checked) { display: none; }
+        .link-picker .lp-empty { font-size: .82rem; color: var(--text-muted); text-align: center; padding: 10px; }
+        .lp-row { display: flex; align-items: center; gap: 8px; padding: 4px 4px; border-radius: 6px; }
+        .lp-row:hover { background: #f8fbff; }
+        .lp-row.disabled { opacity: .5; }
+        .lp-row input[type="checkbox"] { width: 15px; height: 15px; cursor: pointer; flex-shrink: 0; }
+        .lp-row input[type="checkbox"]:disabled { cursor: not-allowed; }
+        .lp-pad { flex-shrink: 0; }
+        .lp-title { flex: 1; font-size: .86rem; min-width: 0; word-break: break-all; }
+        .lp-sub { font-size: .72rem; color: var(--text-muted); flex-shrink: 0; }
+        .lp-sub.warn { color: #e67e22; font-weight: 600; }
+        .lp-state { display: none; gap: 4px; flex-shrink: 0; }
+        .lp-row.checked .lp-state { display: inline-flex; }
+        .lp-state button { border: 1px solid var(--border-color); background: #fff; font-size: .72rem; padding: 1px 8px; border-radius: 9px; cursor: pointer; }
+        .lp-state button.on { background: #d4edda; border-color: #28a745; color: #155724; font-weight: 600; }
+        .lp-state button.on-done { background: #28a745; border-color: #28a745; color: #fff; font-weight: 600; }
+        .lp-hint { font-size: .74rem; color: var(--text-muted); margin: 6px 0 0; }
+        .lp-note { font-size: .74rem; margin: 6px 0 0; }
+
+        /* 打卡记录：任务标签 / 待关联提醒 */
+        .srl-links { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 3px; }
+        .srl-link-chip { font-size: .66rem; padding: 0 6px; border-radius: 8px; background: #eef4ff; color: #3557a8; white-space: nowrap; }
+        .srl-link-chip.done { background: #d4edda; color: #155724; }
+        .srl-link-chip.gone { background: #eee; color: #888; }
+        .srl-pending-link { display: inline-block; margin-top: 3px; font-size: .68rem; color: #e67e22; cursor: pointer; white-space: nowrap; background: #fff7e6; padding: 0 6px; border-radius: 8px; border: 1px dashed #e67e22; }
+        .srl-pending-link:hover { background: #ffeccc; }
+
+        /* 打卡详情 Tab */
+        .checkin-summary {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 10px; margin-bottom: 14px;
+        }
+        .checkin-summary .cs-item {
+            background: #f8fbff; border: 1px solid var(--border-color); border-radius: 10px;
+            padding: 10px 12px; text-align: center;
+        }
+        .checkin-summary .cs-num { font-size: 1.2rem; font-weight: 800; color: var(--primary-color); }
+        .checkin-summary .cs-label { font-size: 0.75rem; color: var(--text-muted); margin-top: 2px; }
+        .checkin-chart-box {
+            border: 1px solid var(--border-color); border-radius: 10px; padding: 10px;
+            margin-bottom: 14px; background: #fff;
+        }
+        .checkin-chart-box .ccb-title { font-size: 0.85rem; font-weight: 600; margin-bottom: 6px; color: #41617f; }
+        /* 图表高度用 vh 而不是写死 320px：宽弹窗下让曲线自己长高，一屏能看完不用滚 */
+        .checkin-chart-box .ccb-canvas { width: 100%; height: min(58vh, 480px); }
+
+        /* 小记：输入框固定在顶部（sticky），避免被记录列表挤到底部
+           负偏移必须跟着 .card-modal 的 --cm-pad 走，否则改内边距就会漏缝 */
+        .note-input-wrap {
+            position: sticky; top: calc(var(--cm-pad) * -1); z-index: 5;
+            background: #fff; padding: 10px 0 12px; margin: calc(var(--cm-pad) * -1) 0 12px;
+            border-bottom: 1px dashed var(--border-color);
+        }
+        .note-input-wrap .ni-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+        .note-input-wrap .ni-title { font-size: .9rem; font-weight: 600; }
+        .note-input-wrap .ni-cap { font-size: .74rem; color: var(--text-muted); margin-left: auto; }
+        .note-input-wrap .ni-cap.hi { color: #e67e22; font-weight: 600; }
+        .note-add-box { display: flex; gap: 8px; align-items: flex-start; }
+        .note-add-box textarea {
+            flex: 1; min-width: 0; min-height: 46px; max-height: 30vh; padding: 7px 10px; resize: vertical;
+            border: 1px solid var(--border-color); border-radius: 8px; font-size: .88rem;
+            font-family: inherit; line-height: 1.55; box-sizing: border-box;
+        }
+        .note-add-box textarea:focus { outline: none; border-color: var(--primary-color); box-shadow: 0 0 0 2px rgba(11,94,215,.12); }
+        .note-add-box .ni-btn { flex-shrink: 0; }
+        .ni-hint { font-size: .72rem; color: var(--text-muted); margin: 5px 0 0; }
+        /* 小记列表：宽屏两栏排布（同屏可见条数近乎翻倍），卡片内不被切断 */
+        .notes-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; }
+        .note-item {
+            border-left: 3px solid var(--primary-color); padding: 6px 10px;
+            background: #f8f9fa; border-radius: 0 8px 8px 0; break-inside: avoid;
+        }
+        .note-item .note-time { font-size: 0.72rem; color: var(--text-muted); }
+        .note-item .note-content { font-size: 0.86rem; margin-top: 2px; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
+
+        /* 结算 */
+        .settle-info { background: #f8f9fa; border-radius: 8px; padding: 12px 14px; margin-bottom: 12px; }
+        .settle-info .si-row { display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; font-size: 0.88rem; }
+        .settle-info .si-row.total { font-weight: 700; border-top: 1px dashed var(--border-color); margin-top: 6px; padding-top: 8px; font-size: 1rem; }
+        .settle-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 0 20px; align-items: start; }
+        .settle-review { border: 1px dashed var(--border-color); border-radius: 10px; padding: 10px 12px; margin-bottom: 12px; background: #fff; }
+        .settle-review .sr-title { font-size: .86rem; font-weight: 600; margin-bottom: 6px; display: flex; align-items: baseline; gap: 8px; }
+        /* .sf-tip 原本是"表单里另起一行的灰说明"（带 margin-top），放进标题行当右对齐角标时要清掉外边距 */
+        .settle-review .sr-title .sf-tip { margin: 0 0 0 auto; font-weight: 400; }
+        .settle-review .sr-title .sf-tip.hi { color: #e67e22; font-weight: 600; }
+        .settle-review textarea {
+            width: 100%; min-height: 76px; resize: vertical; box-sizing: border-box;
+            padding: 7px 10px; border: 1px solid var(--border-color); border-radius: 8px;
+            font-size: .86rem; font-family: inherit; line-height: 1.6;
+        }
+
+        .empty-state { text-align: center; padding: 40px 20px; color: var(--text-muted); }
+        .empty-state .icon { font-size: 2.5rem; margin-bottom: 10px; }
+
+        /* ============================================================
+           表单弹窗（MDialog）加宽
+           ------------------------------------------------------------
+           .m-dialog 是全站共享组件（style.css：max-width:440px / body max-height:45vh），
+           改它会波及所有页面的提示框。所以只给本页的重表单弹窗挂 .plan-form-dialog 类，
+           由 JS 在 MDialog.show() 返回后就地加类，宽度与内容区高度都只在这类弹窗生效。
+           ============================================================ */
+        .m-dialog.plan-form-dialog { width: min(1080px, calc(100vw - 24px)); max-width: none; min-width: 0; }
+        .m-dialog.plan-form-dialog .m-dialog-header { padding: 14px 20px 12px; }
+        .m-dialog.plan-form-dialog .m-dialog-body { max-height: calc(94vh - 156px); padding: 12px 20px 14px; line-height: 1.6; }
+        .m-dialog.plan-form-dialog .m-dialog-footer { padding: 10px 20px 14px; }
+        .m-dialog.plan-form-dialog.plan-dlg-sm { width: min(660px, calc(100vw - 24px)); }
+        .m-dialog.plan-form-dialog.plan-dlg-sm .m-dialog-body { max-height: calc(90vh - 150px); }
+
+        /* 打卡表单分栏：原来「学习时长」里一个 60 也要占满一整行 396px，
+           表单纵向被拉到 700px 以上；两栏后同屏即可完成填写提交。
+           .sf-span = 通栏（任务关联选择器、补录块这类宽内容必须整行） */
+        .sf-cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 22px; align-items: start; }
+        .sf-cols > .sf-span { grid-column: 1 / -1; }
+        .sf-field { min-width: 0; margin-bottom: 8px; }
+        .sf-field > label, .sf-span > label { display: block; font-size: .84rem; color: var(--text-muted); margin: 2px 0 4px; }
+        .sf-field input, .sf-field select, .sf-field textarea { width: 100%; box-sizing: border-box; }
+        .slot-form .sf-field textarea { min-height: 104px; line-height: 1.6; }
+        .slot-form .sf-field textarea.sf-short { min-height: 82px; }
+        .sf-tip { font-size: .74rem; color: var(--text-muted); margin: 4px 0 0; line-height: 1.5; }
+        .sf-acts { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+        .sf-note { font-size: .76rem; margin: 4px 0 0; }
+        .sf-note.err { color: #c92a2a; }
+        .sf-note.ok { color: #2b8a3e; }
+
+        /* 「插入常用段落」内联面板：绝不能再开一个 MDialog——
+           MDialog.show() 开头会 close(activeDialog)，那会把用户填了一半的表单直接销毁 */
+        .sf-snips { margin-top: 6px; border: 1px dashed var(--border-color); border-radius: 8px; padding: 6px 8px; background: #fbfcfe; max-height: 200px; overflow-y: auto; }
+        .sf-snips .sn-head { font-size: .74rem; color: var(--text-muted); margin-bottom: 5px; }
+        .sf-snip {
+            display: block; width: 100%; text-align: left; border: 1px solid var(--border-color);
+            background: #fff; border-radius: 6px; padding: 4px 8px; margin-bottom: 4px;
+            font-size: .78rem; cursor: pointer; line-height: 1.45; color: #444;
+        }
+        .sf-snip:hover { border-color: var(--primary-color); background: #f4f9ff; }
+        .sf-snip .sn-src { color: #3557a8; background: #eef4ff; border-radius: 7px; padding: 0 5px; margin-right: 6px; font-size: .68rem; white-space: nowrap; }
+
+        /* 范围补录清单：每天一行「勾 + 日期 + 当日内容」。
+           后端 /plan/api/backfill-batch 的 entries[] 本来就支持逐条独立 record，
+           前端原来却把所有日期都填成同一份内容，等于自削接口能力 */
+        .bf-preview { margin-top: 6px; font-size: .78rem; color: var(--text-muted); max-height: min(340px, 42vh); overflow-y: auto; }
+        .bf-row {
+            display: flex; align-items: center; gap: 6px; padding: 3px 6px; margin-bottom: 4px;
+            border: 1px solid var(--border-color); border-radius: 6px; background: #fff;
+        }
+        .bf-row .bf-date { display: flex; align-items: center; gap: 5px; flex-shrink: 0; width: 92px; font-size: .78rem; cursor: pointer; margin: 0; }
+        .bf-row .bf-date input[type="checkbox"] { width: 15px; height: 15px; flex: 0 0 auto; padding: 0; margin: 0; accent-color: var(--primary-color); }
+        .bf-row .bf-text { flex: 1; min-width: 0; padding: 4px 8px; font-size: .8rem; border: 1px solid var(--border-color); border-radius: 5px; box-sizing: border-box; }
+        .bf-row .bf-text:focus { outline: none; border-color: var(--primary-color); }
+        .bf-row .bf-bal { flex-shrink: 0; margin-left: auto; font-size: .76rem; }
+        .bf-row.has-dup { border-color: #f0ad4e; background: #fffdf5; }
+        .bf-tools { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 4px; font-size: .74rem; color: var(--text-muted); }
+        .bf-tools button { border: none; background: none; color: var(--primary-color); cursor: pointer; font-size: .74rem; padding: 0; text-decoration: underline; }
+
+        /* ============ 响应式（本页原先全文零条 @media，窄屏只能靠裁切） ============ */
+        @media (max-width: 900px) {
+            .sf-cols { grid-template-columns: minmax(0, 1fr); gap: 0; }
+            .slots-layout { grid-template-columns: minmax(0, 1fr); gap: 14px 0; }
+            .cm-overview .ov-cols { grid-template-columns: minmax(0, 1fr); }
+            .slot-grid { grid-template-columns: repeat(14, minmax(0, 1fr)); }
+            .tt-row { grid-template-columns: 16px minmax(0, 1fr) 52px 116px auto; gap: 5px; }
+            .srl-body { max-height: 46vh; }
+        }
+        @media (max-width: 640px) {
+            .plan-page { margin: 12px auto; padding: 0 12px 28px; }
+            /* 手机上弹窗直接铺满：780px 的窗塞进 480px 屏，左砍 Tab 右砍内容 */
+            .card-modal {
+                --cm-pad: 12px; width: 100vw; max-width: 100vw;
+                height: 100vh; height: 100dvh; max-height: 100dvh; border-radius: 0;
+            }
+            .card-modal-tabs { padding: 6px 10px 0; gap: 2px; }
+            .cm-tab { padding: 7px 10px; font-size: .82rem; }
+            .slot-grid { grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 3px; }
+            .slot-cell { height: 30px; font-size: .72rem; }
+            .slot-record-item { font-size: .8rem; }
+            .slot-record-item .srl-time { width: 62px; }
+            /* 窄屏任务行退回单行流式：五列定宽在 320px 里放不下（预估会溢出裁切） */
+            .tt-row { display: flex; align-items: center; }
+            .tt-row > .tt-title { flex: 1 1 auto; }
+            .tt-row > .tt-est { flex: 0 0 auto; }
+            .m-dialog.plan-form-dialog .m-dialog-body { max-height: calc(100dvh - 120px); padding: 10px 14px 12px; }
+            .m-dialog.plan-form-dialog { width: calc(100vw - 12px); }
+        }
+    </style>
+</head>
+<body>
+    {% include 'nav.html' %}
+    <div class="plan-page">
+        <header>
+            <h1>📋 任务计划</h1>
+            <p class="plan-desc">长期主义自我激励系统 | 学习 1000 小时做出稳定量化系统 · 交易 1000 小时翻 10 番到 10 万 U</p>
+        </header>
+
+        <!-- 长期主义欢迎横幅 -->
+        <div class="longterm-banner">
+            <span class="lt-icon">🌱</span>
+            <span class="lt-title">长期主义</span>
+            <span class="lt-desc">今天在场，比今天做多少更重要 · 想开始就开始，几分钟也算在场 · 中断了也没关系，随时欢迎回来</span>
+            <span class="lt-badge">Longtermism v1.1</span>
+        </div>
+
+        <!-- 总览统计栏 -->
+        <div id="plan-overview" class="plan-overview"></div>
+
+        <!-- 每日/累积打卡统计表（严格区分学习与交易） -->
+        <div id="checkin-stats-panel" class="checkin-stats-panel" style="display:none;"></div>
+
+        <!-- 今日在场面板（长期主义版：只报喜不施压，含在场日历） -->
+        <div id="today-panel" class="today-panel"></div>
+
+        <!-- 分析纪律看板（批次11）：合规率 / 断档热力 / 补记率 / 归因对比 / 规则配置。
+             放在打卡面板与任务卡之间——闸门拦住人的地方，就是该看到证据的地方。
+             样式与渲染全在 discipline_board.js 内，这里只给挂载点 -->
+        <div id="discipline-panel" style="display:none;"></div>
+
+        <!-- 计划详情（任务卡列表 - 统一网格） -->
+        <div id="plan-detail">
+            <div class="card-section-title">
+                <span id="section-title">📋 任务卡</span>
+                <span style="display:flex;gap:8px;">
+                    <button class="m-btn m-btn-primary m-btn-sm btn-add-card" data-type="learn">＋ 新学习任务</button>
+                    <button class="m-btn m-btn-primary m-btn-sm btn-add-card" data-type="trade">＋ 新交易任务</button>
+                </span>
+            </div>
+            <div id="card-grid" class="card-grid"></div>
+        </div>
+    </div>
+
+    <!-- 卡片详情弹窗 -->
+    <div class="card-modal-overlay" id="card-modal" style="display:none;">
+        <div class="card-modal">
+            <div class="card-modal-head">
+                <span class="cm-title" id="cm-title"></span>
+                <button class="cm-close" onclick="TaskPlan.closeCardModal()">✕</button>
+            </div>
+            <div class="card-modal-tabs" id="cm-tabs"></div>
+            <div class="card-modal-body" id="cm-body"></div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/task_plan.js', v='20260922-history-time') }}"></script>
+    <script src="{{ url_for('static', filename='js/discipline_board.js') }}"></script>
+</body>
+</html>

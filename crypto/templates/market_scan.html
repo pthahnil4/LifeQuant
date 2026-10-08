@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>全市场趋势扫描</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    {% include 'nav.html' %}
+    <div class="dashboard">
+        <header>
+            <h1>🚀 全市场趋势扫描</h1>
+            <p class="subtitle">OKX 永续合约 · 涨幅榜 / 跌幅榜 / 成交额榜 / 明确趋势币种</p>
+        </header>
+
+        <main>
+            <!-- 控制面板 -->
+            <div class="coin-selector-panel">
+                <div class="coin-selector-header">
+                    <span class="coin-selector-title">市场排行榜</span>
+                    <div class="coin-selector-actions">
+                        <span id="scan-meta" class="ms-meta"></span>
+                        <button id="ms-add-monitor-btn" class="m-btn m-btn-success m-btn-xs m-btn-outline m-btn-pill" title="将勾选币种添加到监控台（浮动币种）">➕ 加入监控</button>
+                        <button id="ms-batch-star-btn" class="m-btn m-btn-warning m-btn-xs m-btn-outline m-btn-pill" title="将勾选的币种加入星标">⭐ 勾选星标</button>
+                        <button id="ms-clear-check-btn" class="m-btn m-btn-secondary m-btn-xs m-btn-outline m-btn-pill" title="清除所有勾选">✖ 清除勾选</button>
+                        <button id="ms-fetch-btn" class="m-btn m-btn-info m-btn-sm" title="仅拉全市场行情并排序（涨幅/跌幅/成交额），不分析趋势，速度快">⚡ 直接获取</button>
+                        <button id="ms-scan-btn" class="m-btn m-btn-primary m-btn-sm" title="完整趋势扫描，包括对候选子集的日线K线分析，速度较慢">🔍 分析</button>
+                        <button id="ms-info-btn" class="m-btn m-btn-secondary m-btn-sm m-btn-outline" title="查看当前趋势扫描的筛选条件">ℹ️ 筛选条件</button>
+                    </div>
+                </div>
+
+                <!-- 进度条 -->
+                <div id="ms-progress" class="progress-area" style="display:none;">
+                    <div class="progress-bar-outer">
+                        <div id="ms-progress-bar" class="progress-bar-inner" style="width:0%">0%</div>
+                    </div>
+                    <div id="ms-progress-msg" class="progress-text">等待开始...</div>
+                </div>
+
+                <!-- 榜单切换标签 -->
+                <div class="tab-switch" id="ms-tabs">
+                    <button class="tab-btn active" data-view="trending">🎯 明确趋势 <span class="tab-badge" id="badge-trending">0</span></button>
+                    <button class="tab-btn" data-view="gainers">📈 涨幅榜 <span class="tab-badge" id="badge-gainers">0</span></button>
+                    <button class="tab-btn" data-view="losers">📉 跌幅榜 <span class="tab-badge" id="badge-losers">0</span></button>
+                    <button class="tab-btn" data-view="by_volume">🔄 成交额榜 <span class="tab-badge" id="badge-by_volume">0</span></button>
+                </div>
+
+                <!-- 自动刷新配置 -->
+                <div class="auto-refresh-config" style="margin-top:12px;">
+                    <div class="refresh-config-row">
+                        <span class="refresh-config-label">🔄 自动刷新间隔</span>
+                        <input type="number" id="ms-refresh-interval" class="refresh-config-input" value="5" min="0" max="120" step="1">
+                        <span class="refresh-config-unit">分钟</span>
+                        <button id="ms-apply-interval-btn" class="m-btn m-btn-primary m-btn-xs m-btn-pill">应用</button>
+                        <span class="refresh-config-hint">(0=关闭；自动重新扫描全市场)</span>
+                    </div>
+                    <div id="ms-refresh-status" class="refresh-status-msg"></div>
+                </div>
+            </div>
+
+            <!-- 加载中 -->
+            <div id="ms-loading" class="loading" style="display:none;">正在加载扫描数据...</div>
+
+            <!-- 空状态 -->
+            <div id="ms-empty" style="display:none;text-align:center;padding:40px;color:#aaa;">
+                暂无扫描数据，点击右上角「🔍 分析」拉取全市场行情。
+            </div>
+
+            <!-- 卡片网格 -->
+            <div id="ms-grid" class="data-panel ms-grid" style="display:none;"></div>
+        </main>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/mdialog.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/market_scan.js') }}?v=20260725"></script>
+</body>
+</html>

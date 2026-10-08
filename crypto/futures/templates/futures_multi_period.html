@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ symbol }} 多周期总览 - 期货 Pro3</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    {% include 'nav.html' %}
+
+    <div class="page-wrapper">
+        <div class="multi-page">
+
+            <!-- 顶部导航栏 -->
+            <div class="detail-topbar">
+                <a href="/futures/" class="back-link">← 返回期货监控台</a>
+                <a href="/futures/detail/{{ symbol }}" class="back-link">查看详情</a>
+                <h1 class="detail-title">{{ symbol }} <span class="detail-subtitle" id="page-subtitle">多周期方向总览</span></h1>
+            </div>
+
+            <!-- 加载中 -->
+            <div id="multi-loading" class="loading">正在加载多周期策略数据...</div>
+
+            <!-- 错误提示 -->
+            <div id="multi-error" class="card-error" style="display:none; padding:20px;"></div>
+
+            <!-- 主内容区 -->
+            <div id="multi-content" style="display:none;">
+
+                <!-- 更新时间 -->
+                <div class="multi-update-time" id="update-time">--</div>
+
+                <!-- 七周期趋势方向卡片 -->
+                <section class="detail-section">
+                    <h2 class="section-title">📡 七周期趋势方向 <span style="font-size:0.75rem;color:#999;font-weight:normal;">（分钟级使用真实K线，日线/周线使用日线数据重采样）</span></h2>
+                    <div class="multi-period-grid" id="period-grid">
+                        <!-- JS 动态填充 -->
+                    </div>
+                </section>
+
+                <!-- 双周期对比分析 -->
+                <section class="detail-section">
+                    <h2 class="section-title">双周期对比分析 <span style="font-size:0.75rem;color:#999;font-weight:normal;">（下拉可自由切换周期）</span></h2>
+                    <div class="multi-compare-grid" id="compare-grid">
+                        <!-- JS 动态填充 -->
+                    </div>
+                </section>
+
+                <!-- 图例说明 -->
+                <section class="detail-section">
+                    <h2 class="section-title">图例说明</h2>
+                    <div class="multi-legend">
+                        <div class="legend-item"><span class="legend-dot dot-up"></span> 上涨趋势</div>
+                        <div class="legend-item"><span class="legend-dot dot-down"></span> 下跌趋势</div>
+                        <div class="legend-item"><span class="legend-dot dot-wait"></span> 观望/无方向</div>
+                        <div class="legend-item"><span class="legend-dot dot-open"></span> 双周期同向 → 可开仓信号</div>
+                        <div class="legend-item"><span class="legend-dot dot-pull"></span> 双周期不同向 → 短期回调提示</div>
+                    </div>
+                </section>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    (function() {
+        const SYMBOL = "{{ symbol }}";
+        const loadingEl = document.getElementById('multi-loading');
+        const errorEl = document.getElementById('multi-error');
+        const contentEl = document.getElementById('multi-content');
+        const updateTimeEl = document.getElementById('update-time');
+
+        // ================================================================
+        // 周期配置
+        // ================================================================
+        // 展示的 7 个周期
+        const DISPLAY_PERIODS = ['5m', '15m', '30m', '1H', '4H', '1D', '1W'];
+        // 所有可用周期（覆盖所有可能的对比组合）
+        const ALL_PERIODS = ['5m', '15m', '30m', '1H', '4H', '1D', '1W'];
+        const COMPARE_OPTIONS = ALL_PERIODS;
+
+        // 周期显示名称
+        const PERIOD_LABELS = {
+            '5m': '5分钟', '15m': '15分钟',
+            '30m': '30分钟', '1H': '1小时',
+            '4H': '4小时', '1D': '1日', '1W': '1周',
+        };
+
+        // 可配置的双周期对比组合
+        let comparisonPairs = [
+            { id: 'pair1', left: '15m', right: '1H' },
+            { id: 'pair2', left: '5m',  right: '4H' },
+            { id: 'pair3', left: '1H',  right: '1D' },
+            { id: 'pair4', left: '1D',  right: '1W' }
+        ];
+
+        // 缓存最新数据
+        let periodData = {};
+
+        // ================================================================
+        // 工具函数
+        // ================================================================
+        function fmtMoney(v) {
+            const n = parseFloat(v);
+            if (isNaN(n)) return v;
+            return n.toFixed(4);
+        }
+
+        function fmtTime(v) {
+            return v || '--';
+        }
+
+        function getSignalClass(flag) {
+            if (flag === 'rise') return 'multi-up';
+            if (flag === 'fall') return 'multi-down';
+            return 'multi-wait';
+        }
+
+        function getSignalEmoji(flag) {
+            if (flag === 'rise') return '\uD83D\uDFE2';
+            if (flag === 'fall') return '\uD83D\uDD34';
+            return '\uD83D\uDFE1';
+        }
+
+        function getSignalText(flag) {
+            if (flag === 'rise') return '上涨';
+            if (flag === 'fall') return '下跌';
+            return '观望';
+        }
+
+        function periodLabel(bar) {
+            return PERIOD_LABELS[bar] || bar;
+        }
+
+        // ================================================================
+        // 渲染七周期卡片
+        // ================================================================
+        function renderPeriodGrid() {
+            const grid = document.getElementById('period-grid');
+            let html = '';
+            DISPLAY_PERIODS.forEach(function(bar) {
+                const d = periodData[bar] || {};
+                const flag = d.modify_flag || 'wait';
+                const signal = d.action_signal || '--';
+                const macd = d.macd_histogram != null ? fmtMoney(d.macd_histogram) : '--';
+                const adx = d.adx != null ? fmtMoney(d.adx) : '--';
+                const ts = fmtTime(d.timestamp);
+                const err = d.error || '';
+                const cls = getSignalClass(flag);
+                const emoji = getSignalEmoji(flag);
+
+                // 交易相关数据（每个周期独立）
+                const entryPrice = d.trade_entry_price != null ? fmtMoney(d.trade_entry_price) : '--';
+                const entryTime = d.trade_entry_time || '--';
+                const direction = d.trade_direction || '--';
+                const profitPct = d.trade_profit_pct != null ? (d.trade_profit_pct >= 0 ? '+' : '') + d.trade_profit_pct.toFixed(2) + '%' : '--';
+                const profitColor = d.trade_profit_pct != null ? (d.trade_profit_pct >= 0 ? '#00b894' : '#e74c3c') : '';
+
+                html += '<div class="multi-period-card ' + cls + '">' +
+                    '<div class="mpc-bar">' + bar + '</div>' +
+                    '<div class="mpc-signal">' + emoji + ' ' + signal + '</div>' +
+                    '<div class="mpc-details">' +
+                        '<span>入场价: ' + entryPrice + '</span>' +
+                        '<span>方向: ' + direction + '</span>' +
+                    '</div>' +
+                    '<div class="mpc-details">' +
+                        '<span>MACD: ' + macd + '</span>' +
+                        '<span>ADX: ' + adx + '</span>' +
+                    '</div>' +
+                    (d.trade_entry_price != null ?
+                    '<div class="mpc-details">' +
+                        '<span style="color:' + profitColor + ';font-weight:bold;">持仓盈亏: ' + profitPct + '</span>' +
+                    '</div>' : '') +
+                    '<div class="mpc-time">入场时间: ' + entryTime + '</div>' +
+                    '<div class="mpc-time" style="font-size:0.65rem;opacity:0.6;">数据日期: ' + ts + '</div>' +
+                    (err ? '<div class="mpc-error">' + err + '</div>' : '') +
+                '</div>';
+            });
+            grid.innerHTML = html;
+        }
+
+        // ================================================================
+        // 渲染双周期对比
+        // ================================================================
+        function buildPeriodOptions(selectedPeriod) {
+            return COMPARE_OPTIONS.map(function(b) {
+                const sel = b === selectedPeriod ? ' selected' : '';
+                return '<option value="' + b + '"' + sel + '>' + b + ' ' + periodLabel(b) + '</option>';
+            }).join('');
+        }
+
+        function renderCompareGrid() {
+            const grid = document.getElementById('compare-grid');
+            let html = '';
+
+            comparisonPairs.forEach(function(pair, idx) {
+                const leftData = periodData[pair.left] || {};
+                const rightData = periodData[pair.right] || {};
+                const leftFlag = leftData.modify_flag || 'wait';
+                const rightFlag = rightData.modify_flag || 'wait';
+                const leftSignal = leftData.action_signal || '--';
+                const rightSignal = rightData.action_signal || '--';
+
+                const sameDirection = (leftFlag === rightFlag) && (leftFlag !== 'wait');
+                const bothWait = (leftFlag === 'wait') && (rightFlag === 'wait');
+
+                let resultClass, resultIcon, resultText;
+                if (sameDirection) {
+                    resultClass = 'compare-open';
+                    resultIcon = '\u2705';
+                    resultText = '可开仓 — 双周期趋势一致';
+                } else if (bothWait) {
+                    resultClass = 'compare-wait';
+                    resultIcon = '\u23F8\uFE0F';
+                    resultText = '观望 — 双周期均无方向';
+                } else {
+                    resultClass = 'compare-pullback';
+                    resultIcon = '\u26A0\uFE0F';
+                    resultText = '短期回调 — 双周期趋势不一致';
+                }
+
+                html += '<div class="compare-card ' + resultClass + '">' +
+                    '<div class="compare-config-row">' +
+                        '<span class="compare-pair-index">对比' + (idx + 1) + '</span>' +
+                        '<select class="compare-select" data-pair-id="' + pair.id + '" data-side="left">' +
+                            buildPeriodOptions(pair.left) +
+                        '</select>' +
+                        '<span class="compare-config-vs">vs</span>' +
+                        '<select class="compare-select" data-pair-id="' + pair.id + '" data-side="right">' +
+                            buildPeriodOptions(pair.right) +
+                        '</select>' +
+                    '</div>' +
+                    '<div class="compare-signals">' +
+                        '<div class="compare-side ' + getSignalClass(leftFlag) + '">' +
+                            '<div class="compare-bar-tag">' + pair.left + '</div>' +
+                            '<div class="compare-arrow">' + getSignalEmoji(leftFlag) + ' ' + leftSignal + '</div>' +
+                        '</div>' +
+                        '<div class="compare-result ' + resultClass + '">' +
+                            '<div class="compare-icon">' + resultIcon + '</div>' +
+                            '<div class="compare-text">' + resultText + '</div>' +
+                        '</div>' +
+                        '<div class="compare-side ' + getSignalClass(rightFlag) + '">' +
+                            '<div class="compare-bar-tag">' + pair.right + '</div>' +
+                            '<div class="compare-arrow">' + getSignalEmoji(rightFlag) + ' ' + rightSignal + '</div>' +
+                        '</div>' +
+                    '</div>' +
+                    '<div class="compare-desc">' + periodLabel(pair.left) + ' vs ' + periodLabel(pair.right) +
+                        '：同向则趋势确认，不同向则短期回调/背离</div>' +
+                '</div>';
+            });
+            grid.innerHTML = html;
+
+            // 绑定下拉切换事件
+            grid.querySelectorAll('.compare-select').forEach(function(sel) {
+                sel.addEventListener('change', function() {
+                    const pairId = this.dataset.pairId;
+                    const side = this.dataset.side;
+                    const newPeriod = this.value;
+                    const pair = comparisonPairs.find(function(p) { return p.id === pairId; });
+                    if (pair && pair[side] !== newPeriod) {
+                        pair[side] = newPeriod;
+                        if (!periodData[newPeriod]) {
+                            fetchPeriodData([newPeriod]).then(function() {
+                                renderCompareGrid();
+                            });
+                        } else {
+                            renderCompareGrid();
+                        }
+                    }
+                });
+            });
+        }
+
+        // ================================================================
+        // 数据加载
+        // ================================================================
+        async function fetchPeriodData(periods) {
+            try {
+                const periodsParam = periods.join(',');
+                const response = await fetch('/futures/api/strategy/multi/' + encodeURIComponent(SYMBOL) + '?periods=' + periodsParam);
+                const result = await response.json();
+                if (result.code === 200 && result.data) {
+                    Object.keys(result.data).forEach(function(key) {
+                        periodData[key] = result.data[key];
+                    });
+                    return true;
+                }
+                return false;
+            } catch (e) {
+                console.error('获取多周期数据失败:', e);
+                return false;
+            }
+        }
+
+        async function loadAllPeriods() {
+            loadingEl.style.display = 'block';
+            contentEl.style.display = 'none';
+            errorEl.style.display = 'none';
+
+            const ok = await fetchPeriodData(ALL_PERIODS);
+            if (ok) {
+                loadingEl.style.display = 'none';
+                contentEl.style.display = 'block';
+                renderAll();
+            } else {
+                showError('数据加载失败，请稍后重试');
+            }
+        }
+
+        function renderAll() {
+            updateTimeEl.textContent = '最后更新: ' + new Date().toLocaleTimeString();
+            renderPeriodGrid();
+            renderCompareGrid();
+        }
+
+        function showError(msg) {
+            loadingEl.style.display = 'none';
+            errorEl.style.display = 'block';
+            errorEl.textContent = msg;
+        }
+
+        // ================================================================
+        // 启动
+        // ================================================================
+        loadAllPeriods();
+    })();
+    </script>
+</body>
+</html>
